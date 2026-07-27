@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/data-integrity-proof.schema.json",
+  "title": "Data Integrity Proof",
+  "description": "Version 1 shape for the prototype DataIntegrityProof profile. Shape validation does not establish signature validity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "@context",
+    "type",
+    "cryptosuite",
+    "created",
+    "verificationMethod",
+    "proofPurpose",
+    "proofValue"
+  ],
+  "properties": {
+    "@context": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "https://www.w3.org/ns/credentials/v2"
+        },
+        {
+          "const": "https://secure-ssi.example/contexts/university-affiliation/v1"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "type": {
+      "const": "DataIntegrityProof"
+    },
+    "cryptosuite": {
+      "const": "eddsa-jcs-2022"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "verificationMethod": {
+      "type": "string",
+      "pattern": "^did:web:[A-Za-z0-9._:%-]+#[A-Za-z0-9._:%-]+$",
+      "maxLength": 768
+    },
+    "proofPurpose": {
+      "const": "assertionMethod"
+    },
+    "proofValue": {
+      "type": "string",
+      "description": "Base58-btc multibase value. Cryptographic validity is checked by the verifier, not this schema.",
+      "pattern": "^z[1-9A-HJ-NP-Za-km-z]+$",
+      "minLength": 80,
+      "maxLength": 100
+    }
+  },
+  "examples": [
+    {
+      "@context": [
+        "https://www.w3.org/ns/credentials/v2",
+        "https://secure-ssi.example/contexts/university-affiliation/v1"
+      ],
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "created": "2026-01-01T00:00:00Z",
+      "verificationMethod": "did:web:issuer.example#key-1",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}

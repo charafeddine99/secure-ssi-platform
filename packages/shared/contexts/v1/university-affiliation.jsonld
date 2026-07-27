@@ -1,0 +1,9 @@
+{
+  "@context": {
+    "UniversityAffiliationCredential": "https://secure-ssi.example/vocabulary#UniversityAffiliationCredential",
+    "affiliation": "https://secure-ssi.example/vocabulary#affiliation",
+    "programCode": "https://secure-ssi.example/vocabulary#programCode",
+    "degree": "https://secure-ssi.example/vocabulary#degree",
+    "graduationYear": "https://secure-ssi.example/vocabulary#graduationYear"
+  }
+}

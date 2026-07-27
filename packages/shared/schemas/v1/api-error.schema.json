@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/api-error.schema.json",
+  "title": "API Error",
+  "description": "Version 1 error envelope for planned public and internal APIs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "message", "correlationId", "details"],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "details": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reason"],
+        "properties": {
+          "field": {"type": "string", "maxLength": 128},
+          "reason": {"type": "string", "maxLength": 256}
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "code": "VALIDATION_FAILED",
+      "message": "The request does not satisfy the contract.",
+      "correlationId": "01JEXAMPLE0000000000000000",
+      "details": []
+    }
+  ]
+}

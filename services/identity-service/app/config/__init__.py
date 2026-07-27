@@ -1,0 +1,1 @@
+"""Typed Identity Service configuration."""

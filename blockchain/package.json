@@ -1,0 +1,8 @@
+{
+  "name": "@secure-ssi/blockchain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Planned Hardhat and Solidity workspace; no contracts implemented.",
+  "scripts": { "compile": "hardhat compile", "test": "hardhat test" },
+  "devDependencies": { "hardhat": "^2.22.18", "typescript": "^5.7.2" }
+}

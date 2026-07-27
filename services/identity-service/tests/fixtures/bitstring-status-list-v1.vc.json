@@ -1,0 +1,27 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2"
+  ],
+  "id": "https://issuer.example/api/v1/status-lists/revocation-f6ea6c814218075f84aa3185",
+  "type": [
+    "VerifiableCredential",
+    "BitstringStatusListCredential"
+  ],
+  "issuer": "did:web:issuer.example",
+  "validFrom": "2026-06-01T00:00:00Z",
+  "credentialSubject": {
+    "id": "https://issuer.example/api/v1/status-lists/revocation-f6ea6c814218075f84aa3185#list",
+    "type": "BitstringStatusList",
+    "statusPurpose": "revocation",
+    "encodedList": "uH4sIAAAAAAAC_-3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA",
+    "ttl": 300000
+  },
+  "proof": {
+    "type": "DataIntegrityProof",
+    "cryptosuite": "eddsa-jcs-2022",
+    "created": "2026-06-01T00:00:00Z",
+    "verificationMethod": "did:web:issuer.example#key-1",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "z9c5PZ6oahT8tBRarhKbM8TEzYYyRwd9QucJX7frd8XoGFiLLRxMKjJVVnCCVcxLcWgWEXXrBYCfMRoAyruuKZS9"
+  }
+}

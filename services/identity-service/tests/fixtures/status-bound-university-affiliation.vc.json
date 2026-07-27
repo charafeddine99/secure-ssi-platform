@@ -1,0 +1,40 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://secure-ssi.example/contexts/university-affiliation/v1"
+  ],
+  "id": "urn:uuid:00000000-0000-4000-8000-000000000001",
+  "type": [
+    "VerifiableCredential",
+    "UniversityAffiliationCredential"
+  ],
+  "issuer": "did:web:issuer.example",
+  "validFrom": "2026-01-01T00:00:00Z",
+  "validUntil": "2026-12-31T23:59:59Z",
+  "credentialSubject": {
+    "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+    "affiliation": "student",
+    "programCode": "SYN-CS-001",
+    "degree": "Bachelor of Science",
+    "graduationYear": 2026
+  },
+  "credentialStatus": {
+    "id": "urn:uuid:f58f44f6-0d2b-51f4-9729-1404c6858888",
+    "type": "BitstringStatusListEntry",
+    "statusPurpose": "revocation",
+    "statusListIndex": "56409",
+    "statusListCredential": "https://issuer.example/api/v1/status-lists/revocation-f6ea6c814218075f84aa3185"
+  },
+  "proof": {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://secure-ssi.example/contexts/university-affiliation/v1"
+    ],
+    "type": "DataIntegrityProof",
+    "cryptosuite": "eddsa-jcs-2022",
+    "created": "2026-06-01T00:00:00Z",
+    "verificationMethod": "did:web:issuer.example#key-1",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "zNbRxaTjmoBNpwQktm2f2bSJw6Va5ZCqFksrKiFWkseXajF9eUV2RXgpbCQMWZkjc3gDWP8ApJLHFPxX7Su8oeLg"
+  }
+}

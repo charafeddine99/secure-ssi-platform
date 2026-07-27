@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/risk-assessment-request.schema.json",
+  "title": "Risk Assessment Request",
+  "description": "Planned minimized input boundary; signals must be approved before implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["subjectReference", "eventType", "occurredAt", "signals"],
+  "properties": {
+    "subjectReference": {
+      "type": "string",
+      "description": "Opaque, purpose-bound reference; not a raw DID or credential.",
+      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+    },
+    "eventType": {
+      "type": "string",
+      "enum": ["credential_issuance", "presentation_verification", "recovery_request"]
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signals": {
+      "type": "object",
+      "description": "Allowlisted, minimized signals. Raw credentials and private data are prohibited.",
+      "minProperties": 1,
+      "maxProperties": 32
+    }
+  },
+  "examples": [
+    {
+      "subjectReference": "subject_ref_01JEXAMPLE",
+      "eventType": "presentation_verification",
+      "occurredAt": "2026-07-23T10:00:00Z",
+      "signals": {"challengeFailures": 0}
+    }
+  ]
+}

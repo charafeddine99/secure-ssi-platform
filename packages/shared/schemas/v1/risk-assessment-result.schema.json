@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/risk-assessment-result.schema.json",
+  "title": "Risk Assessment Result",
+  "description": "Planned advisory result. It cannot directly decide identity or recovery actions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assessmentId", "riskScore", "riskLevel", "reasonCodes", "modelVersion"],
+  "properties": {
+    "assessmentId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "riskScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"]
+    },
+    "reasonCodes": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      }
+    },
+    "modelVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  },
+  "examples": [
+    {
+      "assessmentId": "risk_01JEXAMPLE",
+      "riskScore": 0.12,
+      "riskLevel": "low",
+      "reasonCodes": ["NO_ANOMALY_DETECTED"],
+      "modelVersion": "planned-baseline"
+    }
+  ]
+}

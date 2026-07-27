@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/recovery-request.schema.json",
+  "title": "Recovery Request",
+  "description": "Planned request boundary; guardian approval and state-machine formats remain deferred.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["holderReference", "recoveryKeyReference", "guardianPolicyId", "requestedAt"],
+  "properties": {
+    "holderReference": {
+      "type": "string",
+      "description": "Opaque recovery-scoped holder reference.",
+      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+    },
+    "recoveryKeyReference": {
+      "type": "string",
+      "description": "Reference to new public key material; never a private key.",
+      "pattern": "^[A-Za-z0-9:_-]{16,256}$"
+    },
+    "guardianPolicyId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{8,128}$"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "examples": [
+    {
+      "holderReference": "holder_ref_01JEXAMPLE",
+      "recoveryKeyReference": "public_key_ref_01JEXAMPLE",
+      "guardianPolicyId": "policy_01JEXAMPLE",
+      "requestedAt": "2026-07-23T10:00:00Z"
+    }
+  ]
+}

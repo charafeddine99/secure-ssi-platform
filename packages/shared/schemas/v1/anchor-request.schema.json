@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secure-ssi.example/schemas/v1/anchor-request.schema.json",
+  "title": "Blockchain Anchor Request",
+  "description": "Planned non-identifying digest boundary. Raw DIDs, claims, and credentials are prohibited.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["digest", "digestAlgorithm", "category"],
+  "properties": {
+    "digest": {
+      "type": "string",
+      "description": "Lowercase hexadecimal digest over a future canonicalized input.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "digestAlgorithm": {
+      "type": "string",
+      "enum": ["SHA-256"]
+    },
+    "category": {
+      "type": "string",
+      "enum": ["credential_status", "issuer_registry", "recovery_event"]
+    }
+  },
+  "examples": [
+    {
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digestAlgorithm": "SHA-256",
+      "category": "credential_status"
+    }
+  ]
+}

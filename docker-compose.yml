@@ -1,0 +1,142 @@
+services:
+  web:
+    build: ./apps/web
+    ports: ["3000:80"]
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api-gateway:
+    build: ./services/api-gateway
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  identity-service:
+    build: ./services/identity-service
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      MAX_DID_DOCUMENT_BYTES: ${MAX_DID_DOCUMENT_BYTES:-16384}
+      MAX_CREDENTIAL_BYTES: ${MAX_CREDENTIAL_BYTES:-32768}
+      MAX_CREDENTIAL_REQUEST_BYTES: ${MAX_CREDENTIAL_REQUEST_BYTES:-36864}
+      MAX_AUTH_REQUEST_BYTES: ${MAX_AUTH_REQUEST_BYTES:-4096}
+      MAX_REVOCATION_REQUEST_BYTES: ${MAX_REVOCATION_REQUEST_BYTES:-4096}
+      MAX_PRESENTATION_REQUEST_BYTES: ${MAX_PRESENTATION_REQUEST_BYTES:-69632}
+      MAX_JSON_DEPTH: ${MAX_JSON_DEPTH:-32}
+      DID_NETWORK_RESOLUTION_ENABLED: ${DID_NETWORK_RESOLUTION_ENABLED:-false}
+      IDENTITY_ENVIRONMENT: ${IDENTITY_ENVIRONMENT:-development}
+      IDENTITY_AUTH_ENABLED: ${IDENTITY_AUTH_ENABLED:-true}
+      IDENTITY_AUTH_JWT_ISSUER: ${IDENTITY_AUTH_JWT_ISSUER:-secure-ssi-identity-service}
+      IDENTITY_AUTH_JWT_AUDIENCE: ${IDENTITY_AUTH_JWT_AUDIENCE:-identity-service}
+      IDENTITY_AUTH_ACCESS_TOKEN_SECONDS: ${IDENTITY_AUTH_ACCESS_TOKEN_SECONDS:-900}
+      IDENTITY_AUTH_JWT_ALGORITHM: ${IDENTITY_AUTH_JWT_ALGORITHM:-HS256}
+      IDENTITY_AUTH_JWT_SECRET: ${IDENTITY_AUTH_JWT_SECRET:-}
+      IDENTITY_AUTH_FIXTURE_USERS_ENABLED: ${IDENTITY_AUTH_FIXTURE_USERS_ENABLED:-true}
+      IDENTITY_AUTH_CLOCK_SKEW_SECONDS: ${IDENTITY_AUTH_CLOCK_SKEW_SECONDS:-10}
+      IDENTITY_AUTH_USER_PROVIDER: ${IDENTITY_AUTH_USER_PROVIDER:-synthetic}
+      IDENTITY_MONGO_ENABLED: ${IDENTITY_MONGO_ENABLED:-true}
+      IDENTITY_MONGO_URI: ${IDENTITY_MONGO_URI:-mongodb://identity_app:change-me-app@mongodb:27017/secure_identity?authSource=secure_identity}
+      IDENTITY_MONGO_DATABASE: ${IDENTITY_MONGO_DATABASE:-secure_identity}
+      IDENTITY_MONGO_SERVER_SELECTION_TIMEOUT_MS: ${IDENTITY_MONGO_SERVER_SELECTION_TIMEOUT_MS:-3000}
+      IDENTITY_MONGO_CONNECT_TIMEOUT_MS: ${IDENTITY_MONGO_CONNECT_TIMEOUT_MS:-3000}
+      IDENTITY_MONGO_SOCKET_TIMEOUT_MS: ${IDENTITY_MONGO_SOCKET_TIMEOUT_MS:-5000}
+      IDENTITY_MONGO_MAX_POOL_SIZE: ${IDENTITY_MONGO_MAX_POOL_SIZE:-50}
+      IDENTITY_MONGO_MIN_POOL_SIZE: ${IDENTITY_MONGO_MIN_POOL_SIZE:-0}
+      IDENTITY_MONGO_RETRY_READS: ${IDENTITY_MONGO_RETRY_READS:-true}
+      IDENTITY_MONGO_RETRY_WRITES: ${IDENTITY_MONGO_RETRY_WRITES:-true}
+      IDENTITY_MONGO_APP_NAME: ${IDENTITY_MONGO_APP_NAME:-secure-ssi-identity-service}
+      IDENTITY_STATUS_LIST_PUBLIC_BASE_URL: ${IDENTITY_STATUS_LIST_PUBLIC_BASE_URL:-http://localhost:8001/api/v1/status-lists}
+      IDENTITY_STATUS_LIST_LENGTH: ${IDENTITY_STATUS_LIST_LENGTH:-131072}
+      IDENTITY_STATUS_LIST_CAPACITY: ${IDENTITY_STATUS_LIST_CAPACITY:-131072}
+      IDENTITY_STATUS_LIST_TTL_SECONDS: ${IDENTITY_STATUS_LIST_TTL_SECONDS:-300}
+      IDENTITY_AUDIT_OUTBOX_ENABLED: ${IDENTITY_AUDIT_OUTBOX_ENABLED:-true}
+      IDENTITY_AUDIT_OUTBOX_POLL_INTERVAL_MS: ${IDENTITY_AUDIT_OUTBOX_POLL_INTERVAL_MS:-1000}
+      IDENTITY_AUDIT_OUTBOX_BATCH_SIZE: ${IDENTITY_AUDIT_OUTBOX_BATCH_SIZE:-100}
+      IDENTITY_AUDIT_OUTBOX_BASE_RETRY_SECONDS: ${IDENTITY_AUDIT_OUTBOX_BASE_RETRY_SECONDS:-1}
+      IDENTITY_AUDIT_OUTBOX_MAX_RETRY_SECONDS: ${IDENTITY_AUDIT_OUTBOX_MAX_RETRY_SECONDS:-300}
+      IDENTITY_AUDIT_OUTBOX_LEASE_SECONDS: ${IDENTITY_AUDIT_OUTBOX_LEASE_SECONDS:-30}
+      IDENTITY_PRESENTATION_CHALLENGE_LIFETIME_SECONDS: ${IDENTITY_PRESENTATION_CHALLENGE_LIFETIME_SECONDS:-300}
+      IDENTITY_PRESENTATION_RECONCILIATION_ENABLED: ${IDENTITY_PRESENTATION_RECONCILIATION_ENABLED:-true}
+      IDENTITY_PRESENTATION_RECONCILIATION_STALE_SECONDS: ${IDENTITY_PRESENTATION_RECONCILIATION_STALE_SECONDS:-60}
+      IDENTITY_PRESENTATION_RECONCILIATION_POLL_INTERVAL_MS: ${IDENTITY_PRESENTATION_RECONCILIATION_POLL_INTERVAL_MS:-1000}
+      IDENTITY_PRESENTATION_RECONCILIATION_BATCH_SIZE: ${IDENTITY_PRESENTATION_RECONCILIATION_BATCH_SIZE:-100}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports: ["8001:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  fraud-service:
+    build: ./services/fraud-service
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+    ports: ["8002:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  recovery-service:
+    build: ./services/recovery-service
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+    ports: ["8003:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-prototype}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-change-me}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-secure_identity}
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:-identity_app}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-change-me-app}
+    ports: ["27017:27017"]
+    volumes:
+      - mongodb_data:/data/db
+      - ./infrastructure/mongodb/init-application-user.js:/docker-entrypoint-initdb.d/10-application-user.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:
