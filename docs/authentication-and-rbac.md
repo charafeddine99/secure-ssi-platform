@@ -70,12 +70,12 @@ production-like mode.
 
 ## Roles and permissions
 
-| Role | Credential permissions | Wallet/challenge/presentation permissions |
-| --- | --- | --- |
-| `admin` | All | Enum permissions are broad; object ownership still applies; manual reconcile allowed |
-| `issuer` | All | Legacy broad enum permissions; no wallet ownership bypass; manual reconcile explicitly denied |
-| `verifier` | Validate, verify, self-read | Issue/read authorized challenges; read/verify related presentations |
-| `holder` | Self-read only | Create/read owned wallets, list owned credentials, read authorized challenges, create/read owned presentations |
+| Role | Credential permissions | Wallet/challenge/presentation permissions | Managed-key permissions |
+| --- | --- | --- | --- |
+| `admin` | All | Enum permissions are broad; object ownership still applies; manual reconcile allowed | All key permissions; elevated compromise, destruction, and reconciliation routes |
+| `issuer` | All | Legacy broad enum permissions; no wallet ownership bypass; manual reconcile explicitly denied | None |
+| `verifier` | Validate, verify, self-read | Issue/read authorized challenges; read/verify related presentations | None |
+| `holder` | Self-read only | Create/read owned wallets, list owned credentials, read authorized challenges, create/read owned presentations | Create/read/rotate/suspend/resume/revoke owned wallet keys |
 
 Roles and permissions are closed enums. Duplicate roles are normalized and
 unknown roles are rejected. JWT role claims are not the current authorization
@@ -256,6 +256,22 @@ issuing verifier or the owner of the requested holder DID. Presentation reads
 require the wallet owner or challenge issuer. Creation requires the wallet
 owner and exact credential ownership. Reconciliation requires the admin role
 in addition to `presentations:reconcile`.
+
+### Managed-key operations
+
+The eleven routes under `/api/v1/wallets/{walletId}/keys` require explicit
+`wallet:key:*` or `admin:key:reconcile` permissions. Holder create, read,
+rotate, suspend, resume, and revoke operations also enforce persisted wallet
+and key ownership. Normal admin read permission does not bypass ownership.
+Compromise, delayed destruction/cancellation, and manual reconciliation are
+explicit elevated admin operations. Issuer and verifier roles receive no
+managed-holder-key permissions. Foreign and absent key reads intentionally
+return the same `404`; rejected foreign access is durably audited when a
+matching key can safely be identified.
+
+Creation and rotation also require `Idempotency-Key`. Destruction requires a
+reason and exact key-ID confirmation. See
+[external-kms-key-lifecycle.md](external-kms-key-lifecycle.md).
 
 The following remain public:
 

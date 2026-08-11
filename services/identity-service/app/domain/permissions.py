@@ -27,12 +27,26 @@ class Permission(StrEnum):
     WALLETS_CREDENTIALS_READ = "wallets:credentials:read"
     PRESENTATION_CHALLENGES_CREATE = "presentation-challenges:create"
     PRESENTATION_CHALLENGES_READ = "presentation-challenges:read"
+    WALLET_KEY_CREATE = "wallet:key:create"
+    WALLET_KEY_READ = "wallet:key:read"
+    WALLET_KEY_ROTATE = "wallet:key:rotate"
+    WALLET_KEY_SUSPEND = "wallet:key:suspend"
+    WALLET_KEY_RESUME = "wallet:key:resume"
+    WALLET_KEY_COMPROMISE = "wallet:key:compromise"
+    WALLET_KEY_REVOKE = "wallet:key:revoke"
+    WALLET_KEY_DESTROY = "wallet:key:destroy"
+    WALLET_KEY_RECONCILE = "wallet:key:reconcile"
+    ADMIN_KEY_RECONCILE = "admin:key:reconcile"
 
 
 _ROLE_PERMISSIONS = MappingProxyType(
     {
         Role.ADMIN: frozenset(Permission),
-        Role.ISSUER: frozenset(Permission),
+        Role.ISSUER: frozenset(
+            permission
+            for permission in Permission
+            if not permission.value.startswith(("wallet:key:", "admin:key:"))
+        ),
         Role.VERIFIER: frozenset(
             {
                 Permission.CREDENTIALS_VALIDATE,
@@ -53,6 +67,12 @@ _ROLE_PERMISSIONS = MappingProxyType(
                 Permission.WALLETS_READ,
                 Permission.WALLETS_CREDENTIALS_READ,
                 Permission.PRESENTATION_CHALLENGES_READ,
+                Permission.WALLET_KEY_CREATE,
+                Permission.WALLET_KEY_READ,
+                Permission.WALLET_KEY_ROTATE,
+                Permission.WALLET_KEY_SUSPEND,
+                Permission.WALLET_KEY_RESUME,
+                Permission.WALLET_KEY_REVOKE,
             }
         ),
     }

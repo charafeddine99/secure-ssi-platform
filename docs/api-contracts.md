@@ -72,6 +72,17 @@ token-use claims. Details are in
 | `POST /api/v1/wallets` | Create a wallet owned by the authenticated holder | `201` wallet metadata |
 | `GET /api/v1/wallets/{walletId}` | Read an owned wallet | `200` wallet metadata |
 | `GET /api/v1/wallets/{walletId}/credentials` | List credentials bound to the owned wallet | `200` minimized inventory |
+| `POST /api/v1/wallets/{walletId}/keys` | Provision an owned purpose-bound managed key; requires `Idempotency-Key` | `201` public key/lifecycle metadata |
+| `GET /api/v1/wallets/{walletId}/keys` | List owned managed keys with bounded cursor pagination | `200` public metadata inventory |
+| `GET /api/v1/wallets/{walletId}/keys/{keyId}` | Read one owned managed key | `200` public metadata or non-enumerating `404` |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/rotate` | Claim and rotate an active owned key; requires `Idempotency-Key` | `200` active successor metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/suspend` | Suspend an owned key | `200` suspended metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/resume` | Resume an owned suspended key | `200` active metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/compromise` | Administratively mark a key compromised with a reason | `200` compromised metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/revoke` | Irreversibly revoke an owned key with a reason | `200` revoked metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/schedule-destruction` | Admin reason, exact confirmation, and delayed provider deletion | `200` destruction-pending metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/cancel-destruction` | Administratively cancel pending deletion | `200` revoked metadata |
+| `POST /api/v1/wallets/{walletId}/keys/{keyId}/reconcile` | Administratively reconcile local/provider state | `200` current metadata |
 | `POST /api/v1/presentation-challenges` | Issue a random, expiring verifier challenge | `201` challenge metadata |
 | `GET /api/v1/presentation-challenges/{challengeId}` | Read challenge state as its issuer or requested holder | `200` challenge metadata |
 | `POST /api/v1/presentations/create` | Build/persist a wallet-bound, server-challenge/domain/audience-bound VP; Bearer `presentations:create` | `201` VP and metadata |
@@ -125,10 +136,10 @@ RFC 8785, SHA-256, and Ed25519. The claim-free result uses
 `credential-verification-result.schema.json`.
 
 The local VP routes implement authenticated wallet ownership, opaque
-development key references, server-issued challenge/domain/audience binding,
+provider key references, server-issued challenge/domain/audience binding,
 holder/proof/status checks, one-time replay protection, and bounded stale
 claim reconciliation. Presentation Exchange, selective disclosure, external
-wallet protocols, real KMS/HSM custody, production issuance policy, governed
+wallet protocols, deployed vendor KMS/HSM custody, production issuance policy, governed
 issuance, and a gateway-mediated production verification contract remain
 deferred. The local credential and presentation routes above are implemented;
 no DID management endpoint is implemented.

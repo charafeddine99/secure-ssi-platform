@@ -36,6 +36,16 @@ class HolderWalletRepository(Protocol):
         expected_version: int,
     ) -> HolderWallet: ...
 
+    def update_key_binding(
+        self,
+        wallet_id: str,
+        *,
+        holder_did: str,
+        key_reference: str,
+        updated_at: datetime,
+        expected_version: int,
+    ) -> HolderWallet: ...
+
     def soft_delete(
         self,
         wallet_id: str,

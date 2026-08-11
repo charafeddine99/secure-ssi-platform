@@ -76,6 +76,18 @@ from app.domain.presentation_challenge import (
     PresentationChallengeRejectedError,
     PresentationChallengeReplayError,
 )
+from app.domain.managed_key import (
+    InvalidKeyTransitionError,
+    KeyDestructionNotReadyError,
+    KeyPolicyError,
+    ManagedKeyConflictError,
+    ManagedKeyError,
+    ManagedKeyNotFoundError,
+    ManagedKeySigningRejectedError,
+    ProviderMetadataError,
+    ProviderPermissionDeniedError,
+    ProviderUnavailableError,
+)
 from app.domain.vc import CredentialValidationError, VerificationReasonCode
 from app.schemas.credential_api import (
     ApiError,
@@ -471,6 +483,52 @@ async def presentation_challenge_error_handler(
     )
 
 
+async def managed_key_error_handler(
+    request: Request,
+    error: ManagedKeyError,
+) -> JSONResponse:
+    status_code = 409
+    code = "MANAGED_KEY_CONFLICT"
+    message = "The managed key operation conflicts with its lifecycle."
+    if isinstance(error, ManagedKeyNotFoundError):
+        status_code = 404
+        code = "MANAGED_KEY_NOT_FOUND"
+        message = "The requested managed key was not found."
+    elif isinstance(error, ManagedKeyConflictError):
+        code = "MANAGED_KEY_CONFLICT"
+    elif isinstance(error, InvalidKeyTransitionError):
+        code = "INVALID_MANAGED_KEY_TRANSITION"
+        message = "The managed key lifecycle transition is not allowed."
+    elif isinstance(error, KeyDestructionNotReadyError):
+        code = "KEY_DESTRUCTION_NOT_READY"
+        message = "The key destruction delay has not elapsed."
+    elif isinstance(error, ManagedKeySigningRejectedError):
+        code = "MANAGED_KEY_SIGNING_REJECTED"
+        message = "The managed key is not permitted to sign."
+    elif isinstance(error, KeyPolicyError):
+        status_code = 422
+        code = "KEY_POLICY_REJECTED"
+        message = "The configured key policy rejects this operation."
+    elif isinstance(error, ProviderPermissionDeniedError):
+        status_code = 503
+        code = "KEY_PROVIDER_OPERATION_DENIED"
+        message = "The key provider could not authorize the operation."
+    elif isinstance(error, ProviderUnavailableError):
+        status_code = 503
+        code = "KEY_PROVIDER_UNAVAILABLE"
+        message = "The key provider is temporarily unavailable."
+    elif isinstance(error, ProviderMetadataError):
+        status_code = 502
+        code = "KEY_PROVIDER_METADATA_INVALID"
+        message = "The key provider returned inconsistent public metadata."
+    return build_error_response(
+        request_id=_request_id(request),
+        status_code=status_code,
+        code=code,
+        message=message,
+    )
+
+
 async def http_error_handler(
     request: Request,
     error: HTTPException,
@@ -534,6 +592,7 @@ def install_exception_handlers(app: FastAPI) -> None:
         PresentationChallengeError,
         presentation_challenge_error_handler,
     )
+    app.add_exception_handler(ManagedKeyError, managed_key_error_handler)
     app.add_exception_handler(RepositoryError, repository_error_handler)
     app.add_exception_handler(HTTPException, http_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)

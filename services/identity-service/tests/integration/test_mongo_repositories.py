@@ -17,6 +17,12 @@ from app.domain.credential_status import (
     CredentialStatus,
 )
 from app.domain.permissions import Role
+from app.domain.managed_key import (
+    KeyAlgorithm,
+    KeyPurpose,
+    ManagedKey,
+    ManagedKeyState,
+)
 from app.domain.holder_wallet import HolderWallet, WalletStatus
 from app.domain.presentation_challenge import (
     ChallengeStatus,
@@ -40,7 +46,14 @@ from app.infrastructure.persistence.indexes import (
     STATUS_LIST_ENTRIES_COLLECTION,
     STATUS_LISTS_COLLECTION,
     USERS_COLLECTION,
+    MANAGED_KEYS_COLLECTION,
     ensure_mongo_indexes,
+)
+from app.infrastructure.key_management.development_provider import (
+    DevelopmentExternalKeyProvider,
+)
+from app.infrastructure.persistence.managed_key_repository import (
+    MongoManagedKeyRepository,
 )
 from app.infrastructure.persistence.mappers import new_object_id
 from app.infrastructure.persistence.repositories import (
@@ -127,6 +140,9 @@ def test_real_mongo_indexes_are_idempotent(mongo_database: Any) -> None:
     challenge_indexes = mongo_database[
         PRESENTATION_CHALLENGES_COLLECTION
     ].index_information()
+    managed_key_indexes = mongo_database[
+        MANAGED_KEYS_COLLECTION
+    ].index_information()
 
     assert user_indexes["uq_users_username"]["unique"] is True
     assert (
@@ -154,6 +170,16 @@ def test_real_mongo_indexes_are_idempotent(mongo_database: Any) -> None:
     ] is True
     assert challenge_indexes[
         "uq_presentation_challenges_challenge_id"
+    ]["unique"] is True
+    assert managed_key_indexes["uq_managed_keys_key_id"]["unique"] is True
+    assert managed_key_indexes[
+        "uq_managed_keys_provider_reference"
+    ]["unique"] is True
+    assert managed_key_indexes[
+        "uq_managed_keys_wallet_purpose_version"
+    ]["unique"] is True
+    assert managed_key_indexes[
+        "uq_managed_keys_active_wallet_purpose"
     ]["unique"] is True
 
 
@@ -405,3 +431,56 @@ def test_real_mongo_wallet_and_challenge_repositories(
     assert consumed is not None
     assert consumed.status is ChallengeStatus.CONSUMED
     assert consumed.version == 2
+
+
+def test_real_mongo_managed_key_repository_uses_optimistic_lifecycle(
+    mongo_database: Any,
+) -> None:
+    repository = MongoManagedKeyRepository(
+        mongo_database[MANAGED_KEYS_COLLECTION]
+    )
+    provider = DevelopmentExternalKeyProvider()
+    suffix = str(ObjectId())
+    metadata = provider.create_key(
+        key_id=f"key_{suffix}",
+        algorithm=KeyAlgorithm.ED25519,
+        purpose=KeyPurpose.PRESENTATION_SIGNING,
+        idempotency_key=f"mongo-managed-key-{suffix}",
+    )
+    key = ManagedKey(
+        id=new_object_id(),
+        key_id=f"key_{suffix}",
+        wallet_id=f"wallet_{suffix}",
+        owner_user_id="usr_real_mongo_holder",
+        holder_did=metadata.holder_did,
+        provider=metadata.provider,
+        provider_key_reference=metadata.provider_key_reference,
+        algorithm=metadata.algorithm,
+        purpose=KeyPurpose.PRESENTATION_SIGNING,
+        state=ManagedKeyState.ACTIVE,
+        public_key_multibase=metadata.public_key_multibase,
+        fingerprint=metadata.fingerprint,
+        verification_method=metadata.verification_method,
+        created_at=NOW,
+        updated_at=NOW,
+        activated_at=NOW,
+    )
+    repository.add(key)
+
+    claimed = repository.claim_rotation(
+        key.key_id,
+        rotated_at=NOW + timedelta(minutes=1),
+        expected_version=key.version,
+    )
+
+    assert claimed.state is ManagedKeyState.ROTATING
+    assert repository.get_active(
+        wallet_id=key.wallet_id,
+        purpose=key.purpose,
+    ) is None
+    with pytest.raises(OptimisticLockError):
+        repository.claim_rotation(
+            key.key_id,
+            rotated_at=NOW + timedelta(minutes=2),
+            expected_version=key.version,
+        )

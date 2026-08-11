@@ -11,8 +11,9 @@ issues the challenge and consumes the VP exactly once.
 The flow re-checks wallet and credential ownership, holder and issuer proofs,
 server challenge/domain/audience binding, validity, persistence integrity, and
 current lifecycle/status-list state. This academic profile does not implement
-Presentation Exchange, selective disclosure, external wallets, real KMS/HSM
-custody, or external interoperability certification.
+Presentation Exchange, selective disclosure, external wallets, a deployed
+vendor KMS/HSM, or external interoperability certification. Holder signing
+can use the provider-neutral managed-key gateway boundary.
 
 ## Architecture
 
@@ -205,8 +206,9 @@ on restart and are not exposed through a public endpoint.
 
 - The VP fully discloses embedded credentials and remains correlatable.
 - The deterministic development signer is intentionally not production key
-  custody; no real KMS/HSM, key rotation, secure enclave, or mobile/external
-  wallet integration is included.
+  custody. Managed-key rotation and lifecycle policy plus a generic HTTPS KMS
+  gateway boundary are implemented, but no vendor KMS/HSM, secure enclave,
+  hardware attestation, or mobile/external wallet is deployed.
 - `did:key` and local `did:web` resolution remain bounded test fixtures.
 - Standalone outbox insertion and presentation state mutation are separate
   MongoDB writes, leaving a crash gap that production transaction design or

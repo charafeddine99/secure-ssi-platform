@@ -346,7 +346,8 @@ supported. Its limitations include:
 
 - local fixture DID resolution only;
 - synthetic issuer key;
-- no production KMS or HSM;
+- no production issuer KMS or HSM; the holder VP path has a separate generic
+  managed-key provider boundary;
 - no external conformance certification;
 - no JSON-LD RDF canonicalization.
 

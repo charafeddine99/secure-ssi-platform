@@ -193,6 +193,47 @@ class MongoHolderWalletRepository:
                 "The holder wallet changed or no longer exists."
             )
 
+    def update_key_binding(
+        self,
+        wallet_id: str,
+        *,
+        holder_did: str,
+        key_reference: str,
+        updated_at: datetime,
+        expected_version: int,
+    ) -> HolderWallet:
+        try:
+            result = self._collection.update_one(
+                {
+                    "walletId": wallet_id,
+                    "version": expected_version,
+                    "status": WalletStatus.ACTIVE.value,
+                    "deletedAt": None,
+                },
+                {
+                    "$set": {
+                        "holderDid": holder_did,
+                        "keyReference": key_reference,
+                        "updatedAt": updated_at,
+                    },
+                    "$inc": {"version": 1},
+                },
+            )
+        except DuplicateKeyError as error:
+            raise HolderWalletConflictError(
+                "The holder DID or key reference is already in use."
+            ) from error
+        except PyMongoError as error:
+            raise _unavailable("holder wallet key binding update") from error
+        if result.matched_count != 1:
+            raise OptimisticLockError(
+                "The holder wallet changed or no longer exists."
+            )
+        updated = self.get(wallet_id)
+        if updated is None:
+            raise _unavailable("holder wallet key binding readback")
+        return updated
+
 
 class MongoPresentationChallengeRepository:
     def __init__(

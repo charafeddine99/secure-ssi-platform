@@ -178,6 +178,15 @@ class FakeDatabase:
             "presentation_challenges": FakeCollection(
                 unique_fields=("challengeId", "challenge"),
             ),
+            "managed_keys": FakeCollection(
+                unique_fields=("keyId",),
+                unique_compounds=(
+                    ("provider", "providerKeyReference"),
+                    ("verificationMethod",),
+                    ("walletId", "purpose", "keyVersion"),
+                    ("walletId", "purpose", "idempotencyKeyHash"),
+                ),
+            ),
         }
 
     def __getitem__(self, name: str) -> FakeCollection:

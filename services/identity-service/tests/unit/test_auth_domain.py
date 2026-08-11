@@ -21,11 +21,19 @@ def test_supported_roles_are_closed_enum_values() -> None:
     }
 
 
-@pytest.mark.parametrize("role", [Role.ADMIN, Role.ISSUER])
-def test_admin_and_issuer_have_all_credential_permissions(
-    role: Role,
-) -> None:
-    assert set(permissions_for_roles((role,))) == set(Permission)
+def test_admin_has_all_permissions() -> None:
+    assert set(permissions_for_roles((Role.ADMIN,))) == set(Permission)
+
+
+def test_issuer_preserves_existing_permissions_but_cannot_manage_keys() -> None:
+    permissions = set(permissions_for_roles((Role.ISSUER,)))
+
+    assert Permission.CREDENTIALS_SIGN in permissions
+    assert Permission.PRESENTATIONS_RECONCILE in permissions
+    assert not any(
+        permission.value.startswith(("wallet:key:", "admin:key:"))
+        for permission in permissions
+    )
 
 
 def test_verifier_permissions_exclude_signing_and_revocation() -> None:
@@ -55,6 +63,12 @@ def test_holder_can_create_and_read_but_not_verify_presentations() -> None:
         Permission.WALLETS_READ,
         Permission.WALLETS_CREDENTIALS_READ,
         Permission.PRESENTATION_CHALLENGES_READ,
+        Permission.WALLET_KEY_CREATE,
+        Permission.WALLET_KEY_READ,
+        Permission.WALLET_KEY_ROTATE,
+        Permission.WALLET_KEY_SUSPEND,
+        Permission.WALLET_KEY_RESUME,
+        Permission.WALLET_KEY_REVOKE,
     )
     assert Permission.PRESENTATIONS_VERIFY not in permissions
 

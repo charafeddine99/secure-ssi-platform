@@ -13,6 +13,13 @@ def test_compose_connects_identity_service_to_healthy_mongodb() -> None:
     assert "IDENTITY_MONGO_URI:" in compose
     assert "MAX_REVOCATION_REQUEST_BYTES:" in compose
     assert "MAX_PRESENTATION_REQUEST_BYTES:" in compose
+    assert "IDENTITY_KMS_ENABLED_PROVIDERS:" in compose
+    assert "IDENTITY_KMS_DEFAULT_PROVIDER:" in compose
+    assert "IDENTITY_KMS_REMOTE_BASE_URL:" in compose
+    assert "IDENTITY_KMS_REMOTE_AUTH_TOKEN:" in compose
+    assert "IDENTITY_KMS_TLS_VERIFY:" in compose
+    assert "IDENTITY_KMS_RECONCILIATION_ENABLED:" in compose
+    assert "IDENTITY_KMS_RECONCILIATION_LEASE_SECONDS:" in compose
     assert "mongodb:\n        condition: service_healthy" in compose
     assert "MONGO_APP_USERNAME:" in compose
     assert "MONGO_APP_PASSWORD:" in compose

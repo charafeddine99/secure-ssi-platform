@@ -27,6 +27,11 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _REVOCATION_PATH_PATTERN = re.compile(
     r"^/api/v1/credentials/[^/]+/revoke$"
 )
+_KEY_MANAGEMENT_PATH_PATTERN = re.compile(
+    r"^/api/v1/wallets/[^/]+/keys(?:/[^/]+(?:/"
+    r"(?:rotate|suspend|resume|compromise|revoke|schedule-destruction|"
+    r"cancel-destruction|reconcile))?)?$"
+)
 
 
 class _DuplicateJsonProperty(ValueError):
@@ -98,6 +103,11 @@ class JsonRequestSafetyMiddleware:
         if (
             request_limit is None
             and _REVOCATION_PATH_PATTERN.fullmatch(scope["path"])
+        ):
+            request_limit = MAX_REVOCATION_REQUEST_BYTES
+        if (
+            request_limit is None
+            and _KEY_MANAGEMENT_PATH_PATTERN.fullmatch(scope["path"])
         ):
             request_limit = MAX_REVOCATION_REQUEST_BYTES
         if scope["method"] != "POST" or request_limit is None:

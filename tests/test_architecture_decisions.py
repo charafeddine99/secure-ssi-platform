@@ -75,7 +75,11 @@ class ArchitectureDecisionTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "[Next] Replace local fixture signing with an externally reviewed KMS/HSM",
+            "[Completed] Add provider-neutral external KMS/HSM ports",
+            readme,
+        )
+        self.assertIn(
+            "[Next] Deploy and independently review one vendor-specific KMS/HSM adapter",
             readme,
         )
 

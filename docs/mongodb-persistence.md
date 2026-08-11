@@ -5,9 +5,12 @@
 The Identity Service has an optional MongoDB persistence foundation for users,
 credentials, Verifiable Presentations, status-list assignments/publications,
 holder wallets, server presentation challenges, durable audit delivery, and
-security audit events. It provides typed configuration, connection-pool
-lifecycle, repository ports, PyMongo adapters, BSON mappers, idempotent index
-creation, optimistic version checks, and soft deletion.
+security audit events. The managed-key lifecycle extension also persists
+public key metadata, provider references, lifecycle state, rotation lineage,
+and reconciliation leases in `managed_keys`. It provides typed configuration,
+connection-pool lifecycle, repository ports, PyMongo adapters, BSON mappers,
+idempotent index creation, optimistic version checks, and soft deletion where
+the domain permits it.
 
 The credential lifecycle and Bitstring Status List sprints add revocation,
 stable status entries, shared publication, and an outbox worker on top of this
@@ -35,7 +38,7 @@ FastAPI dependency composition / application lifespan
                        |
                        v
  users | credentials | credential_status_entries | status_lists
- holder_wallets | presentation_challenges | presentations
+ holder_wallets | managed_keys | presentation_challenges | presentations
                  audit_outbox | audit_events
 ```
 
@@ -56,7 +59,8 @@ startup:
 4. creates all declared indexes idempotently;
 5. starts the enabled audit-outbox background worker;
 6. starts the enabled stale-presentation reconciliation worker;
-7. fails startup if the connection or index contract cannot be established.
+7. starts the enabled managed-key reconciliation worker; and
+8. fails startup if the connection or index contract cannot be established.
 
 Shutdown closes the client and its pool. The URI is excluded from object
 representations and controlled errors.
@@ -151,6 +155,22 @@ metadata, `ACTIVE|LOCKED|DISABLED` status, timestamps, optimistic `version`,
 and optional `deletedAt`. The API never returns the key reference. Raw private
 keys, seeds, and signing handles are not BSON fields.
 
+### `managed_keys`
+
+Managed-key documents store public and operational metadata only:
+`keyId`, `walletId`, `ownerUserId`, `holderDid`, provider name, opaque
+`providerKeyReference`, algorithm, purpose, monotonic `keyVersion`, lifecycle
+state, public multibase key, fingerprint, verification method, activation and
+lifecycle timestamps, predecessor/successor links, a one-way idempotency
+digest, reconciliation lease/attempt fields, and optimistic `version`.
+
+The mapper rejects private-key, seed, mnemonic, secret, token, authorization,
+and credential-shaped fields. Provider references are required to route
+operations but are never returned by the managed-key API or copied into audit
+metadata. Lifecycle records are retained as evidence; key destruction does
+not delete the Mongo document. See
+[external-kms-key-lifecycle.md](external-kms-key-lifecycle.md).
+
 ### `presentation_challenges`
 
 Challenge documents store unique `challengeId` and random `challenge`,
@@ -179,8 +199,9 @@ Allowed event types are `LOGIN_SUCCESS`, `LOGIN_FAILURE`, `VC_SIGNED`,
 `STATUS_CHECKED`, `PRESENTATION_CREATED`, `PRESENTATION_VERIFIED`, and
 `PRESENTATION_REJECTED`, plus wallet, challenge, ownership, and reconciliation
 events documented in
-[holder-wallet-and-key-custody.md](holder-wallet-and-key-custody.md). Audit
-events are
+[holder-wallet-and-key-custody.md](holder-wallet-and-key-custody.md), and the
+managed-key events documented in
+[external-kms-key-lifecycle.md](external-kms-key-lifecycle.md). Audit events are
 append-only: the repository intentionally exposes no update or delete method.
 Passwords, tokens, authorization values, credentials, proofs, secrets, and
 hashes are rejected as metadata keys.
@@ -279,6 +300,20 @@ deterministically from persisted evidence.
 | holder_wallets | `uq_holder_wallets_key_reference` | `keyReference ASC` | Yes |
 | holder_wallets | `uq_holder_wallets_active_holder_did` | `holderDid ASC` | Yes, partial active/non-deleted |
 | holder_wallets | `ix_holder_wallets_owner_status` | `ownerUserId ASC, status ASC, createdAt DESC` | No |
+| managed_keys | `uq_managed_keys_key_id` | `keyId ASC` | Yes |
+| managed_keys | `uq_managed_keys_provider_reference` | `provider ASC, providerKeyReference ASC` | Yes, partial |
+| managed_keys | `uq_managed_keys_wallet_purpose_version` | `walletId ASC, purpose ASC, keyVersion ASC` | Yes |
+| managed_keys | `ix_managed_keys_wallet_purpose_state` | `walletId ASC, purpose ASC, state ASC` | No |
+| managed_keys | `uq_managed_keys_active_wallet_purpose` | `walletId ASC, purpose ASC, state ASC` | Yes, partial `ACTIVE` |
+| managed_keys | `ix_managed_keys_holder_purpose_state` | `holderDid ASC, purpose ASC, state ASC` | No |
+| managed_keys | `ix_managed_keys_owner_created` | `ownerUserId ASC, createdAt DESC` | No |
+| managed_keys | `ix_managed_keys_predecessor` | `predecessorKeyId ASC` | No |
+| managed_keys | `ix_managed_keys_successor` | `successorKeyId ASC` | No |
+| managed_keys | `ix_managed_keys_state_updated` | `state ASC, updatedAt ASC` | No |
+| managed_keys | `ix_managed_keys_stale_rotation` | `state ASC, rotatedAt ASC` | No |
+| managed_keys | `ix_managed_keys_destruction_due` | `state ASC, destructionScheduledAt ASC` | No |
+| managed_keys | `uq_managed_keys_idempotency` | `walletId ASC, purpose ASC, idempotencyKeyHash ASC` | Yes, partial |
+| managed_keys | `uq_managed_keys_verification_method` | `verificationMethod ASC` | Yes, partial |
 | presentation_challenges | `uq_presentation_challenges_challenge_id` | `challengeId ASC` | Yes |
 | presentation_challenges | `uq_presentation_challenges_challenge` | `challenge ASC` | Yes |
 | presentation_challenges | `ix_presentation_challenges_expires_at` | `expiresAt ASC` | No |
@@ -319,6 +354,12 @@ matches the stale processing timestamp and current version, records an
 attempt, increments the version, and then performs the same terminal
 completion path.
 
+Managed-key provisioning, rotation, wallet rebinding, provider reconciliation,
+and lifecycle changes use optimistic compare-and-set predicates. Rotation
+claims the source only from `ACTIVE`; reconciliation uses a bounded lease;
+only one `ACTIVE` key per wallet/purpose is allowed. Destruction changes
+lifecycle metadata to `DESTROYED` but retains the record and public lineage.
+
 ## Authentication adapter
 
 `MongoUserProvider` adapts `UserRepository` to the existing authentication
@@ -355,7 +396,11 @@ challenge/domain enforcement, state/version claims, terminal completion,
 dependency injection, and the opt-in real-Mongo adapter. Wallet and challenge
 tests cover mapping, indexes, ownership filtering, unique conflicts, atomic
 challenge consumption/expiry, stale-processing queries, reconciliation
-claims, and real-Mongo round trips.
+claims, and real-Mongo round trips. Managed-key tests cover mapper
+private-material rejection, indexes, repository queries and compare-and-set
+behavior, provisioning idempotency, rotation lineage, lifecycle transitions,
+destruction delay, provider mismatch handling, signing, reconciliation, and
+opt-in real-Mongo round trips.
 
 Real MongoDB integration tests are opt-in:
 
@@ -378,15 +423,18 @@ drops only that verified test database after execution.
 - Presentation audit intents use the standalone outbox. Presentation state and
   the outbox insert are separate writes, so a crash between them requires
   production reconciliation or transactional orchestration.
-- There is no schema migration runner, backup/restore automation, encryption
-  key management, retention worker, change stream, or observability pipeline.
+- There is no schema migration runner, backup/restore automation, Mongo
+  storage-encryption key manager, retention worker, change stream, or external
+  observability pipeline.
 - Reconciliation is polling-based and process-local. It does not coordinate a
   distributed scheduler; optimistic Mongo predicates provide the duplicate
   work guard.
 - Consumed challenge evidence and presentations have no retention/archival
   worker.
-- Holder key custody is an opaque port with a deterministic development
-  adapter, not a real KMS, HSM, secure enclave, or external-wallet protocol.
+- Holder key custody has a provider-neutral lifecycle boundary, a
+  deterministic development adapter, and a generic HTTPS gateway adapter.
+  No vendor KMS/HSM, hardware attestation, secure enclave, or external-wallet
+  deployment has been integrated or certified.
 - Publication history is embedded and grows with material versions; there is
   no history compaction, archival policy, or external CDN replication.
 - Compose credentials and non-TLS localhost networking are development-only.

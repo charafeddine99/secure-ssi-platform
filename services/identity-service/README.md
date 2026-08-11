@@ -23,6 +23,17 @@ FastAPI service exposing `GET /health` and a bounded local credential API:
 - `POST /api/v1/presentations/verify` (`presentations:verify`)
 - `GET /api/v1/presentations/{presentationId}` (`presentations:read`)
 - `POST /api/v1/presentations/{presentationId}/reconcile` (`admin`)
+- `POST /api/v1/wallets/{walletId}/keys`
+- `GET /api/v1/wallets/{walletId}/keys`
+- `GET /api/v1/wallets/{walletId}/keys/{keyId}`
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/rotate`
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/suspend`
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/resume`
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/compromise` (`admin`)
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/revoke`
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/schedule-destruction` (`admin`)
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/cancel-destruction` (`admin`)
+- `POST /api/v1/wallets/{walletId}/keys/{keyId}/reconcile` (`admin`)
 
 Implemented internally:
 
@@ -81,6 +92,15 @@ Implemented internally:
   development adapter that never persists raw private keys;
 - stale `PROCESSING` detection, optimistic reconciliation claims, bounded
   background recovery, admin-only manual recovery, audit, and metrics.
+- managed-key public metadata, purpose/version, lifecycle state, rotation
+  lineage, idempotency, and optimistic reconciliation leases in MongoDB;
+- provider-neutral holder key provisioning/signing with a deterministic
+  development provider and a generic HTTPS KMS gateway adapter;
+- holder key rotation, suspend/resume, compromise, revoke, delayed
+  destruction/cancellation, restart-safe reconciliation, durable audit, and
+  bounded process-local metrics;
+- private-key non-export: raw private material and provider credentials are
+  absent from domain/API/audit models and rejected by persistence mapping.
 
 The credential API is a local academic prototype. Validation checks the pinned
 profile but does not verify a signature; verification runs the cryptographic
@@ -96,8 +116,12 @@ remain local foundations, not production identity controls. MongoDB user
 storage can be selected explicitly, while synthetic fixtures remain the
 development default. It does not implement registration, refresh tokens,
 logout/blacklist, MFA, rate limiting, external identity providers, production
-issuer governance, KMS/HSM integration, selective disclosure, Presentation
-Exchange, external wallet protocols, or blockchain anchoring. The implemented
+issuer governance, vendor KMS/HSM deployment, selective disclosure,
+Presentation Exchange, external wallet protocols, or blockchain anchoring.
+Holder VP signing has a generic external-KMS gateway boundary, but no vendor
+cloud account, HSM, hardware attestation, or production key ceremony has been
+configured or certified. Issuer credential, Status List, and JWT signing
+retain their existing local prototype paths. The implemented
 credential-specific status lookup and full-disclosure VP profile are not a
 production privacy design. Do not expose them
 as a public production service.

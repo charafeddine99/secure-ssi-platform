@@ -6,6 +6,7 @@ from app.application.ports.holder_wallet import (
     HolderWalletRepository,
     PresentationChallengeRepository,
 )
+from app.application.ports.key_management import InitialWalletKeyProvisioner
 from app.application.ports.presentation import HolderKeyProvider
 from app.application.ports.repositories import CredentialRepository
 from app.application.services.audit_outbox_service import (
@@ -102,6 +103,7 @@ class HolderWalletService:
         wallet_id_generator: IdGenerator,
         key_reference_generator: IdGenerator,
         metrics: InternalMetrics | None = None,
+        initial_key_provisioner: InitialWalletKeyProvisioner | None = None,
     ) -> None:
         self._wallets = wallet_repository
         self._credentials = credential_repository
@@ -112,6 +114,7 @@ class HolderWalletService:
         self._wallet_id_generator = wallet_id_generator
         self._key_reference_generator = key_reference_generator
         self._metrics = metrics
+        self._initial_key_provisioner = initial_key_provisioner
 
     def create(
         self,
@@ -120,13 +123,31 @@ class HolderWalletService:
         correlation_id: str,
     ) -> HolderWallet:
         now = self._now()
-        key_reference = self._key_reference_generator()
-        metadata = self._keys.provision(key_reference)
+        wallet_id = self._wallet_id_generator()
+        if self._initial_key_provisioner is None:
+            key_reference = self._key_reference_generator()
+            metadata = self._keys.provision(key_reference)
+            holder_did = metadata.holder_did
+        else:
+            managed_key = (
+                self._initial_key_provisioner.provision_initial_wallet_key(
+                    wallet_id=wallet_id,
+                    owner_user_id=owner_user_id,
+                    idempotency_key=f"wallet-create:{wallet_id}",
+                    correlation_id=correlation_id,
+                )
+            )
+            if managed_key.provider_key_reference is None:
+                raise ValueError(
+                    "Active managed key requires a provider reference."
+                )
+            key_reference = managed_key.provider_key_reference
+            holder_did = managed_key.holder_did
         wallet = HolderWallet(
             id=self._storage_id_generator(),
-            wallet_id=self._wallet_id_generator(),
+            wallet_id=wallet_id,
             owner_user_id=owner_user_id,
-            holder_did=metadata.holder_did,
+            holder_did=holder_did,
             status=WalletStatus.ACTIVE,
             key_reference=key_reference,
             created_at=now,

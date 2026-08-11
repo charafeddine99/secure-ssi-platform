@@ -5,9 +5,10 @@
 The Identity Service now has a production-oriented application boundary for
 holder wallets, object ownership, holder signing, server-issued presentation
 challenges, and recovery of stale presentation verification work. The current
-cryptographic implementation remains a local development adapter. It is not a
-real mobile wallet, browser wallet, Cloud KMS, HSM, hardware token, or secure
-enclave.
+managed-key extension adds a provider-neutral lifecycle and signing boundary,
+a deterministic local adapter, and a generic HTTPS KMS gateway contract. It
+does not claim a configured vendor KMS, HSM, mobile wallet, hardware token,
+secure enclave, or hardware-backed key ceremony.
 
 This sprint does not add Redis, Presentation Exchange, selective disclosure,
 blockchain, recovery, frontend work, OAuth/OIDC, refresh tokens, or rate
@@ -23,10 +24,10 @@ HolderWalletService --------------------+
         | ownerUserId                   |
         | holderDid                     | opaque keyReference
         v                               v
-holder_wallets                  HolderKeyMetadataProvider
+holder_wallets ----> managed_keys ----> ExternalKeyProvider
         |                               |
         | walletId/ownerUserId          v
-        +----> credentials       development HolderSigner
+        +----> credentials       ProviderAwareHolderSigner
         |
         v
 HolderPresentationService
@@ -56,7 +57,8 @@ PresentationReconciliationService
 
 Domain and application modules do not import PyMongo, BSON, FastAPI, private
 key types, filesystem key files, Cloud KMS SDKs, or HSM SDKs. Infrastructure
-adapters own BSON mapping and local development cryptography.
+adapters own BSON mapping, provider HTTP/TLS, and local development
+cryptography.
 
 ## Holder wallet model
 
@@ -124,9 +126,17 @@ through `HolderSigner`.
 adapters. They deterministically derive Ed25519 fixture keys from opaque local
 references and retain compatibility with the previous synthetic holder
 fixture. Their deterministic material is public test behavior and provides no
-production protection. A future KMS, HSM, hardware-token, mobile-wallet, or
-external-agent adapter must implement the same ports without changing wallet,
-ownership, challenge, or presentation business rules.
+production protection.
+
+New wallets provision a managed presentation-signing key through
+`ManagedKeyService`. `ProviderAwareHolderSigner` requires an `ACTIVE` managed
+key, validates provider/public metadata, and asks the provider to sign without
+exporting private material. The generic HTTPS adapter implements the
+provider-neutral contract; a future vendor KMS/HSM, hardware-token,
+mobile-wallet, or external-agent integration can replace that provider
+without changing wallet, ownership, challenge, or presentation business
+rules. Full lifecycle details are in
+[external-kms-key-lifecycle.md](external-kms-key-lifecycle.md).
 
 ## Secure challenge lifecycle
 
@@ -312,8 +322,10 @@ database. The URI shown above is a local-development placeholder.
 
 - The authentication users and holder adapter are synthetic local fixtures.
 - The local deterministic key derivation is not secure custody.
-- There is no key rotation, recovery, attestation, KMS/HSM policy, or
-  external-wallet protocol.
+- Managed-key rotation, suspension, compromise, revocation, delayed
+  destruction, and reconciliation are implemented for holder presentation
+  signing. There is no vendor KMS/HSM deployment, hardware attestation,
+  recovery, or external-wallet protocol.
 - No migration runner backfills legacy credentials or presentations with
   wallet ownership.
 - Process-local metrics are not a monitoring platform.
@@ -324,9 +336,10 @@ database. The URI shown above is a local-development placeholder.
 - MongoDB production TLS, backup, replica-set, encryption, secret management,
   retention, and disaster-recovery controls remain deployment work.
 
-## Future KMS/HSM boundary
+## External KMS/HSM boundary
 
-A future adapter may replace local derivation only if it:
+The implemented generic provider contract may replace local derivation only
+when a concrete deployment:
 
 1. accepts the stored opaque key reference;
 2. returns bounded holder/key metadata without private material;
@@ -336,10 +349,9 @@ A future adapter may replace local derivation only if it:
 6. preserves the existing ownership, challenge, audit, and reconciliation
    behavior.
 
-## Recommended next sprint
-
-Implement and independently review an external KMS/HSM or wallet-agent
-adapter plus key lifecycle policy. That sprint should cover provider
-authentication, tenant isolation, key status, rotation, attestation, failure
-handling, and operational monitoring without weakening the existing opaque
-key-reference boundary.
+Provider authentication, tenant isolation, key status, rotation, destruction,
+failure handling, audit, and operational signals are represented in the
+current generic boundary. A production adoption still requires a concrete
+vendor adapter or gateway, deployment-specific access policy, hardware
+attestation where applicable, key ceremonies, monitoring integration, and an
+independent security review.

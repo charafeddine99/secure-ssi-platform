@@ -15,6 +15,8 @@ This is an initial design artifact, not a security certification. It must be rev
 | Holder private keys | Holder control; never transmitted to platform services |
 | Holder wallets and ownership bindings | Integrity, confidentiality, object-level authorization |
 | Holder key references | Integrity, least privilege, resistance to substitution |
+| Managed-key lifecycle and provider bindings | Integrity, availability, non-export, rollback resistance |
+| Provider credentials and client certificate keys | Confidentiality, least privilege, rotation |
 | Presentation challenges | Unpredictability, domain/audience binding, expiry, non-replay |
 | Verification results | Integrity, freshness, auditability |
 | Fraud signals and risk results | Confidentiality, integrity, explainability |
@@ -42,7 +44,7 @@ This is an initial design artifact, not a security certification. It must be rev
 | Public edge | API Gateway | The only planned production public boundary; production authentication, rate limits, request limits, and correlation IDs belong here |
 | Internal application zone | Identity, Fraud, Recovery services | Not publicly exposed in production; use authenticated service identities and explicit authorization |
 | Data zone | MongoDB, Redis | No direct client access; separate credentials and minimum retention |
-| Key-management zone | Opaque holder-key ports with synthetic local adapter; planned KMS/HSM or external wallet | The public test derivation is non-secret and prohibited outside local tests; production keys must not be stored in source, MongoDB, Redis, or logs |
+| Key-management zone | Provider-neutral ports, non-production development adapter, and configurable generic HTTPS KMS gateway | Development derivation is prohibited in production; provider secrets/private keys must not enter source, MongoDB, Redis, APIs, audit, metrics, or logs |
 | Blockchain network | Smart contracts and public ledger | Treat all written data as public and permanent; only non-identifying digests may be considered |
 | Guardian zone | Independent guardian devices/services | A single guardian is not trusted to complete recovery |
 
@@ -57,6 +59,8 @@ This is an initial design artifact, not a security certification. It must be rev
 - Guardian approval messages.
 - Blockchain RPC responses and events.
 - Environment configuration, deployment pipelines, and dependency updates.
+- Configured external KMS gateway responses, timeouts, TLS identity, and
+  provider lifecycle state.
 
 ## Key threats and required controls
 
@@ -100,6 +104,13 @@ This is an initial design artifact, not a security certification. It must be rev
 | T36 | Reconciliation race or audit duplication | Conflicting result or duplicate evidence | State/time/version predicate, deterministic event IDs, idempotent terminal reads | Repository claim, repeat reconciliation, and audit count tests implemented |
 | T37 | Insider access to key references | Targeted key misuse | References are non-secret but sensitive; least privilege, no HTTP/audit exposure, provider-side authorization required | BSON/OpenAPI/repr and raw-key exclusion tests implemented; production access audit planned |
 | T38 | Raw holder key persistence or logging | Holder identity takeover | HolderSigner port, opaque references only, redacted adapters, field allowlists | Mapper, Mongo document, API, audit, and representation tests implemented |
+| T39 | Provider or key-reference substitution | Signature under attacker-controlled key | Provider/reference unique binding, public fingerprint and verification-method validation before activation/signing | Metadata mismatch, routing, mapper, and signing tests implemented |
+| T40 | Concurrent or partial rotation | Multiple active keys, ambiguous DID control, denial of service | Atomic `ACTIVE -> ROTATING` claim, unique active wallet/purpose index, idempotent successor, optimistic links/wallet binding, reconciliation | Race, idempotency, partial provider/persistence, stale rotation, and previous-signature tests implemented |
+| T41 | Lifecycle bypass after compromise/revocation | Continued unauthorized signing | Local state checked before provider call; compromised/revoked/destroyed/failed terminal signing block; provider disabled check | Suspend/resume/compromise/revoke/destroy/signing rejection tests implemented |
+| T42 | Premature or accidental key destruction | Permanent loss and unverifiable future operations | Admin permission, reason, exact confirmation, policy delay, distinct pending/confirmed state, audit, no destructive inconsistency cleanup | Schedule/delay/cancel/confirmation/reconciliation tests implemented |
+| T43 | KMS outage, timeout, or circuit exhaustion | Signing/provisioning outage or duplicate creation | Idempotency digest, bounded timeout/retry/backoff, circuit breaker, recoverable pending state, retry-limited worker | Timeout/unavailable/retry/circuit/recovery tests implemented |
+| T44 | Development provider enabled in production | Predictable non-secure custody used for real identities | Production-like startup rejection and explicit non-production provider capability | Configuration and provider-assurance tests implemented |
+| T45 | Immutable DID treated as mutable during rotation | Invalid controller/key claims | New `did:key` successor DID and application predecessor link; holder `did:web` update denied without a controlled publisher | `did:key` rotation and `did:web` fail-closed tests implemented |
 
 ## Local authentication risk analysis
 
@@ -153,6 +164,13 @@ The implementation must preserve these rules:
     and audience, and are consumed at most once.
 19. Reconciliation never resets a challenge or presentation to a reusable
     state and never silently accepts incomplete evidence.
+20. A managed private key never leaves its provider adapter boundary.
+21. A managed key signs only while local state, purpose, algorithm, wallet
+    binding, provider state, and public metadata all agree.
+22. `did:key` rotation creates a successor DID; the old DID document is never
+    mutated.
+23. Key destruction never occurs before elevated authorization, explicit
+    confirmation, policy delay, and provider reconciliation.
 
 ## Privacy and data-retention baseline
 
@@ -169,7 +187,7 @@ The implementation must preserve these rules:
 
 - External/mobile wallet protocol and production-capable holder DID method.
 - Privacy-preserving interoperable credential status and selective-disclosure mechanism.
-- KMS/HSM provider and key-rotation process.
+- Vendor-specific KMS/HSM selection, attestation, IAM, and production ceremony.
 - Production issuer trust registry and credential status policy.
 - Guardian threshold and cooling-off duration.
 - Fraud-model family, features, and acceptance thresholds.

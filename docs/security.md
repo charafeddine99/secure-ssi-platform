@@ -13,10 +13,10 @@ Credential signing and revocation require a short-lived Bearer token and local
 synthetic fixture users only; there is still no rate limiting, MFA, user
 persistence workflow, token blacklist, secure production identity
 provider/key custody, externally validated Status List/VP deployment,
-production issuer policy, real KMS/HSM custody, or external wallet integration,
+production issuer policy, deployed vendor KMS/HSM custody, or external wallet integration,
 so the service must not be publicly exposed.
 
-MongoDB stores users, wallet/key-reference metadata, challenge replay evidence,
+MongoDB stores users, wallet/key-reference and managed public-key metadata, challenge replay evidence,
 credential lifecycle fields, permanent revocation
 metadata, stable status-list assignments/publications, durable audit outbox
 records, short-lived presentation state, and append-only audit events through
@@ -48,6 +48,16 @@ separate from revocation.
   alone never authorizes access to another user's object.
 - Persist only opaque holder key references. Raw private key bytes, seeds, or
   signing handles never enter MongoDB, HTTP models, audit metadata, or logs.
+- Permit managed signing only when the wallet and key are active, the purpose
+  is `PRESENTATION_SIGNING`, the algorithm is Ed25519, the provider is enabled,
+  and current public metadata matches the persisted fingerprint/reference.
+- Treat `COMPROMISED`, `REVOKED`, `DESTROYED`, and `FAILED` as irreversible
+  signing blocks. Never use provider availability as a reason to bypass local
+  lifecycle state.
+- Require compare-and-set state/version predicates for rotation and
+  reconciliation. Never create two active keys for one wallet/purpose.
+- Do not log provider requests/responses, canonical signing payloads,
+  Authorization headers, provider credentials, or provider key references.
 - Generate challenges server-side, bind domain/audience/optional holder, and
   atomically consume them once. Retain consumed replay evidence.
 - Reconcile stale `PROCESSING` records with a state/time/version predicate;
@@ -58,6 +68,28 @@ separate from revocation.
   JSON storage.
 
 ## Planned security gates
+
+Implemented managed-key gates:
+
+- Production-like configuration rejects development-only default custody.
+- Remote KMS configuration requires HTTPS and production TLS verification.
+- Private fields are recursively rejected by the managed-key BSON mapper.
+- The HTTP response model omits provider references, idempotency digests,
+  compromise details, provider credentials, and private material.
+- Creation and rotation persist only a one-way idempotency digest.
+- Provider identity, reference, algorithm, public encoding, fingerprint, DID,
+  and verification method are validated before activation/signing.
+- Rotation honors `did:key` immutability by generating a successor DID.
+- Holder `did:web` rotation fails closed without a controlled publication
+  pipeline.
+- Compromise is blocked locally before provider suspension is attempted.
+- Destruction requires admin permission, reason, exact key-ID confirmation,
+  delay, audit, and provider confirmation.
+- A bounded optimistic reconciliation lease repairs recoverable crash windows;
+  retry exhaustion enters terminal `FAILED`.
+- Provider/wallet inconsistency never automatically authorizes deletion.
+- Development and generic gateway adapter guarantees are tested, but no
+  vendor KMS/HSM assurance is claimed.
 
 Implemented gates for the synthetic DID resolver and local VC proof spike:
 
@@ -130,7 +162,8 @@ Implemented gates for the synthetic DID resolver and local VC proof spike:
 - Append every material publication version to immutable history and expose
   historical documents with immutable cache policy.
 - Keep issuer signing, key-provider, and publication operations behind
-  application ports so future KMS/HSM adapters do not change business rules.
+  application ports so a future issuer KMS/HSM adapter does not change
+  business rules.
 - Require `presentations:create`, `presentations:verify`, or
   `presentations:read` before the corresponding VP application service.
 - Bound presentations to one-to-eight credentials, 65,536 canonical bytes,
@@ -173,8 +206,9 @@ Required before any public or production credential API:
 - Complete external W3C Bitstring Status List conformance testing, CDN
   behavior, historical retention policy, and monitored caching/availability
   policy.
-- Replace the synthetic holder authentication and deterministic development
-  signer with a governed external wallet/KMS/HSM adapter and key lifecycle.
+- Configure and independently review a concrete vendor KMS/HSM or governed
+  external-wallet provider behind the implemented managed-key lifecycle;
+  disable the deterministic development provider.
 - Close the remaining crash window between wallet/challenge/presentation
   state commits and standalone outbox insertion.
 - Replace the synthetic in-memory key with a KMS, HSM, or secure wallet.

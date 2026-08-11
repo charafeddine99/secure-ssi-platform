@@ -243,5 +243,6 @@ python -m pytest tests/integration/test_mongo_repositories.py -q
 - The status endpoint depends on Identity Service and MongoDB availability.
 - Audit delivery is asynchronous and needs production lag/retry monitoring.
 - Audit events are not an independently tamper-evident compliance log.
-- There is no rate limiting, production workload identity, KMS/HSM, or
-  production issuer governance.
+- There is no rate limiting, production workload identity, issuer KMS/HSM
+  deployment, or production issuer governance. Holder VP signing has a
+  separate provider-neutral managed-key boundary.

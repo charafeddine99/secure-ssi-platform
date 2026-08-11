@@ -22,9 +22,12 @@ app = FastAPI(
         "one-time verify short-lived, server-issued "
         "challenge/domain/audience-bound Verifiable Presentations. A bounded "
         "worker reconciles stale verification claims. There is "
-        "no registration, refresh token, rate limiting, MFA, external "
-        "identity provider, presentation exchange, or production key "
-        "management."
+        "also a provider-neutral managed-key lifecycle with a non-production "
+        "development adapter and configurable generic HTTPS KMS gateway. "
+        "Private keys never cross the provider boundary. There is no "
+        "registration, refresh token, rate limiting, MFA, external identity "
+        "provider, presentation exchange, account recovery, or deployed "
+        "vendor-specific HSM integration."
     ),
     lifespan=application_lifespan,
 )

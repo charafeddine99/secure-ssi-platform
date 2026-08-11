@@ -16,6 +16,7 @@ AUDIT_OUTBOX_COLLECTION = "audit_outbox"
 PRESENTATIONS_COLLECTION = "presentations"
 HOLDER_WALLETS_COLLECTION = "holder_wallets"
 PRESENTATION_CHALLENGES_COLLECTION = "presentation_challenges"
+MANAGED_KEYS_COLLECTION = "managed_keys"
 
 USER_INDEXES = (
     IndexModel(
@@ -220,6 +221,89 @@ PRESENTATION_CHALLENGE_INDEXES = (
     ),
 )
 
+MANAGED_KEY_INDEXES = (
+    IndexModel(
+        [("keyId", ASCENDING)],
+        unique=True,
+        name="uq_managed_keys_key_id",
+    ),
+    IndexModel(
+        [("provider", ASCENDING), ("providerKeyReference", ASCENDING)],
+        unique=True,
+        partialFilterExpression={
+            "providerKeyReference": {"$type": "string"},
+        },
+        name="uq_managed_keys_provider_reference",
+    ),
+    IndexModel(
+        [
+            ("walletId", ASCENDING),
+            ("purpose", ASCENDING),
+            ("keyVersion", ASCENDING),
+        ],
+        unique=True,
+        name="uq_managed_keys_wallet_purpose_version",
+    ),
+    IndexModel(
+        [("walletId", ASCENDING), ("purpose", ASCENDING), ("state", ASCENDING)],
+        name="ix_managed_keys_wallet_purpose_state",
+    ),
+    IndexModel(
+        [("walletId", ASCENDING), ("purpose", ASCENDING), ("state", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"state": "ACTIVE"},
+        name="uq_managed_keys_active_wallet_purpose",
+    ),
+    IndexModel(
+        [("holderDid", ASCENDING), ("purpose", ASCENDING), ("state", ASCENDING)],
+        name="ix_managed_keys_holder_purpose_state",
+    ),
+    IndexModel(
+        [("ownerUserId", ASCENDING), ("createdAt", DESCENDING)],
+        name="ix_managed_keys_owner_created",
+    ),
+    IndexModel(
+        [("predecessorKeyId", ASCENDING)],
+        name="ix_managed_keys_predecessor",
+    ),
+    IndexModel(
+        [("successorKeyId", ASCENDING)],
+        name="ix_managed_keys_successor",
+    ),
+    IndexModel(
+        [("state", ASCENDING), ("updatedAt", ASCENDING)],
+        name="ix_managed_keys_state_updated",
+    ),
+    IndexModel(
+        [("state", ASCENDING), ("rotatedAt", ASCENDING)],
+        name="ix_managed_keys_stale_rotation",
+    ),
+    IndexModel(
+        [("state", ASCENDING), ("destructionScheduledAt", ASCENDING)],
+        name="ix_managed_keys_destruction_due",
+    ),
+    IndexModel(
+        [
+            ("walletId", ASCENDING),
+            ("purpose", ASCENDING),
+            ("idempotencyKeyHash", ASCENDING),
+        ],
+        unique=True,
+        partialFilterExpression={
+            "idempotencyKeyHash": {"$type": "string"},
+        },
+        name="uq_managed_keys_idempotency",
+    ),
+    IndexModel(
+        [("verificationMethod", ASCENDING)],
+        unique=True,
+        partialFilterExpression={
+            "verificationMethod": {"$type": "string"},
+        },
+        name="uq_managed_keys_verification_method",
+    ),
+)
+
 
 def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
     try:
@@ -251,6 +335,9 @@ def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
         )
         database[PRESENTATION_CHALLENGES_COLLECTION].create_indexes(
             list(PRESENTATION_CHALLENGE_INDEXES)
+        )
+        database[MANAGED_KEYS_COLLECTION].create_indexes(
+            list(MANAGED_KEY_INDEXES)
         )
     except PyMongoError as error:
         raise PersistenceUnavailableError(

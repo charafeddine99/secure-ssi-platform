@@ -36,11 +36,12 @@ This sequence describes the project areas in the academic concept; it is not an 
 | --- | --- | --- |
 | Web Client | User interaction and wallet hand-off | Store platform or holder private keys |
 | API Gateway | Public request boundary, correlation, limits, authentication and authorization enforcement | Implement credential cryptography |
-| Identity Service | Local DID resolution, synthetic VC/VP proofs, wallet/credential object ownership, opaque holder-key references, server challenges, challenge/domain/audience-bound presentations, stale-processing reconciliation, synthetic authentication/RBAC, MongoDB repositories, irreversible revocation, Status Lists, and durable audit delivery | Expose secrets, let roles bypass object ownership, persist raw private keys, trust client challenge bindings, bypass versions, reuse challenges, reverse revocation, treat signatures as claim truth, or accept arbitrary resolver/context input |
+| Identity Service | Local DID resolution, synthetic VC/VP proofs, wallet/credential object ownership, provider-neutral managed holder keys, server challenges, challenge/domain/audience-bound presentations, presentation/key reconciliation, synthetic authentication/RBAC, MongoDB repositories, irreversible revocation, Status Lists, and durable audit delivery | Expose secrets, let roles bypass object ownership, persist raw private keys, trust client challenge bindings, bypass versions, reuse challenges, reverse revocation, treat signatures as claim truth, or accept arbitrary resolver/context input |
 | Fraud Service | Produce versioned advisory risk results and reason codes | Receive raw credentials or autonomously recover identities |
 | Blockchain Adapter/Contracts | Anchor narrowly selected non-identifying digests | Store DIDs, claims, credentials, guardian data, or personal data |
 | Recovery Service | Expiring, idempotent, threshold guardian workflow | Permit one guardian to finalize recovery |
-| MongoDB | User, holder-wallet, challenge, credential, and presentation lifecycle; status-list assignments/publications; durable outbox; and append-only audit persistence | Store raw private keys, bypass data minimization, erase revocation/outbox/replay evidence, reuse a VP challenge, or treat soft deletion as credential revocation |
+| MongoDB | User, holder-wallet, managed-key metadata, challenge, credential, and presentation lifecycle; status-list assignments/publications; durable outbox; and append-only audit persistence | Store raw private keys/provider credentials, bypass data minimization, erase revocation/outbox/replay evidence, reuse a VP challenge, or treat soft deletion as credential revocation |
+| External key provider | Generate and use asymmetric keys without export; return bounded public metadata and signatures | Return private material, accept an unapproved algorithm/purpose, bypass provider authorization, or expose credentials |
 | Redis | Planned short-lived challenges, idempotency, and rate-limit state | Become a system of record |
 
 ## Trust boundaries
@@ -188,6 +189,28 @@ a controlled rejection. Attempts and the last reconciliation time are
 persisted. The same service powers the admin-only manual endpoint and is
 idempotent.
 
+The managed-key service owns a provider-neutral `ManagedKey` lifecycle and a
+separate `managed_keys` Mongo collection. New holder wallets provision a
+`PRESENTATION_SIGNING` key through `ExternalKeyProvider`. The Mongo record
+contains only public metadata and an opaque provider reference. A
+`ProviderAwareHolderSigner` resolves the active key, enforces state, purpose,
+algorithm, provider enablement, and public metadata, and sends only the
+canonical proof payload to the provider.
+
+Rotation atomically claims the source `ACTIVE -> ROTATING`, creates and
+activates one versioned successor, links both records, updates the wallet
+binding, and suspends the predecessor immediately or after the configured
+grace. Because `did:key` is immutable, a new key creates a new DID; the old
+DID is retained only as verification/predecessor history. Holder `did:web`
+rotation fails closed because this repository has no controlled mutable DID
+publication pipeline.
+
+A second lifecycle worker uses optimistic leases to repair stale provisioning,
+partial rotation, provider metadata, wallet binding, and due destruction.
+Retry exhaustion is terminal `FAILED`. It never auto-deletes a provider key
+only because local metadata is inconsistent. Detailed behavior is in
+[external-kms-key-lifecycle.md](external-kms-key-lifecycle.md).
+
 The HTTP router calls a credential application service. Dependency composition
 connects the existing validator, canonicalizer, signer, key provider, DID
 resolver, proof service, and injectable UTC clock. Infrastructure adapters
@@ -195,13 +218,14 @@ provide `rfc8785`, `cryptography`, the deterministic public test key, and
 network-free fixtures. Domain and application code remain independent of
 FastAPI.
 
-The module has no network resolver, DID management route, registration,
+The module has no network resolver, mutable holder DID management route, registration,
 refresh token, MFA, rate
-limiting, external identity provider, production authentication/key store,
+limiting, external identity provider, deployed vendor-specific KMS/HSM,
 external conformance certification, CDN publication, or blockchain anchoring.
-Issuer/holder signing, holder metadata, key provisioning, and publication are
-ports suitable for future KMS/HSM or wallet adapters, but only local synthetic
-adapters exist. The public credential-specific status endpoint is
+Holder VP signing has a provider-neutral port, non-production development
+provider, and generic HTTPS KMS gateway adapter. No vendor/cloud/HSM runtime
+is deployed. Issuer credential and Status List signing remain local prototype
+paths. The public credential-specific status endpoint is
 not privacy
 preserving, and the W3C-oriented shared publication must not be presented as
 fully certified interoperability. Its boundaries are documented in

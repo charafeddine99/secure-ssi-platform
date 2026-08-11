@@ -9,6 +9,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.ports.access_token_service import AccessTokenService
 from app.application.ports.issuance import CredentialIssuanceRepository
+from app.application.ports.key_management import (
+    ExternalKeyProvider,
+    ManagedKeyRepository,
+)
 from app.application.ports.auth_runtime import JtiGenerator
 from app.application.ports.password_hasher import PasswordHasherPort
 from app.application.ports.presentation import PresentationRepository
@@ -47,6 +51,10 @@ from app.application.services.holder_wallet_service import (
     HolderWalletService,
     PresentationChallengeService,
 )
+from app.application.services.managed_key_service import (
+    ManagedKeyService,
+    ProviderAwareHolderSigner,
+)
 from app.application.services.status_list_service import StatusListService
 from app.application.services.internal_metrics import INTERNAL_METRICS
 from app.application.services.presentation_proof_service import (
@@ -69,6 +77,11 @@ from app.config.holder_wallet_settings import (
     load_holder_wallet_settings,
 )
 from app.config.mongo_settings import MongoSettings, load_mongo_settings
+from app.config.key_management_settings import (
+    ConfiguredKeyPolicy,
+    KeyManagementSettings,
+    load_key_management_settings,
+)
 from app.config.status_list_settings import (
     StatusListSettings,
     load_status_list_settings,
@@ -98,6 +111,15 @@ from app.infrastructure.crypto.local_holder_key_provider import (
     LocalDevelopmentHolderSigner,
     LocalHolderKeyProvider,
 )
+from app.infrastructure.key_management.development_provider import (
+    DevelopmentExternalKeyProvider,
+)
+from app.infrastructure.key_management.generic_remote_kms import (
+    EnvironmentBearerAuthentication,
+    GenericRemoteKmsAdapter,
+    NoProviderAuthentication,
+    UrllibKmsHttpTransport,
+)
 from app.infrastructure.persistence.connection import MongoConnectionManager
 from app.infrastructure.persistence.indexes import (
     AUDIT_EVENTS_COLLECTION,
@@ -109,6 +131,7 @@ from app.infrastructure.persistence.indexes import (
     PRESENTATIONS_COLLECTION,
     HOLDER_WALLETS_COLLECTION,
     PRESENTATION_CHALLENGES_COLLECTION,
+    MANAGED_KEYS_COLLECTION,
 )
 from app.infrastructure.persistence.mongo_user_provider import (
     MongoUserProvider,
@@ -136,6 +159,9 @@ from app.infrastructure.persistence.presentation_repository import (
 from app.infrastructure.persistence.holder_wallet_repositories import (
     MongoHolderWalletRepository,
     MongoPresentationChallengeRepository,
+)
+from app.infrastructure.persistence.managed_key_repository import (
+    MongoManagedKeyRepository,
 )
 from app.infrastructure.status_list_document_generator import (
     StatusListDocumentGenerator,
@@ -173,6 +199,7 @@ _MONGO_SETTINGS = load_mongo_settings()
 _STATUS_LIST_SETTINGS = load_status_list_settings()
 _AUDIT_OUTBOX_SETTINGS = load_audit_outbox_settings()
 _HOLDER_WALLET_SETTINGS = load_holder_wallet_settings()
+_KEY_MANAGEMENT_SETTINGS = load_key_management_settings()
 _MONGO_MANAGER = MongoConnectionManager(_MONGO_SETTINGS)
 _PASSWORD_HASHER = Argon2PasswordHasher()
 _USER_PROVIDER = LocalSyntheticUserProvider.default(
@@ -227,6 +254,10 @@ def get_audit_outbox_settings() -> AuditOutboxSettings:
 
 def get_holder_wallet_settings() -> HolderWalletSettings:
     return _HOLDER_WALLET_SETTINGS
+
+
+def get_key_management_settings() -> KeyManagementSettings:
+    return _KEY_MANAGEMENT_SETTINGS
 
 
 def get_mongo_connection_manager() -> MongoConnectionManager:
@@ -382,6 +413,16 @@ def get_presentation_challenge_repository(
     )
 
 
+def get_managed_key_repository(
+    manager: MongoConnectionManager = Depends(
+        get_mongo_connection_manager
+    ),
+) -> ManagedKeyRepository:
+    return MongoManagedKeyRepository(
+        manager.database[MANAGED_KEYS_COLLECTION]
+    )
+
+
 def get_optional_holder_wallet_repository(
     settings: MongoSettings = Depends(get_mongo_settings),
     manager: MongoConnectionManager = Depends(
@@ -457,10 +498,17 @@ def build_presentation_reconciliation_service(
     wallets = MongoHolderWalletRepository(
         manager.database[HOLDER_WALLETS_COLLECTION]
     )
+    managed_keys = MongoManagedKeyRepository(
+        manager.database[MANAGED_KEYS_COLLECTION]
+    )
     audit_delivery = build_audit_outbox_delivery_service(
         manager,
         settings=audit_settings,
         clock=clock,
+    )
+    holder_key_router = _provider_aware_holder_signer(
+        managed_keys,
+        audit_delivery=audit_delivery,
     )
     challenge_service = PresentationChallengeService(
         challenge_repository=MongoPresentationChallengeRepository(
@@ -504,7 +552,38 @@ def build_presentation_reconciliation_service(
         clock=clock,
         metrics=INTERNAL_METRICS,
         wallet_repository=wallets,
-        key_metadata_provider=_HOLDER_KEY_PROVIDER,
+        key_metadata_provider=holder_key_router,
+    )
+
+
+def build_managed_key_service(
+    manager: MongoConnectionManager,
+    *,
+    settings: KeyManagementSettings,
+    audit_settings: AuditOutboxSettings,
+    clock: Clock,
+) -> ManagedKeyService:
+    return ManagedKeyService(
+        repository=MongoManagedKeyRepository(
+            manager.database[MANAGED_KEYS_COLLECTION]
+        ),
+        wallet_repository=MongoHolderWalletRepository(
+            manager.database[HOLDER_WALLETS_COLLECTION]
+        ),
+        providers=_KEY_PROVIDERS,
+        policy=ConfiguredKeyPolicy(settings),
+        audit_delivery_service=build_audit_outbox_delivery_service(
+            manager,
+            settings=audit_settings,
+            clock=clock,
+        ),
+        clock=clock,
+        storage_id_generator=new_object_id,
+        key_id_generator=_new_key_id,
+        default_provider=settings.default_provider,
+        metrics=INTERNAL_METRICS,
+        reconciliation_retry_limit=settings.reconciliation_retry_limit,
+        reconciliation_lease_seconds=settings.reconciliation_lease_seconds,
     )
 
 
@@ -543,6 +622,41 @@ def _new_holder_key_reference() -> str:
     return f"local-dev:wallet:{token_urlsafe(24)}"
 
 
+def _new_key_id() -> str:
+    return f"key_{token_urlsafe(24)}"
+
+
+def get_managed_key_service(
+    repository: ManagedKeyRepository = Depends(
+        get_managed_key_repository
+    ),
+    wallet_repository: HolderWalletRepository = Depends(
+        get_holder_wallet_repository
+    ),
+    audit_delivery: AuditOutboxDeliveryService = Depends(
+        get_audit_outbox_delivery_service
+    ),
+    settings: KeyManagementSettings = Depends(
+        get_key_management_settings
+    ),
+    clock: Clock = Depends(get_clock),
+) -> ManagedKeyService:
+    return ManagedKeyService(
+        repository=repository,
+        wallet_repository=wallet_repository,
+        providers=_KEY_PROVIDERS,
+        policy=ConfiguredKeyPolicy(settings),
+        audit_delivery_service=audit_delivery,
+        clock=clock,
+        storage_id_generator=new_object_id,
+        key_id_generator=_new_key_id,
+        default_provider=settings.default_provider,
+        metrics=INTERNAL_METRICS,
+        reconciliation_retry_limit=settings.reconciliation_retry_limit,
+        reconciliation_lease_seconds=settings.reconciliation_lease_seconds,
+    )
+
+
 def get_holder_wallet_service(
     wallet_repository: HolderWalletRepository = Depends(
         get_holder_wallet_repository
@@ -554,6 +668,7 @@ def get_holder_wallet_service(
         get_audit_outbox_delivery_service
     ),
     clock: Clock = Depends(get_clock),
+    managed_keys: ManagedKeyService = Depends(get_managed_key_service),
 ) -> HolderWalletService:
     return HolderWalletService(
         wallet_repository=wallet_repository,
@@ -565,6 +680,7 @@ def get_holder_wallet_service(
         wallet_id_generator=_new_wallet_id,
         key_reference_generator=_new_holder_key_reference,
         metrics=INTERNAL_METRICS,
+        initial_key_provisioner=managed_keys,
     )
 
 
@@ -765,6 +881,9 @@ def get_holder_presentation_service(
         get_presentation_challenge_service
     ),
     clock: Clock = Depends(get_clock),
+    managed_keys: ManagedKeyRepository = Depends(
+        get_managed_key_repository
+    ),
 ) -> HolderPresentationService:
     inspector = build_credential_inspector(
         credential_repository=credential_repository,
@@ -773,15 +892,19 @@ def get_holder_presentation_service(
         canonicalizer=_CANONICALIZER,
         status_list_settings=status_settings,
     )
+    holder_key_router = _provider_aware_holder_signer(
+        managed_keys,
+        audit_delivery=audit_delivery,
+    )
     return HolderPresentationService(
         repository=repository,
         credential_inspector=inspector,
         builder=PresentationBuilder(
             canonicalizer=_CANONICALIZER,
             signer=_SIGNER,
-            key_provider=_HOLDER_KEY_PROVIDER,
-            holder_signer=_HOLDER_SIGNER,
-            key_metadata_provider=_HOLDER_KEY_PROVIDER,
+            key_provider=holder_key_router,
+            holder_signer=holder_key_router,
+            key_metadata_provider=holder_key_router,
         ),
         audit_delivery_service=audit_delivery,
         clock=clock,
@@ -855,6 +978,9 @@ def get_presentation_reconciliation_service(
         get_holder_wallet_repository
     ),
     clock: Clock = Depends(get_clock),
+    managed_keys: ManagedKeyRepository = Depends(
+        get_managed_key_repository
+    ),
 ) -> PresentationReconciliationService:
     return PresentationReconciliationService(
         repository=repository,
@@ -865,5 +991,71 @@ def get_presentation_reconciliation_service(
         clock=clock,
         metrics=INTERNAL_METRICS,
         wallet_repository=wallet_repository,
-        key_metadata_provider=_HOLDER_KEY_PROVIDER,
+        key_metadata_provider=_provider_aware_holder_signer(
+            managed_keys,
+            audit_delivery=audit_delivery,
+        ),
     )
+
+
+def _provider_aware_holder_signer(
+    repository: ManagedKeyRepository,
+    *,
+    audit_delivery: AuditOutboxDeliveryService | None = None,
+) -> ProviderAwareHolderSigner:
+    return ProviderAwareHolderSigner(
+        repository=repository,
+        providers=_KEY_PROVIDERS,
+        legacy_provider=_HOLDER_KEY_PROVIDER,
+        legacy_signer=_HOLDER_SIGNER,
+        allow_legacy_fallback=(
+            _KEY_MANAGEMENT_SETTINGS.environment
+            not in {"production", "prod", "staging"}
+        ),
+        metrics=INTERNAL_METRICS,
+        audit_delivery_service=audit_delivery,
+    )
+
+
+def _build_key_providers(
+    settings: KeyManagementSettings,
+) -> dict[str, ExternalKeyProvider]:
+    providers: dict[str, ExternalKeyProvider] = {}
+    if (
+        settings.development_provider_enabled
+        and "development" in settings.enabled_providers
+    ):
+        development = DevelopmentExternalKeyProvider()
+        providers[development.name] = development
+    if settings.remote_provider_name in settings.enabled_providers:
+        authentication = (
+            NoProviderAuthentication()
+            if settings.remote_auth_token_env is None
+            else EnvironmentBearerAuthentication(
+                settings.remote_auth_token_env
+            )
+        )
+        remote = GenericRemoteKmsAdapter(
+            name=settings.remote_provider_name,
+            base_url=settings.remote_base_url or "",
+            transport=UrllibKmsHttpTransport(
+                tls_verify=settings.tls_verify,
+                client_certificate_path=(
+                    settings.client_certificate_path
+                ),
+                client_key_path=settings.client_key_path,
+            ),
+            authentication=authentication,
+            request_timeout_seconds=settings.request_timeout_seconds,
+            retry_count=settings.retry_count,
+            retry_backoff_ms=settings.retry_backoff_ms,
+            circuit_failure_threshold=(
+                settings.circuit_failure_threshold
+            ),
+            circuit_reset_seconds=settings.circuit_reset_seconds,
+        )
+        providers[remote.name] = remote
+    return providers
+
+
+_KEY_PROVIDERS = _build_key_providers(_KEY_MANAGEMENT_SETTINGS)

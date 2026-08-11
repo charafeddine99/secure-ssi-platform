@@ -12,12 +12,17 @@ from app.api.v1.dependencies import (
     get_mongo_connection_manager,
     get_mongo_settings,
     get_holder_wallet_settings,
+    get_key_management_settings,
+    build_managed_key_service,
 )
 from app.application.services.audit_outbox_service import (
     AuditOutboxBackgroundService,
 )
 from app.application.services.presentation_service import (
     PresentationReconciliationBackgroundService,
+)
+from app.application.services.managed_key_service import (
+    ManagedKeyReconciliationBackgroundService,
 )
 from app.infrastructure.persistence.indexes import ensure_mongo_indexes
 
@@ -28,9 +33,11 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     manager = get_mongo_connection_manager()
     outbox_settings = get_audit_outbox_settings()
     wallet_settings = get_holder_wallet_settings()
+    key_settings = get_key_management_settings()
     stop_event: asyncio.Event | None = None
     delivery_task: asyncio.Task[None] | None = None
     reconciliation_task: asyncio.Task[None] | None = None
+    key_reconciliation_task: asyncio.Task[None] | None = None
     app.state.persistence_enabled = settings.enabled
     if settings.enabled:
         try:
@@ -39,6 +46,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
             if (
                 outbox_settings.enabled
                 or wallet_settings.reconciliation_enabled
+                or key_settings.reconciliation_enabled
             ):
                 stop_event = asyncio.Event()
             if outbox_settings.enabled:
@@ -74,6 +82,23 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
                     reconciliation_background.run(stop_event),
                     name="presentation-reconciliation",
                 )
+            if key_settings.reconciliation_enabled:
+                key_service = build_managed_key_service(
+                    manager,
+                    settings=key_settings,
+                    audit_settings=outbox_settings,
+                    clock=get_clock(),
+                )
+                key_background = (
+                    ManagedKeyReconciliationBackgroundService(
+                        key_service,
+                        settings=key_settings,
+                    )
+                )
+                key_reconciliation_task = asyncio.create_task(
+                    key_background.run(stop_event),
+                    name="managed-key-reconciliation",
+                )
         except Exception:
             manager.close()
             raise
@@ -86,4 +111,6 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
             await delivery_task
         if reconciliation_task is not None:
             await reconciliation_task
+        if key_reconciliation_task is not None:
+            await key_reconciliation_task
         manager.close()
