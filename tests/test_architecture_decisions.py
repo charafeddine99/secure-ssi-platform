@@ -79,7 +79,11 @@ class ArchitectureDecisionTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "[Next] Deploy and independently review one vendor-specific KMS/HSM adapter",
+            "[Completed] Add Guardian assignments, generic M-of-N policy",
+            readme,
+        )
+        self.assertIn(
+            "[Next] Add explainable AI fraud detection",
             readme,
         )
 

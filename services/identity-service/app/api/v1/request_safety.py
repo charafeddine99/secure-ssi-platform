@@ -20,6 +20,7 @@ _JSON_POST_LIMITS = {
     "/api/v1/credentials/sign": MAX_CREDENTIAL_REQUEST_BYTES,
     "/api/v1/credentials/verify": MAX_CREDENTIAL_REQUEST_BYTES,
     "/api/v1/auth/token": MAX_AUTH_REQUEST_BYTES,
+    "/internal/v1/recovery/key-rotation": MAX_AUTH_REQUEST_BYTES,
     "/api/v1/presentations/create": MAX_PRESENTATION_REQUEST_BYTES,
     "/api/v1/presentations/verify": MAX_PRESENTATION_REQUEST_BYTES,
 }

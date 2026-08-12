@@ -2,11 +2,12 @@
 
 ## Contract status
 
-`GET /health`, two Identity Service authentication operations, and six
-credential operations documented below are implemented. Every other `/api/v1`
-and `/internal/v1` operation remains **planned**. Authentication and RBAC use
-non-persistent synthetic fixtures and do not represent a production identity
-system.
+Health routes, the documented Identity credential/status/wallet/VP/managed-key
+APIs, and the Recovery Service Guardian/recovery APIs are implemented. Two
+Identity recovery-integration routes are implemented but intentionally hidden
+from public OpenAPI. Other gateway, fraud, blockchain, and undeclared internal
+operations remain **planned**. Authentication and RBAC are an academic local
+identity boundary and do not represent a production identity system.
 
 The JSON Schemas referenced below live in `packages/shared/schemas/v1`.
 
@@ -97,7 +98,7 @@ non-finite numbers, invalid UTF-8, and malformed JSON. Full request, response,
 status, and limitation details are in
 [credential-api.md](credential-api.md).
 
-## API Gateway public contracts
+## Planned API Gateway public contracts
 
 | Method and path | Responsibility | Request schema | Result |
 | --- | --- | --- | --- |
@@ -115,6 +116,8 @@ The gateway validates shape, size, idempotency, correlation, and caller policy b
 | `POST /internal/v1/issuance-requests` | Validate issuer policy and prepare an issuance operation | Planned; request uses the shared issuance schema |
 | `POST /internal/v1/presentations/verify` | Verify format, signature, status, challenge, audience, and expiry | Planned; must return reason codes without leaking claims |
 | `POST /internal/v1/anchors` | Request anchoring of a non-identifying digest | Planned; uses `anchor-request.schema.json` |
+| `GET /internal/v1/recovery/wallets/{walletId}/owners/{ownerUserId}` | Verify an exact wallet-owner binding for Recovery Service | Implemented; short-lived scope/wallet/owner-bound service grant; hidden from public OpenAPI |
+| `POST /internal/v1/recovery/key-rotation` | Idempotently rotate the wallet managed key after authorized recovery | Implemented; grant bound to wallet/owner/request plus exact `Idempotency-Key`; hidden from public OpenAPI |
 
 The service must never accept or return holder private keys. The first synthetic implementation follows ADR 0001 and ADR 0002:
 
@@ -152,15 +155,32 @@ no DID management endpoint is implemented.
 
 Risk output is advisory. It includes a model version and reason codes. It cannot directly issue, revoke, reject, or recover an identity.
 
-## Recovery Service internal contracts
+## Implemented Recovery Service contracts
 
-| Method and path | Responsibility | Notes |
+| Method and path | Responsibility | Access/result |
 | --- | --- | --- |
-| `POST /internal/v1/recovery-requests` | Create an expiring recovery state machine | Planned; shared recovery request schema |
-| `POST /internal/v1/recovery-requests/{requestId}/approvals` | Record one authenticated guardian decision | Planned; approval schema deferred until signing method is chosen |
-| `POST /internal/v1/recovery-requests/{requestId}/finalize` | Finalize only after policy, threshold, expiry, and cooling-off checks | Planned and idempotent |
+| `POST /api/v1/guardians` | Create a wallet-scoped Guardian assignment | Holder owner; `201` Guardian projection |
+| `GET /api/v1/guardians` | List assignments visible to the owner/assignee | Holder; optional `walletId`; `200` list |
+| `GET /api/v1/guardians/{guardianId}` | Read one visible assignment | Exact owner or assignee; `200` |
+| `PATCH /api/v1/guardians/{guardianId}` | Update label, verification-method reference, or status | Exact owner; `200` |
+| `DELETE /api/v1/guardians/{guardianId}` | Retain assignment in `REMOVED` state | Exact owner; `200` |
+| `GET /api/v1/recovery/policy?walletId=...` | Read wallet M-of-N and timing policy | Exact owner; `200` |
+| `PUT /api/v1/recovery/policy` | Create/replace wallet policy | Exact owner; `200` |
+| `POST /api/v1/recovery/requests` | Start one expiring recovery for a wallet | Exact owner; `201` |
+| `GET /api/v1/recovery/requests` | List requests visible to owner/assigned Guardian | Holder; bounded list; `200` |
+| `GET /api/v1/recovery/requests/{requestId}` | Read visible state/quorum/timing/result metadata | Exact owner or assigned Guardian; `200` |
+| `POST /api/v1/recovery/requests/{requestId}/approve` | Record one active assignee's challenge-bound approval | Exact assigned Guardian; `200` |
+| `POST /api/v1/recovery/requests/{requestId}/reject` | Record one active assignee's challenge-bound rejection | Exact assigned Guardian; `200` |
+| `POST /api/v1/recovery/requests/{requestId}/cancel` | Cancel before execution when policy allows | Exact owner; `200` |
+| `POST /api/v1/recovery/requests/{requestId}/reconcile` | Run the same deterministic due/stale worker path | Admin only; `200` |
 
-Guardian identities and approvals are never returned through the public status projection.
+These routes use strict JSON envelopes and the existing Identity JWT. They do
+not return Shamir share material, envelope data, service grants, or private
+keys. Foreign object access uses a not-found response. The optional Guardian
+`proof` is currently hashed for idempotency/binding but is not verified as a
+DID signature, so the API must not be described as cryptographic
+multisignature. Full state, security, and response-boundary details are in
+[account-recovery.md](account-recovery.md).
 
 ## Blockchain boundary
 

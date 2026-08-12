@@ -9,10 +9,10 @@
 | Fraud service | Scaffolded | Health endpoint | No | Health test | Boundary only |
 | AI fraud detection | Planned | No | No | No | No model, features, or thresholds |
 | Blockchain | Planned | Workspace metadata | No | No | No contracts or deployment |
-| Recovery service | Scaffolded | Health endpoint | No | Health test | Boundary only |
-| Guardian recovery | Planned | No | No | No | No approval or state-machine logic |
+| Recovery service | Prototype | Health; Guardian/policy/request/decision/cancel/reconcile APIs; Mongo repositories; encrypted Shamir authorization shares; time-lock worker; audit; metrics; Identity managed-key orchestration | Synthetic users, DIDs, clocks, Mongo adapter, and managed-key provider | Domain, cryptography, repository, concurrency, service, API, Identity integration, reconciliation, security, performance, and regression tests | Academic only; no Guardian DID signature, independent share delivery, or production operations |
+| Guardian recovery | Implemented with prototype limits | Generic M-of-N with 3-of-5 default, immutable snapshots, parallel idempotent decisions, persisted time lock, bounded retries, `did:key` successor rotation | Guardian identities and managed-key provider are synthetic in tests | Sufficient/insufficient quorum, concurrency, time lock, tamper/replay, cancellation/expiry, crash/retry, audit, metrics, and benchmark tests | Not cryptographic multisignature; optional proof is not independently verified |
 | Authentication/JWT | Implemented | Argon2id login, short-lived HS256 JWT, Bearer dependency, current-user resolution, wallet/challenge/presentation permissions, opt-in Mongo user provider | Five synthetic local accounts | Domain, adapter, JWT attack, API, OpenAPI, RBAC, ownership, and provider tests | No production identity provider or token lifecycle |
-| MongoDB | Implemented for current flows | Typed config, pooled lifecycle, Compose app user, wallet/challenge/credential/presentation/managed-key repositories, indexes, atomic issuance/challenge/VP/key lifecycle state | No | Unit plus opt-in real-Mongo integration tests | No migration runner or production operations |
+| MongoDB | Implemented for current flows | Typed config, pooled lifecycle, separate Identity/Recovery Compose users and databases, wallet/challenge/credential/presentation/managed-key/recovery repositories, indexes, atomic issuance/challenge/VP/key lifecycle state | No | Unit, fake-Mongo integration, plus opt-in real-Mongo Identity tests | No migration runner or production operations |
 | User repository | Implemented | Add/read/update/soft-delete, unique normalized username, optimistic version | No | Mapper, repository, duplicate, version, and provider tests | No registration or seed workflow |
 | Credential repository | Implemented | Add/read/update/query/soft-delete, wallet/owner inventory, lifecycle status, irreversible revocation metadata, and optional raw JSON | Synthetic credentials in tests | Mapper, ownership, repository, duplicate, transition, query, version, and revocation tests | Legacy credentials may remain wallet-unbound |
 | Holder wallet repository | Implemented | Add/read/owner query, active DID lookup, key rebinding, status update, soft-delete, optimistic version | Synthetic development wallets | Domain, mapper, duplicate, ownership, state, version, API, and opt-in real-Mongo tests | Opaque provider references only |
@@ -26,8 +26,8 @@
 | Audit outbox | Implemented | Standalone and credential-embedded records, leases, retry, background delivery, and idempotent publishing | Synthetic failure/crash windows | Repository, retry, duplicate prevention, embedded record, API, and regression tests | No dead-letter queue or operational dashboard |
 | Audit event repository | Implemented | Append/get/list for closed event types and idempotent outbox destination | Synthetic events in tests | Metadata safety, append-only, index, repository, retry, wallet/challenge/ownership/key-lifecycle/reconciliation, credential/status, and VP tests | Not an independently tamper-evident compliance log |
 | Redis | Provisioned | Compose service and healthcheck | No | Static config | Not integrated |
-| Threat model | Initial baseline | Assets, boundaries, threats, invariants | No | Document review pending | Update with every security-sensitive change |
-| API contracts | Partial | Credential routes, four Status List routes, wallet/challenge routes, four VP routes, eleven managed-key routes, plus planned paths and conventions | No | OpenAPI, RBAC, object-authorization, lifecycle, and API integration tests | Presentation Exchange remains planned |
+| Threat model | Updated baseline | Assets, boundaries, Guardian/share/grant/quorum/audit threats, and 30 invariants | No | Recovery abuse/control tests plus document review pending | Not an independent security review |
+| API contracts | Partial | Credential routes, four Status List routes, wallet/challenge routes, four VP routes, eleven managed-key routes, fourteen Recovery methods, hidden Identity recovery integration, plus planned paths and conventions | No | OpenAPI, RBAC, object-authorization, lifecycle, concurrency, and API integration tests | Presentation Exchange and gateway facade remain planned |
 | Shared schema catalog | Prototype | Nine versioned JSON Schemas and one bundled JSON-LD context | Synthetic examples | Structural and profile-specific catalog tests | Endpoint integration is planned |
 | Security baseline | Drafted | Development and phase gates | No | Document review pending | Not a certification |
 | DID standards decision | Accepted | ADR 0001 and standards baseline | No | Document consistency checks | `did:web` issuer; synthetic short-lived `did:key` holder |
@@ -274,3 +274,42 @@
 | Vendor KMS/HSM/cloud account integration | Not performed |
 | Hardware attestation and production key ceremonies | Not implemented |
 | Issuer credential, Status List, and JWT signing migration | Not part of this sprint; current local prototype paths preserved |
+
+## Guardian-Based Account Recovery sprint status
+
+| Capability | Status |
+| --- | --- |
+| Guardian domain, lifecycle, owner/assignee authorization, API | Implemented |
+| Generic M-of-N policy | Implemented; any valid threshold up to 32 shares |
+| Default 3-of-5 recovery | Implemented and tested |
+| Immutable active-request policy and Guardian snapshot | Implemented |
+| One active recovery per wallet | Implemented with a partial unique Mongo index |
+| Recovery challenge, nonce, session, quorum, result, failure, lease | Implemented |
+| Explicit recovery state machine | Implemented with validated terminal/transient transitions |
+| Parallel Guardian decisions | Implemented with unique indexes and optimistic CAS |
+| Duplicate decision/publication idempotency | Implemented with deterministic IDs and exact repeat semantics |
+| Independent Guardian DID signature verification | Not implemented; optional proof is only digested/bound |
+| Shamir Secret Sharing | Implemented for a dedicated random 128-bit authorization secret |
+| KMS/private-key sharing or export | Prohibited; never performed |
+| Share confidentiality/integrity | AES-256-GCM envelopes, HKDF-derived keys, HMAC, commitment, and context binding implemented |
+| Independent per-Guardian share delivery/custody | Not implemented; encrypted envelopes are centrally persisted |
+| Persisted time lock, cancellation, expiry, cooldown | Implemented |
+| Restart-safe worker lease and bounded reconciliation | Implemented |
+| Managed-key integration | Implemented through short-lived request-bound service grant and existing `ManagedKeyService` |
+| Key rotation idempotency and lineage | Implemented with `recovery:{requestId}` digest |
+| `did:key` recovery semantics | New successor DID; unchanged successor rejected |
+| Holder `did:web` mutation | Fails closed pending a controlled publisher |
+| Account-compromise predecessor handling | Marked compromised and provider suspension attempted |
+| Mongo recovery repositories, mappers, and indexes | Implemented in dedicated `secure_recovery` database |
+| Typed recovery audit events | Implemented as append-only deterministic records |
+| Transactional recovery state/audit coupling | Not implemented; documented crash-gap limitation |
+| Process-local recovery metrics | Implemented without high-cardinality identity labels |
+| Recovery REST/OpenAPI contracts | Implemented for fourteen public methods; metrics/internal Identity routes hidden |
+| Domain, Shamir, repository, service, API, concurrency, integration, security, and regression tests | Implemented |
+| Performance budget | In-memory 25-run workflow mean 2.335 ms, p95 2.711 ms; component means documented; production SLA unproven |
+| Redis, blockchain, AI, DIDComm, frontend, VP/selective disclosure | Not implemented in this sprint |
+
+Requirement-level implemented/partial/not-implemented mapping is maintained in
+[account-recovery.md](account-recovery.md). The recommended next feature sprint
+is explainable advisory AI fraud detection; it must not receive autonomous
+credential, key, or recovery authority.

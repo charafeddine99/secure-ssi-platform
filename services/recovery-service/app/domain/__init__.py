@@ -1,0 +1,1 @@
+"""Guardian recovery domain model."""

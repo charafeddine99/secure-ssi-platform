@@ -378,6 +378,77 @@ class ManagedKeyService:
                 self._metrics.record_key_rotation(succeeded=False)
             raise
 
+    def recover_wallet(
+        self,
+        wallet_id: str,
+        *,
+        owner_user_id: str,
+        recovery_request_id: str,
+        reason: str,
+        correlation_id: str,
+    ) -> tuple[ManagedKey, ManagedKey]:
+        """Idempotently replace a signing key after authorized recovery."""
+        self._owned_wallet(wallet_id, owner_user_id=owner_user_id)
+        idempotency_key = f"recovery:{recovery_request_id}"
+        existing = self._keys.get_by_idempotency_hash(
+            wallet_id=wallet_id,
+            purpose=KeyPurpose.PRESENTATION_SIGNING,
+            idempotency_key_hash=idempotency_hash(idempotency_key),
+        )
+        if existing is not None:
+            if existing.predecessor_key_id is None:
+                raise ManagedKeyConflictError(
+                    "Recovery idempotency key does not identify a rotation."
+                )
+            predecessor = self._keys.get(existing.predecessor_key_id)
+            if predecessor is None:
+                raise ManagedKeyConflictError(
+                    "Recovery predecessor metadata is unavailable."
+                )
+            if (
+                reason == "ACCOUNT_COMPROMISE"
+                and predecessor.state
+                in {
+                    ManagedKeyState.ACTIVE,
+                    ManagedKeyState.ROTATING,
+                    ManagedKeyState.SUSPENDED,
+                }
+            ):
+                predecessor = self.mark_compromised(
+                    wallet_id,
+                    predecessor.key_id,
+                    actor_id=owner_user_id,
+                    reason="ACCOUNT_COMPROMISE_RECOVERY",
+                    correlation_id=correlation_id,
+                    administrative=True,
+                )
+            return predecessor, existing
+        predecessor = self._keys.get_active(
+            wallet_id=wallet_id,
+            purpose=KeyPurpose.PRESENTATION_SIGNING,
+        )
+        if predecessor is None or predecessor.owner_user_id != owner_user_id:
+            raise ManagedKeyNotFoundError(
+                "The active recovery key was not found."
+            )
+        successor = self.rotate(
+            wallet_id,
+            predecessor.key_id,
+            owner_user_id=owner_user_id,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+        )
+        if reason == "ACCOUNT_COMPROMISE":
+            predecessor = self.mark_compromised(
+                wallet_id,
+                predecessor.key_id,
+                actor_id=owner_user_id,
+                reason="ACCOUNT_COMPROMISE_RECOVERY",
+                correlation_id=correlation_id,
+                administrative=True,
+            )
+        return predecessor, successor
+
     def suspend(
         self,
         wallet_id: str,

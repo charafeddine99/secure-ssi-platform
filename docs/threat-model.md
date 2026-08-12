@@ -72,8 +72,8 @@ This is an initial design artifact, not a security certification. It must be rev
 | T04 | Private-key disclosure | Identity takeover | Holder-side key custody, KMS/HSM for production issuer keys, rotation, no secret logging | Synthetic key redaction/output tests implemented; production secret scanning and rotation drills planned |
 | T05 | Fraud model manipulation or evasion | Incorrect risk decision | Input validation, signed signal provenance, model/version tracking, human-review policy | Adversarial and drift tests |
 | T06 | Biased or unexplained risk decisions | Unfair denial and compliance risk | Reason codes, evaluation datasets, appeal path, prohibit autonomous irreversible recovery denial | Fairness and explainability review |
-| T07 | Guardian collusion or coercion | Account takeover | Threshold approvals, independent channels, cooling-off period, holder notification | Threshold and coercion scenario tests |
-| T08 | Recovery request replay | Account takeover | Unique request IDs, expiry, state machine, idempotency, signed approvals | State-transition and replay tests |
+| T07 | Guardian collusion or coercion | Account takeover | M-of-N approvals, persisted time lock, cancellation, independent channels and notification before production | Threshold/concurrency/time-lock tests implemented; independence/coercion operations planned |
+| T08 | Recovery request replay | Account takeover | Unique request/challenge/nonce, expiry, one decision per assignment, immutable snapshot, idempotency | State-transition, challenge, duplicate, wrong-assignee, cancellation, and replay tests implemented; Guardian signature verification planned |
 | T09 | Internal service impersonation | Data alteration or disclosure | Workload identity, mutual authentication, least-privilege authorization | Unauthorized service-call tests |
 | T10 | API denial of service | Loss of availability | Rate limits, request size limits, timeouts, queues, circuit breakers | Load and fault-injection tests |
 | T11 | Log or database data leakage | Privacy loss | Redaction, field allowlists, encryption, retention limits, access audit | Log inspection and retention tests |
@@ -111,6 +111,11 @@ This is an initial design artifact, not a security certification. It must be rev
 | T43 | KMS outage, timeout, or circuit exhaustion | Signing/provisioning outage or duplicate creation | Idempotency digest, bounded timeout/retry/backoff, circuit breaker, recoverable pending state, retry-limited worker | Timeout/unavailable/retry/circuit/recovery tests implemented |
 | T44 | Development provider enabled in production | Predictable non-secure custody used for real identities | Production-like startup rejection and explicit non-production provider capability | Configuration and provider-assurance tests implemented |
 | T45 | Immutable DID treated as mutable during rotation | Invalid controller/key claims | New `did:key` successor DID and application predecessor link; holder `did:web` update denied without a controlled publisher | `did:key` rotation and `did:web` fail-closed tests implemented |
+| T46 | Forged Guardian decision or stolen Guardian JWT | Unauthorized quorum | Exact assignee binding, short token lifetime, request challenge, one decision, time lock; require Guardian DID/device signature and MFA before production | RBAC/ownership/challenge tests implemented; independent signature/MFA tests planned |
+| T47 | Recovery envelope database or master-key compromise | Authorization-secret reconstruction | AES-GCM/HMAC envelopes, request/policy/version binding, secret redaction; production needs independent share custody and managed envelope key | Tamper/wrong-context/duplicate/insufficient-share tests implemented; custody separation planned |
+| T48 | Concurrent quorum or worker race | Early or duplicate key rotation | Unique approval indexes, optimistic request versions, explicit quorum/time-lock states, expiring execution lease, request idempotency key | Parallel approval, single-quorum-event, early-execution, stale-lease, retry, and repeat tests implemented |
+| T49 | Recovery service impersonates Identity or replays rotation | Unauthorized managed-key change | Short-lived grant bound to issuer/audience/scope/wallet/owner/request and exact idempotency header | Invalid grant, binding mismatch, ownership, and repeated-rotation tests implemented; mTLS/workload identity planned |
+| T50 | Recovery state/audit partial write | Missing forensic evidence | Deterministic append-only event IDs and reconciliation evidence; production transaction/outbox or audited backfill required | Event uniqueness and workflow audit tests implemented; crash-gap closure planned |
 
 ## Local authentication risk analysis
 
@@ -141,12 +146,12 @@ The implementation must preserve these rules:
 1. Holder private keys never enter platform APIs, logs, MongoDB, Redis, or blockchain transactions.
 2. No raw credential, personal claim, guardian identity, email, phone number, or DID is written to a public ledger.
 3. A fraud score alone cannot issue, revoke, or recover an identity.
-4. A single guardian cannot complete recovery.
-5. Recovery transitions are explicit, expiring, idempotent, and auditable.
+4. A single Guardian cannot complete a recovery whose policy requires more than one approval; the configured M threshold is enforced over unique active assignments.
+5. Recovery transitions are explicit, expiring, idempotent, versioned, time-locked, and auditable.
 6. Internal service access is denied unless the caller identity and action are authorized.
 7. Logs contain correlation identifiers, not credential contents or secret material.
 8. Every externally accepted proof is bound to a verifier, purpose, nonce, and validity window.
-9. `did:key` is never used for a real user, long-lived identity, or recovery target.
+9. `did:key` remains synthetic-only; recovery rotation creates a new successor DID and never mutates the predecessor DID document.
 10. Verification never resolves a DID method or loads a JSON-LD context outside an explicit allowlist.
 11. A proof is accepted only when the issuer DID document and local trust
     profile agree on the exact Ed25519 verification key.
@@ -171,6 +176,21 @@ The implementation must preserve these rules:
     mutated.
 23. Key destruction never occurs before elevated authorization, explicit
     confirmation, policy delay, and provider reconciliation.
+24. The Shamir secret authorizes one recovery workflow and is never a managed,
+    DID, issuer, credential, JWT, or holder private key.
+25. Recovery share material never appears in public API/OpenAPI responses,
+    logs, metrics labels, audit metadata, or object representations.
+26. An active recovery uses an immutable policy/Guardian snapshot; Guardian
+    and policy mutation cannot downgrade its threshold.
+27. Quorum is persisted before time-lock waiting, and managed-key execution
+    cannot start before the persisted due timestamp.
+28. Each Guardian assignment contributes at most one request-bound decision
+    and one unique share index.
+29. Recovery key execution always passes through the existing
+    `ManagedKeyService`; the Recovery Service cannot write managed-key state or
+    call a provider directly.
+30. Production must not treat the optional Guardian proof as a verified
+    signature until a reviewed DID/device verification ceremony is added.
 
 ## Privacy and data-retention baseline
 
@@ -189,7 +209,8 @@ The implementation must preserve these rules:
 - Privacy-preserving interoperable credential status and selective-disclosure mechanism.
 - Vendor-specific KMS/HSM selection, attestation, IAM, and production ceremony.
 - Production issuer trust registry and credential status policy.
-- Guardian threshold and cooling-off duration.
+- Guardian DID/device signature format, independent share custody,
+  enrollment/attestation, notification, and production threshold governance.
 - Fraud-model family, features, and acceptance thresholds.
 - Blockchain network, contract governance, and finality policy.
 

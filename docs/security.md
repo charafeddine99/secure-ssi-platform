@@ -8,6 +8,13 @@ Mongo-backed credential lifecycle status, holder wallets, server-issued
 presentation challenges, object-level credential ownership, and authenticated
 short-lived Verifiable Presentation creation/verification/reconciliation
 exposed through local routes.
+The Recovery Service now provides authenticated wallet-scoped Guardian
+assignments, generic M-of-N policy, encrypted Shamir authorization shares,
+parallel idempotent decisions, persisted time-lock/expiry/cancellation,
+Mongo-backed reconciliation, and managed-key rotation orchestration. It is
+also a local academic surface: Guardian DID signatures, independent share
+delivery, MFA/device attestation, rate limiting, token revocation, and
+production incident operations are not implemented.
 Credential signing and revocation require a short-lived Bearer token and local
 `credentials:sign` or `credentials:revoke` permission. Authentication uses
 synthetic fixture users only; there is still no rate limiting, MFA, user
@@ -21,6 +28,9 @@ credential lifecycle fields, permanent revocation
 metadata, stable status-list assignments/publications, durable audit outbox
 records, short-lived presentation state, and append-only audit events through
 explicit repository interfaces.
+The dedicated recovery database stores recovery policies, assignments,
+requests, decisions, authenticated encrypted share envelopes, and recovery
+audit events. It never stores a KMS private key.
 Mongo-backed authentication is opt-in. Successful signing atomically persists
 the signed credential and embedded status assignment. Soft deletion remains
 separate from revocation.
@@ -236,11 +246,43 @@ Before implementing fraud detection:
 - Define model versioning, reason codes, monitoring, and human review.
 - Define protected-group and fairness evaluation.
 
-Before implementing recovery:
+Current recovery security baseline:
 
-- Define guardian threshold, independence assumptions, expiry, and cooling-off period.
-- Define signed approval and replay-prevention formats.
-- Define holder notification, cancellation, appeal, and incident handling.
+- Policies support generic M-of-N and default to 3-of-5. Active requests retain
+  an immutable policy/Guardian snapshot and block assignment/policy mutation.
+- A random 16-byte authorization secret is Shamir-split; it is not any KMS,
+  DID, JWT, credential, or holder private key.
+- Each share is AES-GCM encrypted with canonical associated data and a
+  separate HMAC integrity value derived through HKDF from a 32-byte master
+  key. Request/policy/version/Guardian/index bindings fail closed.
+- One challenge-bound decision per assigned active Guardian is enforced with
+  deterministic IDs, unique indexes, and optimistic versions. Repeated equal
+  requests are idempotent.
+- Quorum, time lock, leases, attempts, cancellation, expiration, and terminal
+  results are persisted. The worker cannot invoke key recovery before the
+  due timestamp.
+- Recovery-to-Identity calls use a short-lived grant bound to issuer,
+  audience, scope, wallet, owner, request, and exact idempotency key. Rotation
+  still passes through the existing provider-neutral `ManagedKeyService`.
+- Responses, representations, metrics, and normal error messages exclude
+  share ciphertexts, envelope keys, service grants, provider credentials,
+  private keys, and high-cardinality identity labels.
+
+Required before public or production recovery:
+
+- Verify each approval as an independent Guardian DID/device signature and
+  define enrollment, key rollover, loss, independence, MFA, and attestation.
+- Deliver one share independently to each Guardian-controlled secure device
+  or redesign custody so the service and database cannot reconstruct alone.
+- Add rate limits, anomaly detection, durable token revocation, notifications,
+  appeals, support/incident runbooks, and owner-visible cancellation alerts.
+- Couple state and audit evidence transactionally or implement a proven
+  audited reconciliation path; export to a tamper-evident monitored sink.
+- Deploy a reviewed vendor KMS/HSM, managed envelope key, TLS-isolated Mongo
+  replica, backups, failover drills, metrics/alerts, and retention policy.
+- Complete abuse-case testing, external security review, load/failure testing,
+  and production end-to-end latency measurement. The current 2.335 ms mean
+  benchmark is in-memory only and is not a production SLA.
 
 Before implementing blockchain:
 
@@ -255,7 +297,8 @@ Before implementing blockchain:
 intentionally public and provides no production security. A future deployment
 must use a secret manager, KMS/HSM or secure wallet, and workload identity;
 Compose Mongo root/application credentials and URI values are development
-placeholders. `MongoSettings` and the connection manager redact the URI from
+placeholders. Recovery development JWT/grant/envelope defaults are also
+non-production; production mode refuses missing explicit values. `MongoSettings` and the connection manager redact the URI from
 their representations and controlled failures.
 
 ## Vulnerability reporting

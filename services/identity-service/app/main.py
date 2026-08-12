@@ -4,6 +4,7 @@ from app.api.routes.health import router as health_router
 from app.api.v1.error_handlers import install_exception_handlers
 from app.api.v1.request_safety import JsonRequestSafetyMiddleware
 from app.api.v1.router import router as v1_router
+from app.api.internal.recovery import router as internal_recovery_router
 from app.core.config import APP_VERSION, SERVICE_NAME
 from app.lifecycle import application_lifespan
 
@@ -26,7 +27,7 @@ app = FastAPI(
         "development adapter and configurable generic HTTPS KMS gateway. "
         "Private keys never cross the provider boundary. There is no "
         "registration, refresh token, rate limiting, MFA, external identity "
-        "provider, presentation exchange, account recovery, or deployed "
+        "provider, presentation exchange, or deployed "
         "vendor-specific HSM integration."
     ),
     lifespan=application_lifespan,
@@ -35,3 +36,4 @@ app.add_middleware(JsonRequestSafetyMiddleware)
 install_exception_handlers(app)
 app.include_router(health_router)
 app.include_router(v1_router)
+app.include_router(internal_recovery_router)

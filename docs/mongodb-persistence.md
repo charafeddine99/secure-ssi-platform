@@ -383,6 +383,50 @@ The init script runs only when the Mongo data volume is empty. After changing
 initialization credentials in development, recreate the local volume
 deliberately; never delete an unknown or production volume.
 
+## Recovery persistence extension
+
+The Guardian recovery sprint adds a separate `secure_recovery` database and
+`recovery_app` Compose user. Recovery configuration, connection lifecycle,
+domain mappers, repository protocol, in-memory adapter, PyMongo adapter, and
+named-index creation remain isolated in the Recovery Service. Identity and
+Recovery do not share application database credentials.
+
+Recovery collections are:
+
+- `guardians`: assignment lifecycle, owner/assignee, DID metadata, timestamps,
+  and optimistic version;
+- `recovery_policies`: one M-of-N and timing/retry policy per wallet;
+- `recovery_requests`: immutable policy snapshot, digested challenge/nonce,
+  state, quorum, timing, lease, result/failure, and version;
+- `recovery_approvals`: one immutable decision per request/Guardian;
+- `recovery_secret_shares`: request-bound authenticated encrypted Shamir
+  envelopes and non-secret metadata;
+- `recovery_audit_events`: typed append-only deterministic recovery events.
+
+Unique indexes cover every domain identifier, active wallet/Guardian
+assignment, policy wallet, active recovery wallet, request/session, one
+request/Guardian decision, one request/Guardian share, one policy/share
+version/Guardian share, and audit event ID. Query indexes cover wallet and
+owner timelines, assignee/status, state/expiry, due time lock, stale execution,
+decisions, and audit timelines. Mutating Guardian, policy, and recovery request
+writes use exact prior-version predicates.
+
+The active-wallet uniqueness constraint is a partial index over the explicit
+nonterminal states. This makes concurrent duplicate request creation fail at
+the database boundary. Worker leases and state/version predicates prevent two
+workers from owning the same execution. The Identity managed-key database
+remains authoritative for keys; Recovery stores only outcome IDs/public DID
+metadata and never private material.
+
+Recovery state and its audit event are currently separate Mongo writes. This
+is a documented crash-gap limitation; production requires a transaction,
+embedded outbox intent, or deterministic audited reconciliation. Encrypted
+share envelopes are application-protected but centrally stored, so production
+also requires independent Guardian custody or equivalent separation.
+
+Full collection fields, indexes, workflow, and limitations are in
+[account-recovery.md](account-recovery.md).
+
 ## Testing
 
 Unit tests cover configuration, connection lifecycle, URI redaction, domain
@@ -401,6 +445,11 @@ private-material rejection, indexes, repository queries and compare-and-set
 behavior, provisioning idempotency, rotation lineage, lifecycle transitions,
 destruction delay, provider mismatch handling, signing, reconciliation, and
 opt-in real-Mongo round trips.
+Recovery tests cover mapper round trips, named indexes, duplicate assignments,
+one active request, immutable decisions/shares, optimistic races, due/stale
+queries, deterministic fake-Mongo integration, and service/API behavior. A
+real Recovery Mongo URI is not required for the default suite; Compose remains
+the local integration deployment.
 
 Real MongoDB integration tests are opt-in:
 
@@ -443,3 +492,6 @@ drops only that verified test database after execution.
   retention policy, and privacy review.
 - Audit persistence is an application audit foundation, not an independently
   tamper-evident or compliance-certified log.
+- Recovery state/audit writes are not transactionally coupled, and encrypted
+  Shamir envelopes remain centrally stored under one service-controlled
+  envelope key. Both require redesign or compensating controls for production.

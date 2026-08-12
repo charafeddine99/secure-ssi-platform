@@ -1,4 +1,4 @@
-# Planned Architecture
+# Secure SSI Platform Architecture
 
 ## Conceptual lifecycle
 
@@ -39,8 +39,8 @@ This sequence describes the project areas in the academic concept; it is not an 
 | Identity Service | Local DID resolution, synthetic VC/VP proofs, wallet/credential object ownership, provider-neutral managed holder keys, server challenges, challenge/domain/audience-bound presentations, presentation/key reconciliation, synthetic authentication/RBAC, MongoDB repositories, irreversible revocation, Status Lists, and durable audit delivery | Expose secrets, let roles bypass object ownership, persist raw private keys, trust client challenge bindings, bypass versions, reuse challenges, reverse revocation, treat signatures as claim truth, or accept arbitrary resolver/context input |
 | Fraud Service | Produce versioned advisory risk results and reason codes | Receive raw credentials or autonomously recover identities |
 | Blockchain Adapter/Contracts | Anchor narrowly selected non-identifying digests | Store DIDs, claims, credentials, guardian data, or personal data |
-| Recovery Service | Expiring, idempotent, threshold guardian workflow | Permit one guardian to finalize recovery |
-| MongoDB | User, holder-wallet, managed-key metadata, challenge, credential, and presentation lifecycle; status-list assignments/publications; durable outbox; and append-only audit persistence | Store raw private keys/provider credentials, bypass data minimization, erase revocation/outbox/replay evidence, reuse a VP challenge, or treat soft deletion as credential revocation |
+| Recovery Service | Expiring, idempotent, M-of-N Guardian workflow, encrypted Shamir authorization shares, time-lock reconciliation, and managed-key recovery orchestration | Permit one Guardian to finalize recovery, export a KMS key, expose shares, or bypass Identity managed-key policy |
+| MongoDB | User, holder-wallet, managed-key metadata, challenge, credential, presentation, and recovery lifecycle; status-list assignments/publications; durable outbox; and append-only audit persistence | Store raw private keys/provider credentials, bypass data minimization, erase revocation/outbox/replay evidence, reuse a VP challenge, or treat soft deletion as credential revocation |
 | External key provider | Generate and use asymmetric keys without export; return bounded public metadata and signatures | Return private material, accept an unapproved algorithm/purpose, bypass provider authorization, or expose credentials |
 | Redis | Planned short-lived challenges, idempotency, and rate-limit state | Become a system of record |
 
@@ -90,7 +90,7 @@ The rationale, limitations, and review triggers are in [ADR 0001](adr/0001-did-m
 - Mutating requests use idempotency keys and correlation identifiers.
 - Credentials and proofs are minimized and are never written to logs or a public ledger.
 - Fraud results are advisory and versioned.
-- Recovery uses expiry, threshold approval, cooling-off, notification, and audit controls.
+- Recovery implements expiry, threshold approval, a persisted time lock, cancellation, retry, and audit controls; external notification remains deferred.
 - Blockchain writes are optional until their necessity and privacy impact are justified.
 
 ## Current implementation boundary
@@ -105,6 +105,11 @@ wallet-bound short-lived presentations and reconcile stale verification work.
 These routes are a
 direct development boundary only; the planned production architecture still
 places authenticated, authorized, rate-limited access behind the API Gateway.
+The Recovery Service exposes protected routes under `/api/v1/guardians` and
+`/api/v1/recovery` for Guardian assignments, M-of-N policy, requests,
+decisions, cancellation, status, and admin reconciliation. Its production
+design still requires an API Gateway, rate limiting, MFA/device controls, and
+independent Guardian proof verification.
 
 The Identity Service also exposes public synthetic login at
 `POST /api/v1/auth/token` and protected current-user resolution at
@@ -211,6 +216,23 @@ Retry exhaustion is terminal `FAILED`. It never auto-deletes a provider key
 only because local metadata is inconsistent. Detailed behavior is in
 [external-kms-key-lifecycle.md](external-kms-key-lifecycle.md).
 
+The Recovery Service has a separate domain/application/infrastructure
+composition and a dedicated `secure_recovery` Mongo database. A request
+snapshots the active Guardian IDs and policy version, then Shamir-splits a
+random 16-byte recovery authorization secret. Each share is bound to request,
+policy, version, Guardian, and index and stored as an AES-GCM envelope with
+HKDF-derived encryption/integrity keys. The secret is not a managed key and no
+private key crosses the recovery boundary.
+
+Parallel Guardian decisions are unique per request/Guardian and use optimistic
+CAS quorum calculation. The state machine persists `QUORUM_REACHED`, then
+`WAITING_TIMELOCK`, before a leased worker may enter `EXECUTING`. Stale work is
+reconciled with bounded retries. A short-lived service grant binds the worker
+to the exact wallet, owner, request, and `managed-key:recover` scope. Identity
+then invokes `ManagedKeyService.recover_wallet`, preserving provider policy,
+rotation lineage, idempotency, and `did:key` successor behavior. Details and
+limitations are in [account-recovery.md](account-recovery.md).
+
 The HTTP router calls a credential application service. Dependency composition
 connects the existing validator, canonicalizer, signer, key provider, DID
 resolver, proof service, and injectable UTC clock. Infrastructure adapters
@@ -236,6 +258,7 @@ fully certified interoperability. Its boundaries are documented in
 [issuance-lifecycle.md](issuance-lifecycle.md),
 [verifiable-presentation.md](verifiable-presentation.md),
 [holder-wallet-and-key-custody.md](holder-wallet-and-key-custody.md),
+[account-recovery.md](account-recovery.md),
 [credential-api.md](credential-api.md), [vc-profile.md](vc-profile.md), and
 [vc-signing.md](vc-signing.md). The web UI remains static. MongoDB is
 integrated at the repository foundation; Redis remains provisioned but unused

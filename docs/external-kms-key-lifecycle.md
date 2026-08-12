@@ -236,7 +236,10 @@ independent security review.
 - Physical deletion may be asynchronous. The worker confirms or safely maps
   provider not-found to destroyed only after the scheduled time.
 
-There is no guardian or account recovery behavior in this sprint.
+The later Guardian recovery sprint integrates at this application-service
+boundary. It invokes `ManagedKeyService.recover_wallet` through a hidden,
+request-bound internal route; it does not call a provider or mutate key
+documents directly. See [account-recovery.md](account-recovery.md).
 
 ## Reconciliation
 
@@ -400,13 +403,14 @@ non-enumeration, OpenAPI, and opt-in real MongoDB behavior.
   writes. A database outage or process crash between them can leave an audit
   gap; production requires a transaction, embedded intent, or audited
   backfill/reconciliation design.
-- There is no account recovery, guardian recovery, blockchain, AI, DIDComm,
-  Presentation Exchange, selective disclosure, mobile wallet, or frontend
-  work in this sprint.
+- Guardian recovery now reuses this boundary, but no Guardian DID signature,
+  independent share delivery, blockchain, AI, DIDComm, Presentation Exchange,
+  selective disclosure, mobile wallet, or frontend is part of this KMS sprint.
 
 ## Future extensions
 
 Future, separately reviewed work may add vendor-specific adapters, PKCS#11,
 attestation validation, provider-native deletion evidence, a mutable holder
-DID publication workflow, a rotation scheduler, and account-recovery
-integration. None of those capabilities is claimed here.
+DID publication workflow, a rotation scheduler, and production hardening of
+the implemented recovery integration. None of those capabilities is claimed
+here.
