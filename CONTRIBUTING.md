@@ -1,17 +1,20 @@
 # Contribution workflow
 
-## Completed sprint publication rule
+## Completed change publication rule
 
-Every completed sprint must follow this sequence before it is considered delivered:
+Every completed sprint, prompt, or user request that changes this repository
+must follow this sequence before it is considered delivered. Read-only requests
+and requests that produce no repository changes do not create empty commits.
 
 1. Run the complete sprint-specific test suite and all applicable regression,
    lint, type-check, build, dependency, and formatting checks.
 2. Review `git status`, the complete diff, and `git diff --check`. Confirm that
    the change set contains only sprint-related source, test, configuration, and
-   documentation files. Never commit secrets, `.env` files, private keys,
+   request-related source, test, configuration, and documentation files. Never
+   commit secrets, `.env` files, private keys,
    caches, dependency directories, build output, or other generated artifacts.
 3. Stage only the reviewed files and create a descriptive commit on the sprint
-   branch. One completed sprint should have one clear feature commit whenever
+   branch. One completed logical change should have one clear commit whenever
    practical.
 4. Immediately push the tested commit and its sprint branch to the configured
    GitHub remote with a normal, non-force push.
