@@ -398,6 +398,17 @@ def db_save_credential(cred: Dict[str, Any]):
     conn.commit()
     conn.close()
 
+def get_hidden_fields_for_category(category: str) -> List[str]:
+    mapping = {
+        "IDENTITY": ["T.C. Kimlik No", "Anne Adı", "Baba Adı", "Seri No"],
+        "TRAVEL": ["Pasaport No", "Doğum Tarihi", "Biyometrik Çip İmzası"],
+        "TRANSPORT": ["Belge No", "Ceza Puanı"],
+        "HEALTH": ["Kronik Rahatsızlık", "Organ Bağışı"],
+        "FINANCE": ["Onaylı IBAN"],
+        "EDUCATION": ["Öğrenci No", "Giriş Yılı"]
+    }
+    return mapping.get(category, ["T.C. Kimlik No"])
+
 def db_get_credentials(user_did: Optional[str] = None, wallet_address: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -422,10 +433,11 @@ def db_get_credentials(user_did: Optional[str] = None, wallet_address: Optional[
         except Exception:
             pass
 
+        cat = r["category"]
         result.append({
             "id": r["id"],
             "title": r["title"],
-            "category": r["category"],
+            "category": cat,
             "type": r["credential_type"],
             "issuer": r["issuer"],
             "issuerName": r["issuer_name"],
@@ -438,7 +450,7 @@ def db_get_credentials(user_did: Optional[str] = None, wallet_address: Optional[
             "zkpRule": {
                 "description": f"{r['title']} Doğrulama Kuralı",
                 "predicate": r["zkp_predicate"] or "Kriptografik Ed25519 İspatı",
-                "hiddenFields": []
+                "hiddenFields": get_hidden_fields_for_category(cat)
             }
         })
     return result
@@ -450,6 +462,14 @@ def db_revoke_credential(credential_id: str) -> bool:
     conn.commit()
     rows_affected = cursor.rowcount
     conn.close()
+    if rows_affected > 0:
+        db_log_event(
+            event_type="CREDENTIAL_REVOKED",
+            actor_did="did:gov:tr:authority",
+            target_wallet="",
+            risk_score=0,
+            details={"credential_id": credential_id, "action": "REVOCATION_STATUS_LIST_UPDATED"}
+        )
     return rows_affected > 0
 
 def db_get_guardians(wallet_address: str) -> List[Dict[str, Any]]:
@@ -476,7 +496,50 @@ def db_approve_guardian(guardian_id: int) -> bool:
     cursor.execute("UPDATE guardians SET approved = 1 WHERE id = ?", (guardian_id,))
     conn.commit()
     conn.close()
+    db_log_event(
+        event_type="GUARDIAN_APPROVED",
+        actor_did=f"guardian:{guardian_id}",
+        target_wallet="",
+        risk_score=0,
+        details={"guardian_id": guardian_id, "threshold_met": True}
+    )
     return True
+
+def db_log_event(event_type: str, actor_did: str = "", target_wallet: str = "", risk_score: int = 0, details: Optional[Dict[str, Any]] = None):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+        INSERT INTO audit_logs (event_type, actor_did, target_wallet, risk_score, details_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (event_type, actor_did, target_wallet, risk_score, json.dumps(details or {}), now_iso))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Audit log error: {e}")
+
+def db_get_audit_logs(limit: int = 50) -> List[Dict[str, Any]]:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT ?", (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            {
+                "id": r["id"],
+                "event_type": r["event_type"],
+                "actor_did": r["actor_did"],
+                "target_wallet": r["target_wallet"],
+                "risk_score": r["risk_score"],
+                "details": json.loads(r["details_json"]) if r["details_json"] else {},
+                "created_at": r["created_at"]
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
 
 def db_get_stats() -> Dict[str, int]:
     conn = get_db_connection()
