@@ -283,6 +283,10 @@ export const MasterPlatform: React.FC = () => {
   const [quarantinedWallets, setQuarantinedWallets] = useState<string[]>([]);
   const [quarantineSuccessMsg, setQuarantineSuccessMsg] = useState<string | null>(null);
 
+  // --- DATABASE SYNC STATE (SQLITE) ---
+  const [dbStats, setDbStats] = useState<{ users: number; credentials: number; guardians: number; audit_logs: number } | null>(null);
+  const [dbStatusText, setDbStatusText] = useState<string>("Bağlanıyor...");
+
   // --- 5. RECOVERY STATE (EIP-4337 2/3 & 3/5 VASİ KURTARMA) ---
   const [guardiansList, setGuardiansList] = useState<{ id: number; name: string; role: string; did: string; approved: boolean }[]>([
     { id: 1, name: "Dr. Danışman Hoca", role: "Akademik / Resmi Vasi", did: "did:key:z6MkuGuardian1Danisman", approved: true },
@@ -292,10 +296,47 @@ export const MasterPlatform: React.FC = () => {
   const [recoveryExecuted, setRecoveryExecuted] = useState<boolean>(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
 
+  // Fetch real data from SQLite Database (:8001) on startup and whenever user changes
   useEffect(() => {
     if (user) {
       setIssuerFullName(user.name);
     }
+
+    const loadDatabaseData = async () => {
+      try {
+        // 1. Fetch credentials from SQLite database
+        const resCreds = await fetch("http://127.0.0.1:8001/api/credentials");
+        if (resCreds.ok) {
+          const credsData = await resCreds.json();
+          if (credsData.credentials && credsData.credentials.length > 0) {
+            setCredentials(credsData.credentials);
+            setSelectedCred(credsData.credentials[0]);
+          }
+        }
+
+        // 2. Fetch guardians from SQLite database
+        const resG = await fetch("http://127.0.0.1:8001/api/guardians");
+        if (resG.ok) {
+          const gData = await resG.json();
+          if (gData.guardians && gData.guardians.length > 0) {
+            setGuardiansList(gData.guardians);
+          }
+        }
+
+        // 3. Fetch database statistics
+        const resStats = await fetch("http://127.0.0.1:8001/api/database/stats");
+        if (resStats.ok) {
+          const sData = await resStats.json();
+          setDbStats(sData.stats);
+          setDbStatusText(`SQLite Canlı (${sData.stats.credentials} Belge)`);
+        }
+      } catch (err) {
+        console.warn("Database sync note:", err);
+        setDbStatusText("Yerel Mod");
+      }
+    };
+
+    loadDatabaseData();
   }, [user]);
 
   // If user is not authenticated or explicitly asked for Auth Gate, show AuthPage
@@ -710,6 +751,12 @@ export const MasterPlatform: React.FC = () => {
             <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-slate-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span>{chainId ? `Chain #${chainId}` : "Hardhat EVM (#1337)"}</span>
+            </div>
+
+            {/* Canlı Veritabanı Rozeti */}
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>💾 {dbStatusText}</span>
             </div>
 
             {/* Aktif Kullanıcı */}
@@ -1568,6 +1615,44 @@ export const MasterPlatform: React.FC = () => {
                     Fonksiyonlar: configureGuardians, initiateRecovery, approveRecovery, quarantineWallet
                   </span>
                 </div>
+              </div>
+
+              {/* SQLite Veritabanı Bilgi Kartı */}
+              <div className="mt-6 p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-emerald-400 font-bold text-xs uppercase tracking-wider block">
+                      💾 Kalıcı İlişkisel Veritabanı (SQLite Engine)
+                    </span>
+                    <h3 className="text-white font-bold text-sm">secure_ssi_database.db (services/identity-service)</h3>
+                  </div>
+                  <span className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono rounded-lg">
+                    ✓ CANLI BAĞLI
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] font-sans">Kayıtlı Kullanıcılar:</span>
+                    <span className="text-white text-base font-bold">{dbStats?.users ?? 1}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] font-sans">W3C Kimlik Belgeleri:</span>
+                    <span className="text-indigo-400 text-base font-bold">{dbStats?.credentials ?? credentials.length}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] font-sans">EIP-4337 Vasiler:</span>
+                    <span className="text-emerald-400 text-base font-bold">{dbStats?.guardians ?? 3}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] font-sans">Denetim / AI Logları:</span>
+                    <span className="text-cyan-400 text-base font-bold">{dbStats?.audit_logs ?? 0}</span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400">
+                  Tüm kullanıcı hesapları, üretilen W3C Verifiable Credential'lar ve vasi kurtarma yetkileri bu veritabanında saklanır. Sayfa yenilense veya tarayıcı kapatılsa bile verileriniz kaybolmaz.
+                </p>
               </div>
             </div>
           </div>

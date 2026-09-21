@@ -36,6 +36,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ssi_issuance_service")
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from app.database import (
+    initialize_database,
+    db_register_user,
+    db_authenticate_user,
+    db_get_credentials,
+    db_save_credential,
+    db_revoke_credential,
+    db_get_guardians,
+    db_approve_guardian,
+    db_get_stats
+)
+
+# Initialize database tables and seed rows on startup
+initialize_database()
+
 # =====================================================================
 # Configuration & Environment Variables
 # =====================================================================
@@ -409,9 +426,38 @@ async def issue_credential(payload: IssueCredentialRequest):
             claims=payload.claims
         )
 
+        # Step 5: Save Credential permanently into SQLite Database
+        db_save_credential({
+            "id": vc_document["id"],
+            "user_did": payload.did_id,
+            "wallet_address": payload.wallet_address,
+            "credential_type": payload.credential_type or "IdentityVerificationCredential",
+            "title": payload.title or payload.credential_type or "Doğrulanabilir Belge",
+            "category": "IDENTITY" if "National" in (payload.credential_type or "") else (
+                "TRAVEL" if "Passport" in (payload.credential_type or "") else (
+                    "TRANSPORT" if "Driver" in (payload.credential_type or "") else (
+                        "HEALTH" if "Health" in (payload.credential_type or "") else (
+                            "FINANCE" if "Bank" in (payload.credential_type or "") else (
+                                "EDUCATION" if "Degree" in (payload.credential_type or "") else "IDENTITY"
+                            )
+                        )
+                    )
+                )
+            ),
+            "issuer": vc_document["issuer"],
+            "issuer_name": payload.title or "Resmi Kurum",
+            "issued_date": vc_document["issuanceDate"][:10],
+            "expiry_date": vc_document["expirationDate"][:10],
+            "status": "ACTIVE",
+            "claims": payload.claims,
+            "proof_value": vc_document["proof"]["proofValue"],
+            "ai_risk_score": risk_score,
+            "zkp_predicate": "Kriptografik Ed25519 İspatı"
+        })
+
         return {
             "status": "SUCCESS",
-            "message": "Verifiable Credential successfully issued.",
+            "message": "Verifiable Credential successfully issued and persisted in database.",
             "risk_score": risk_score,
             "verifiable_credential": vc_document
         }
@@ -425,10 +471,75 @@ async def issue_credential(payload: IssueCredentialRequest):
             detail=f"Internal SSI issuance pipeline error: {str(exc)}"
         )
 
+# Database Request Models
+class RegisterRequest(BaseModel):
+    name: str
+    student_id: Optional[str] = ""
+    email: str
+    department: Optional[str] = ""
+    password: str
+    did: str
+    wallet_address: str
+    seed_phrase: Optional[str] = ""
 
-# =====================================================================
-# 5. Sample Uvicorn Runner
-# =====================================================================
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class ApproveGuardianRequest(BaseModel):
+    guardian_id: int
+
+@app.post("/api/auth/register", tags=["Auth & Database"])
+async def register_user_endpoint(payload: RegisterRequest):
+    try:
+        user = db_register_user(
+            name=payload.name,
+            student_id=payload.student_id or "",
+            email=payload.email,
+            department=payload.department or "",
+            password=payload.password,
+            did=payload.did,
+            wallet_address=payload.wallet_address,
+            seed_phrase=payload.seed_phrase or ""
+        )
+        return {"status": "SUCCESS", "user": user}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/auth/login", tags=["Auth & Database"])
+async def login_user_endpoint(payload: LoginRequest):
+    user = db_authenticate_user(payload.email, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Geçersiz e-posta veya şifre.")
+    return {"status": "SUCCESS", "user": user}
+
+@app.get("/api/credentials", tags=["Credentials & Database"])
+async def get_credentials_endpoint(user_did: Optional[str] = None, wallet_address: Optional[str] = None):
+    creds = db_get_credentials(user_did=user_did, wallet_address=wallet_address)
+    return {"status": "SUCCESS", "count": len(creds), "credentials": creds}
+
+@app.post("/api/credentials/{credential_id}/revoke", tags=["Credentials & Database"])
+async def revoke_credential_endpoint(credential_id: str):
+    success = db_revoke_credential(credential_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+    return {"status": "SUCCESS", "message": f"{credential_id} başarıyla iptal edildi."}
+
+@app.get("/api/guardians", tags=["Recovery & Database"])
+async def get_guardians_endpoint(wallet_address: Optional[str] = None):
+    wallet = wallet_address or "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    guardians = db_get_guardians(wallet)
+    return {"status": "SUCCESS", "guardians": guardians}
+
+@app.post("/api/guardians/approve", tags=["Recovery & Database"])
+async def approve_guardian_endpoint(payload: ApproveGuardianRequest):
+    db_approve_guardian(payload.guardian_id)
+    return {"status": "SUCCESS", "message": f"Vasi #{payload.guardian_id} onayı kaydedildi."}
+
+@app.get("/api/database/stats", tags=["Database & Health"])
+async def get_database_stats():
+    stats = db_get_stats()
+    return {"status": "SUCCESS", "database": "SQLite (secure_ssi_database.db)", "stats": stats}
 
 if __name__ == "__main__":
     import uvicorn
