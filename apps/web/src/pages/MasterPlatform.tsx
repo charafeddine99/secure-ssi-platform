@@ -851,26 +851,51 @@ export const MasterPlatform: React.FC = () => {
 
   const approvedGuardiansCount = guardiansList.filter((g) => g.approved).length;
 
-  const filteredCredentials = selectedCategory === "ALL"
-    ? credentials
-    : credentials.filter((c) => c.category === selectedCategory);
+  const filteredCredentials = (
+    selectedCategory === "ALL"
+      ? credentials
+      : credentials.filter((c) => c.category === selectedCategory)
+  ).slice().sort((a, b) => {
+    if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
+    if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
+    return 0;
+  });
 
   const getCategoryBadge = (cat: CredentialCategory) => {
     switch (cat) {
       case "IDENTITY":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">🪪 Ulusal Kimlik</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5 shadow-sm">🪪 T.C. Kimlik</span>;
       case "TRAVEL":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">✈️ Pasaport</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 shadow-sm">✈️ Pasaport</span>;
       case "TRANSPORT":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🚗 Ehliyet</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">🚗 Ehliyet</span>;
       case "HEALTH":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">🏥 Sağlık</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 shadow-sm">🏥 Sağlık Kartı</span>;
       case "FINANCE":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">🏦 Finans</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/40 flex items-center gap-1.5 shadow-sm">🏦 Banka KYC</span>;
       case "EDUCATION":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">🎓 Diploma</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5 shadow-sm">🎓 Üniversite</span>;
       default:
         return null;
+    }
+  };
+
+  const getCategoryGradient = (cat: CredentialCategory) => {
+    switch (cat) {
+      case "IDENTITY":
+        return "border-t-2 border-t-cyan-500 hover:border-cyan-500/60";
+      case "TRAVEL":
+        return "border-t-2 border-t-amber-500 hover:border-amber-500/60";
+      case "TRANSPORT":
+        return "border-t-2 border-t-emerald-500 hover:border-emerald-500/60";
+      case "HEALTH":
+        return "border-t-2 border-t-rose-500 hover:border-rose-500/60";
+      case "FINANCE":
+        return "border-t-2 border-t-purple-500 hover:border-purple-500/60";
+      case "EDUCATION":
+        return "border-t-2 border-t-indigo-500 hover:border-indigo-500/60";
+      default:
+        return "border-t-2 border-t-slate-700";
     }
   };
 
@@ -961,25 +986,29 @@ export const MasterPlatform: React.FC = () => {
       {/* ========================================================= */}
       {/* MODÜL VE SEKME SEÇİCİ (PROJE RAPORUNDAKİ TÜM BÖLÜMLER) */}
       {/* ========================================================= */}
-      <nav className="bg-slate-900/50 border-b border-slate-800/80 backdrop-blur-sm sticky top-16 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto gap-2 py-2.5 text-xs font-medium scrollbar-none">
+      <nav className="bg-slate-900/80 border-b border-slate-800/80 backdrop-blur-md sticky top-16 z-30 shadow-sm">
+        <div 
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center overflow-x-auto gap-2 py-2 text-xs font-medium"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {[
-            { id: "wallet", label: "🪪 Dijital Kimlik Kasası (Holder)", badge: `${credentials.length} Belge` },
-            { id: "issuer", label: "🏛️ Resmi Kurum İhraç Portalı (Issuer)", badge: "W3C VC" },
-            { id: "verifier", label: "🔍 Doğrulayıcı & ZKP (Verifier)", badge: "Sıfır Bilgi İspatı" },
-            { id: "ai", label: "🤖 AI Dolandırıcılık Tespiti", badge: "XGBoost + Autoencoder" },
-            { id: "recovery", label: "🛡️ Acil Durum Kurtarma", badge: "EIP-4337 Multi-Sig" },
-            { id: "blockchain", label: "⛓️ Blokzincir Kayıt Defteri", badge: "Hardhat EVM" }
+            { id: "wallet", icon: "🪪", label: "Kimlik Kasası (Holder)", badge: `${credentials.length} Belge` },
+            { id: "issuer", icon: "🏛️", label: "Kurum İhracı (Issuer)", badge: "W3C VC" },
+            { id: "verifier", icon: "🔍", label: "ZKP Doğrulayıcı (Verifier)", badge: "Sıfır Bilgi" },
+            { id: "ai", icon: "🤖", label: "AI Dolandırıcılık Tespiti", badge: "XGBoost" },
+            { id: "recovery", icon: "🛡️", label: "Acil Kurtarma (Guardian)", badge: "3/5 Quorum" },
+            { id: "blockchain", icon: "⛓️", label: "Blokzincir Kayıt Defteri", badge: "Hardhat EVM" }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabKey)}
-              className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition flex items-center gap-2 ${
+              className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition flex items-center gap-1.5 flex-shrink-0 ${
                 activeTab === tab.id
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 font-semibold"
-                  : "bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-semibold"
+                  : "bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-700/40"
               }`}
             >
+              <span>{tab.icon}</span>
               <span>{tab.label}</span>
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
@@ -1068,8 +1097,8 @@ export const MasterPlatform: React.FC = () => {
               {filteredCredentials.map((cred) => (
                 <div
                   key={cred.id}
-                  className={`bg-slate-900 border rounded-3xl p-6 transition flex flex-col justify-between shadow-xl relative overflow-hidden ${
-                    cred.status === "ACTIVE" ? "border-slate-800 hover:border-indigo-500/60" : "border-rose-900/60 bg-rose-950/10"
+                  className={`bg-slate-900/90 border rounded-3xl p-6 transition-all duration-300 flex flex-col justify-between shadow-xl relative overflow-hidden ${getCategoryGradient(cred.category)} ${
+                    cred.status === "ACTIVE" ? "border-slate-800/80 hover:shadow-2xl hover:-translate-y-0.5" : "border-rose-900/60 bg-rose-950/10"
                   }`}
                 >
                   {/* Kart Başlığı & Durum */}
