@@ -167,6 +167,30 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
           </div>
         ) : (
           <>
+            {/* Quick 1-Click Launch Banner */}
+            <div className="mb-5 p-4 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border border-indigo-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-xl">
+              <div>
+                <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Hızlı Başlat & Sunum Modu
+                </span>
+                <span className="text-xs font-bold text-white block mt-0.5">
+                  Charaf Eddine Bessanane (B210109591)
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  SUBÜ Bilgisayar Mühendisliği Tasarımı
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleQuickDemo}
+                className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/30 transition active:scale-95 whitespace-nowrap flex items-center gap-1.5"
+              >
+                <span>🚀</span>
+                <span>Hemen Başlat</span>
+              </button>
+            </div>
+
             {/* Mode selection tabs */}
             <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-5 text-xs font-medium">
               <button

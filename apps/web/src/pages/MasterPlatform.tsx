@@ -909,38 +909,52 @@ export const MasterPlatform: React.FC = () => {
                   </div>
 
                   {/* Alt İşlemler */}
-                  <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                  <div className="pt-4 mt-4 border-t border-slate-800/80 space-y-2">
                     <button
                       onClick={() => {
+                        setVerifierTargetId(cred.id);
                         setSelectedCred(cred);
-                        setShowQrModal(true);
+                        setActiveTab("verifier");
                       }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-medium transition flex items-center gap-1.5"
+                      className="w-full py-2 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5"
                     >
-                      <span>📲</span>
-                      <span>QR Sunum</span>
+                      <span>🔍</span>
+                      <span>Bu Belgeyi Doğrula (ZKP Testi)</span>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setSelectedCred(cred);
-                        setShowJsonModal(true);
-                      }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white rounded-xl text-xs font-medium transition flex items-center gap-1.5"
-                    >
-                      <span>📄</span>
-                      <span>JSON-LD</span>
-                    </button>
-
-                    {cred.status === "ACTIVE" && (
+                    <div className="flex items-center justify-between gap-2">
                       <button
-                        onClick={() => handleRevoke(cred.id)}
-                        className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-medium transition"
-                        title="Blokzincir Status List üzerinde iptal et"
+                        onClick={() => {
+                          setSelectedCred(cred);
+                          setShowQrModal(true);
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5"
                       >
-                        İptal Et
+                        <span>📲</span>
+                        <span>QR Sunum</span>
                       </button>
-                    )}
+
+                      <button
+                        onClick={() => {
+                          setSelectedCred(cred);
+                          setShowJsonModal(true);
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5"
+                      >
+                        <span>📄</span>
+                        <span>JSON-LD</span>
+                      </button>
+
+                      {cred.status === "ACTIVE" && (
+                        <button
+                          onClick={() => handleRevoke(cred.id)}
+                          className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-medium transition"
+                          title="Blokzincir Status List üzerinde iptal et"
+                        >
+                          İptal
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1242,8 +1256,45 @@ export const MasterPlatform: React.FC = () => {
                 Makine öğrenmesi modellerimiz (XGBoost ve Autoencoder), kimlik doğrulama isteklerindeki başarısız giriş denemelerini, coğrafi imkansız seyahat hızını ve cihaz tutarsızlıklarını gerçek zamanlı analiz eder.
               </p>
 
+              {/* 1-Tıkla Test Senaryoları */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiFailedCount(0);
+                    setAiGeoKm(15);
+                    setAiIsTor(false);
+                    setAiDeviceMatch(true);
+                  }}
+                  className="p-3.5 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/40 rounded-2xl text-left transition flex items-center gap-3 shadow-md"
+                >
+                  <span className="text-2xl">🟢</span>
+                  <div>
+                    <span className="text-xs font-bold text-white block">Senaryo 1: Normal Kullanıcı Girişi</span>
+                    <span className="text-[11px] text-emerald-300">0 başarısız deneme, yerel ağ, bilinen cihaz (Düşük Risk).</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiFailedCount(6);
+                    setAiGeoKm(4200);
+                    setAiIsTor(true);
+                    setAiDeviceMatch(false);
+                  }}
+                  className="p-3.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 rounded-2xl text-left transition flex items-center gap-3 shadow-md"
+                >
+                  <span className="text-2xl">🔴</span>
+                  <div>
+                    <span className="text-xs font-bold text-white block">Senaryo 2: Siber Saldırı & İmkansız Seyahat</span>
+                    <span className="text-[11px] text-rose-300">6 başarısız deneme, 4200 km, Tor çıkış IP'si (Karantina Riski).</span>
+                  </div>
+                </button>
+              </div>
+
               {/* Sürgülü İnteraktif Kontroller */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4">
                 <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-2">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-slate-300">Ardışık Başarısız Giriş Denemeleri:</span>
@@ -1400,6 +1451,28 @@ export const MasterPlatform: React.FC = () => {
                   {recoveryFeedback}
                 </div>
               )}
+
+              {/* 1-Tıkla Simülasyon Kartı */}
+              <div className="mt-5 p-4 bg-indigo-950/40 border border-indigo-500/40 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-lg">
+                <div>
+                  <span className="text-xs font-bold text-indigo-300 block">⚡ 1-Tıkla Sosyal Kurtarma Senaryosu Testi</span>
+                  <span className="text-[11px] text-slate-300">
+                    Cihaz kaybını simüle eder, 2 vasiden (Danışman ve Kurum) onay toplar ve yeni anahtar kümesi ile kimliğinizi geri yükler.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = guardiansList.map((g, i) => (i < 2 ? { ...g, approved: true } : g));
+                    setGuardiansList(updated);
+                    setRecoveryExecuted(true);
+                    setRecoveryFeedback("✓ 2/3 Vasi Çoğunluğu Sağlandı: Eski özel anahtar ve DID blokzincirde iptal edildi. Yeni anahtar kümesi ile kimliğinize erişim sağlandı!");
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs rounded-xl shadow-md whitespace-nowrap active:scale-95 transition"
+                >
+                  Kurtarma Senaryosunu Çalıştır
+                </button>
+              </div>
 
               {/* Vasi Listesi */}
               <div className="mt-6 space-y-3">
