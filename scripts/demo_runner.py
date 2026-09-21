@@ -183,16 +183,6 @@ def main():
     print(f"{GREEN}✔ Kurtarma Başarıyla Tamamlandı! Süre: {elapsed_s:.2f} saniye (Hedef: 2.7 sn){RESET}")
 
     # -------------------------------------------------------------
-    # ADIM 7: ESP32 IOT GÜVENLİ KAPI ERİŞİM TESTİ
-    # -------------------------------------------------------------
-    print_header("ADIM 7: ESP32 IOT GÜVENLİ KAPI ERİŞİM DOĞRULAMASI")
-    print(f"{GREEN}✔ IoT Erişim Köprüsü Çağrıldı (esp32-door-01):{RESET}")
-    print(f"  • Kart / DID Okundu : did:key:z6MkuNewRotatedKey2026")
-    print(f"  • AI Risk Analizi   : 0.05 (LOW)")
-    print(f"  • Röle / Kilit Emri : KAPILARI AÇ (5 SANİYE)")
-    print(f"  • Durum             : 'Hoşgeldiniz, Charaf Eddine Bessanane. Kapı açıldı.'")
-
-    # -------------------------------------------------------------
     # GENEL ÖZET
     # -------------------------------------------------------------
     print(f"\n{BOLD}{GREEN}{'='*80}{RESET}")
