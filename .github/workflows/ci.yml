@@ -1,0 +1,80 @@
+name: Secure SSI Platform CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-python-services:
+    name: Test Python Microservices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx fastapi uvicorn pydantic
+
+      - name: Run AI Fraud Service Tests
+        run: |
+          cd services/fraud-service
+          PYTHONPATH=. pytest tests/ -v
+
+      - name: Run API Gateway Tests
+        run: |
+          cd services/api-gateway
+          PYTHONPATH=. pytest tests/ -v
+
+  test-smart-contracts:
+    name: Test Blockchain & Smart Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: blockchain/package-lock.json
+
+      - name: Install Blockchain Dependencies
+        run: |
+          cd blockchain
+          npm ci
+
+      - name: Compile and Test Solidity Contracts
+        run: |
+          cd blockchain
+          npx hardhat test
+
+  test-frontend:
+    name: Build & Test React Web3 App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Web Dependencies
+        run: |
+          cd apps/web
+          npm ci
+
+      - name: Build Web Application
+        run: |
+          cd apps/web
+          npm run build
