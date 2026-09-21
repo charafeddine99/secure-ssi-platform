@@ -51,8 +51,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
       }
     }
-    // Do not auto-login on initial load so the dedicated Login / Register screen is shown
-    return null;
+    // Auto-login with primary academic profile by default so dashboard is immediately accessible
+    return DEFAULT_DEMO_USER;
   });
 
   useEffect(() => {
