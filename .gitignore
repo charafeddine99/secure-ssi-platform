@@ -31,3 +31,7 @@ Desktop.ini
 *.log
 mongodb-data/
 kms-data/
+artifacts/
+typechain-types/
+cache/
+*.tsbuildinfo
