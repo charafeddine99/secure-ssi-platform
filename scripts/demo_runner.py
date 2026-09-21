@@ -294,6 +294,17 @@ def main():
     print(f"  • Ed25519 İmza Değeri  : {proof_val[:45]}...")
     print(f"  • Toplam İşlem Süresi  : {issue_ms:.2f} ms")
 
+    # Demo sonrası cüzdan temizliği: Mükerrer kart birikmesini önle
+    if vc_id and vc_id != "urn:uuid:demo-vc":
+        import sqlite3
+        try:
+            db_conn = sqlite3.connect(ROOT_DIR / "services" / "identity-service" / "secure_ssi_database.db")
+            db_conn.execute("DELETE FROM credentials WHERE id = ?", (vc_id,))
+            db_conn.commit()
+            db_conn.close()
+        except Exception:
+            pass
+
     # -------------------------------------------------------------
     # ADIM 6: 3/5 GUARDIAN SOSYAL KURTARMA VE ON-CHAIN İMZALAR
     # -------------------------------------------------------------

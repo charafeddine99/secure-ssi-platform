@@ -731,6 +731,10 @@ export const MasterPlatform: React.FC = () => {
           maskedFields: zkpMasked ? targetCred.zkpRule.hiddenFields : []
         });
       }
+
+      setTimeout(() => {
+        document.getElementById("verifier-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 50);
     } catch (err: any) {
       console.error("Verification error:", err);
     } finally {
@@ -759,6 +763,9 @@ export const MasterPlatform: React.FC = () => {
       if (!res.ok) throw new Error("AI Servisi yanıt vermedi");
       const data = await res.json();
       setAiEvalResult(data);
+      setTimeout(() => {
+        document.getElementById("ai-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 50);
     } catch (err) {
       console.warn("AI service fallback:", err);
       // Heuristic model fallback if offline
@@ -775,6 +782,9 @@ export const MasterPlatform: React.FC = () => {
         autoencoder_mse: score > 50 ? 0.084 : 0.008,
         reasons: score > 70 ? ["Çoklu başarısız deneme", "Şüpheli Tor/Proxy düğümü", "İmkansız seyahat hızı"] : ["Normal davranış kalıbı"]
       });
+      setTimeout(() => {
+        document.getElementById("ai-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 50);
     } finally {
       setAiLoading(false);
     }
@@ -1333,6 +1343,27 @@ export const MasterPlatform: React.FC = () => {
                     </span>
                   </button>
                 </div>
+
+                {/* Buton Yanı Doğrudan Bildirim ve Cüzdana Yönlendirme */}
+                {issuerNotification && (
+                  <div id="issuer-notification-banner" className="mt-4 p-4 rounded-2xl bg-emerald-950/80 border-2 border-emerald-500/60 text-emerald-300 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in shadow-xl">
+                    <div className="flex items-center gap-2.5 text-xs font-medium">
+                      <span className="text-xl">✨</span>
+                      <span>{issuerNotification.msg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("wallet");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold whitespace-nowrap shadow-lg shadow-emerald-600/30 flex items-center gap-1.5"
+                    >
+                      <span>🪪</span>
+                      <span>Dijital Cüzdana Git ve Gör ➔</span>
+                    </button>
+                  </div>
+                )}
               </form>
             </div>
           </div>
@@ -1420,7 +1451,7 @@ export const MasterPlatform: React.FC = () => {
 
               {/* Doğrulama Sonuç Kartı */}
               {verifierResult && (
-                <div className="mt-6 p-6 bg-slate-950 border border-slate-800 rounded-3xl space-y-4 animate-fade-in">
+                <div id="verifier-result-card" className="mt-6 p-6 bg-slate-950 border-2 border-indigo-500/50 rounded-3xl space-y-4 animate-fade-in shadow-2xl">
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${
@@ -1606,7 +1637,7 @@ export const MasterPlatform: React.FC = () => {
 
               {/* AI Sonuç Raporu */}
               {aiEvalResult && (
-                <div className="mt-6 p-6 bg-slate-950 border border-slate-800 rounded-3xl space-y-4 animate-fade-in">
+                <div id="ai-result-card" className="mt-6 p-6 bg-slate-950 border-2 border-violet-500/50 rounded-3xl space-y-4 animate-fade-in shadow-2xl">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <span className="text-[11px] font-bold text-slate-400 uppercase">Hibrit Güvenlik Değerlendirmesi</span>
