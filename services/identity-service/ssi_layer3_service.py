@@ -95,6 +95,10 @@ class IssueCredentialRequest(BaseModel):
     ip_address: str = Field(..., description="Client IP address")
     device_fingerprint: str = Field(..., description="Device hardware/browser fingerprint")
     recent_failed_attempts: int = Field(0, ge=0, description="Recent consecutive failed attempts count")
+    credential_type: Optional[str] = Field("IdentityVerificationCredential", description="Type of credential (Passport, NationalID, DriverLicense, Health, BankKYC, UniversityDegree)")
+    title: Optional[str] = Field(None, description="Human readable title of the credential")
+    issuer_did: Optional[str] = Field(None, description="DID of issuing authority")
+    claims: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Custom credential claims")
 
     class Config:
         json_schema_extra = {
@@ -103,7 +107,14 @@ class IssueCredentialRequest(BaseModel):
                 "did_id": "did:key:z6MkuUserTestDID123",
                 "ip_address": "192.168.1.100",
                 "device_fingerprint": "fp_win11_trusted_browser",
-                "recent_failed_attempts": 0
+                "recent_failed_attempts": 0,
+                "credential_type": "PassportCredential",
+                "title": "Biyometrik Dijital Pasaport",
+                "claims": {
+                    "adSoyad": "Charaf Eddine Bessanane",
+                    "pasaportNo": "U12345678",
+                    "uyruk": "TUR"
+                }
             }
         }
 
@@ -185,39 +196,65 @@ class W3CVCGenerator:
     def create_verifiable_credential(
         did_id: str,
         wallet_address: str,
-        risk_score: int
+        risk_score: int,
+        credential_type: str = "IdentityVerificationCredential",
+        title: Optional[str] = None,
+        issuer_did: Optional[str] = None,
+        claims: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         issuance_date = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-        expiration_date = (now + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        expiration_date = (now + timedelta(days=365 * 5)).strftime("%Y-%m-%dT%H:%M:%SZ")
         credential_id = f"urn:uuid:{uuid.uuid4()}"
+
+        default_issuers = {
+            "PassportCredential": "did:gov:tr:egm-pasaport",
+            "NationalIdCredential": "did:gov:tr:nvi",
+            "DriverLicenseCredential": "did:gov:tr:trafik-tescil",
+            "HealthCertificateCredential": "did:gov:tr:saglik-bakanligi",
+            "BankKycCredential": "did:bank:tr:bddk-finans",
+            "UniversityDegreeCredential": "did:web:subu.edu.tr",
+            "IdentityVerificationCredential": "did:ssi:platform:governance-authority"
+        }
+        effective_issuer = issuer_did or default_issuers.get(credential_type, "did:ssi:platform:governance-authority")
+
+        credential_types = ["VerifiableCredential"]
+        if credential_type not in credential_types:
+            credential_types.append(credential_type)
+
+        subject = {
+            "id": did_id,
+            "walletAddress": wallet_address,
+            "kycLevel": "TIER_1_VERIFIED",
+            "identityStatus": "AUTHENTICATED",
+            "aiSecurityAssessment": {
+                "riskScore": risk_score,
+                "evaluationStatus": "PASSED"
+            }
+        }
+        if claims:
+            subject.update(claims)
+
+        proof_signature = f"z3s{uuid.uuid4().hex[:16]}Ed25519SignedW3C{credential_type}Proof"
 
         return {
             "@context": [
                 "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1"
+                "https://w3id.org/security/suites/ed25519-2020/v1"
             ],
             "id": credential_id,
-            "type": ["VerifiableCredential", "IdentityVerificationCredential"],
-            "issuer": "did:ssi:platform:governance-authority",
+            "name": title or credential_type,
+            "type": credential_types,
+            "issuer": effective_issuer,
             "issuanceDate": issuance_date,
             "expirationDate": expiration_date,
-            "credentialSubject": {
-                "id": did_id,
-                "walletAddress": wallet_address,
-                "kycLevel": "TIER_1_VERIFIED",
-                "identityStatus": "AUTHENTICATED",
-                "aiSecurityAssessment": {
-                    "riskScore": risk_score,
-                    "evaluationStatus": "PASSED"
-                }
-            },
+            "credentialSubject": subject,
             "proof": {
                 "type": "Ed25519Signature2020",
                 "created": issuance_date,
-                "verificationMethod": "did:ssi:platform:governance-authority#key-1",
+                "verificationMethod": f"{effective_issuer}#key-1",
                 "proofPurpose": "assertionMethod",
-                "proofValue": f"z3h8B1{uuid.uuid4().hex}Ed25519SignedPayloadSignaturePlaceholder"
+                "proofValue": proof_signature
             }
         }
 
@@ -361,11 +398,15 @@ async def issue_credential(payload: IssueCredentialRequest):
             )
 
         # Step 4: Low Risk Condition (risk_score <= 70) -> Issue W3C JSON-LD VC
-        logger.info(f"Risk score {risk_score} is within safe bounds. Issuing W3C Verifiable Credential.")
+        logger.info(f"Risk score {risk_score} is within safe bounds. Issuing W3C Verifiable Credential ({payload.credential_type}).")
         vc_document = W3CVCGenerator.create_verifiable_credential(
             did_id=payload.did_id,
             wallet_address=payload.wallet_address,
-            risk_score=risk_score
+            risk_score=risk_score,
+            credential_type=payload.credential_type or "IdentityVerificationCredential",
+            title=payload.title,
+            issuer_did=payload.issuer_did,
+            claims=payload.claims
         )
 
         return {
