@@ -35,6 +35,39 @@ export const MasterPlatform: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>("wallet");
   const [showAuthGate, setShowAuthGate] = useState<boolean>(!isAuthenticated);
   const [selectedCategory, setSelectedCategory] = useState<CredentialCategory>("ALL");
+  const [activePreset, setActivePreset] = useState<"ALL" | "ACADEMY" | "FINANCE" | "HEALTH" | "GOVERNMENT" | "TRANSPORT">("ALL");
+
+  const handlePresetChange = (preset: "ALL" | "ACADEMY" | "FINANCE" | "HEALTH" | "GOVERNMENT" | "TRANSPORT") => {
+    setActivePreset(preset);
+    if (preset === "ALL") {
+      setSelectedCategory("ALL");
+    } else if (preset === "ACADEMY") {
+      setSelectedCategory("EDUCATION");
+      setIssuerType("DEGREE");
+      const cred = credentials.find(c => c.category === "EDUCATION");
+      if (cred) setVerifierTargetId(cred.id);
+    } else if (preset === "FINANCE") {
+      setSelectedCategory("FINANCE");
+      setIssuerType("BANK_KYC");
+      const cred = credentials.find(c => c.category === "FINANCE");
+      if (cred) setVerifierTargetId(cred.id);
+    } else if (preset === "HEALTH") {
+      setSelectedCategory("HEALTH");
+      setIssuerType("HEALTH");
+      const cred = credentials.find(c => c.category === "HEALTH");
+      if (cred) setVerifierTargetId(cred.id);
+    } else if (preset === "GOVERNMENT") {
+      setSelectedCategory("IDENTITY");
+      setIssuerType("NATIONAL_ID");
+      const cred = credentials.find(c => c.category === "IDENTITY" || c.category === "TRAVEL");
+      if (cred) setVerifierTargetId(cred.id);
+    } else if (preset === "TRANSPORT") {
+      setSelectedCategory("TRANSPORT");
+      setIssuerType("DRIVER_LICENSE");
+      const cred = credentials.find(c => c.category === "TRANSPORT");
+      if (cred) setVerifierTargetId(cred.id);
+    }
+  };
 
   // --- 1. CREDENTIALS STATE (HOLDER DIGITAL VAULT) ---
   const [credentials, setCredentials] = useState<VerifiableCredentialItem[]>([
@@ -929,7 +962,7 @@ export const MasterPlatform: React.FC = () => {
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 hidden sm:block">
-                T.C. SUBÜ • AI Fraud Detection & Emergency Recovery Platform
+                Domain-Agnostic SSI Infrastructure • W3C VC, AI Fraud & Smart Recovery
               </span>
             </div>
           </div>
@@ -994,7 +1027,7 @@ export const MasterPlatform: React.FC = () => {
       </header>
 
       {/* ========================================================= */}
-      {/* MODÜL VE SEKME SEÇİCİ (PROJE RAPORUNDAKİ TÜM BÖLÜMLER) */}
+      {/* 5 CANONICAL ROL & PLATFORM SEKME GEZİNİMİ */}
       {/* ========================================================= */}
       <nav className="bg-slate-900/80 border-b border-slate-800/80 backdrop-blur-md sticky top-16 z-30 shadow-sm">
         <div 
@@ -1002,12 +1035,12 @@ export const MasterPlatform: React.FC = () => {
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {[
-            { id: "wallet", icon: "🪪", label: "Kimlik Kasası (Holder)", badge: `${credentials.length} Belge` },
-            { id: "issuer", icon: "🏛️", label: "Kurum İhracı (Issuer)", badge: "W3C VC" },
-            { id: "verifier", icon: "🔍", label: "ZKP Doğrulayıcı (Verifier)", badge: "Sıfır Bilgi" },
-            { id: "ai", icon: "🤖", label: "AI Dolandırıcılık Tespiti", badge: "XGBoost" },
-            { id: "recovery", icon: "🛡️", label: "Acil Kurtarma (Guardian)", badge: "3/5 Quorum" },
-            { id: "blockchain", icon: "⛓️", label: "Blokzincir Kayıt Defteri", badge: "Hardhat EVM" }
+            { id: "wallet", icon: "🪪", label: "1. Holder (Cüzdan)", badge: `${credentials.length} Belge` },
+            { id: "issuer", icon: "🏛️", label: "2. Issuer (İhraç)", badge: "W3C VC" },
+            { id: "verifier", icon: "🔍", label: "3. Verifier (ZKP)", badge: "Sıfır Bilgi" },
+            { id: "ai", icon: "🤖", label: "4. AI Risk & Fraud", badge: "XGBoost" },
+            { id: "recovery", icon: "🛡️", label: "5. Guardian (Vasi)", badge: "3/5 Quorum" },
+            { id: "blockchain", icon: "👑", label: "Admin & Denetim", badge: "Hardhat EVM" }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1035,7 +1068,55 @@ export const MasterPlatform: React.FC = () => {
       {/* ========================================================= */}
       {/* ANA İÇERİK ALANI */}
       {/* ========================================================= */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+        {/* ========================================================= */}
+        {/* TAK-ÇIKAR SEKTÖREL SENARYO SEÇİCİ (PLUGGABLE PRESETS) */}
+        {/* ========================================================= */}
+        <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-sm font-bold">
+              🎭
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white">Sektörel Kullanım Senaryosu Şablonu</span>
+                <span className="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-800/60 px-2 py-0.5 rounded-full font-mono">
+                  Tak-Çıkar Mimari
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Ana ürün sektöre kilitli değildir; tek tıkla Akademi, Finans, Sağlık veya Kamu senaryoları arasında geçiş yapabilirsiniz.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {[
+              { id: "ALL", label: "Tüm Sistem", icon: "🌐", desc: "Tüm Belgeler ve Sektörler" },
+              { id: "ACADEMY", label: "Akademi", icon: "🎓", desc: "Üniversite ➔ Mezun ➔ İşveren" },
+              { id: "FINANCE", label: "Finans", icon: "🏦", desc: "Banka ➔ Müşteri ➔ FinTech" },
+              { id: "HEALTH", label: "Sağlık", icon: "🏥", desc: "Sağlık Bakanlığı ➔ Hasta ➔ Doktor" },
+              { id: "GOVERNMENT", label: "Kamu / Pasaport", icon: "🪪", desc: "Nüfus / Emniyet ➔ Vatandaş ➔ Sınır" },
+              { id: "TRANSPORT", label: "Taşımacılık", icon: "🚗", desc: "Trafik Tescil ➔ Sürücü ➔ Denetim" }
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => handlePresetChange(preset.id as any)}
+                className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 font-medium ${
+                  activePreset === preset.id
+                    ? "bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md shadow-indigo-500/20 font-bold"
+                    : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700"
+                }`}
+                title={preset.desc}
+              >
+                <span>{preset.icon}</span>
+                <span>{preset.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ========================================================= */}
         {/* SEKME 1: KİMLİK CÜZDANI (HOLDER - DIGITAL WALLET VAULT) */}
         {/* ========================================================= */}
@@ -1046,13 +1127,13 @@ export const MasterPlatform: React.FC = () => {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                    Bölüm 3.2.2 & 3.7.5 • Self-Sovereign Identity Cüzdanı
+                    Rol: Holder (Kimlik Sahibi) • Decentralized Identity Vault
                   </span>
                   <h2 className="text-2xl font-black text-white mt-1">
                     {user?.name} — Çoklu Dijital Kimlik Kasası
                   </h2>
                   <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                    Pasaport, Ulusal Kimlik Kartı, Sürücü Belgesi, Sağlık Kartı, Banka KYC ve Üniversite Diplomanız W3C Verifiable Credentials standardında güvenle saklanır.
+                    W3C Verifiable Credentials standardında tüm doğrulanabilir dijital kimlikleriniz merkezi şirketlere bağımlı olmadan güvenle saklanır.
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5 text-xs font-mono">
