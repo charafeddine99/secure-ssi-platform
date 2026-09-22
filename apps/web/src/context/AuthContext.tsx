@@ -19,7 +19,11 @@ export interface UserProfile {
 
 interface AuthContextType {
   user: UserProfile | null;
+  token: string | null;
   isAuthenticated: boolean;
+  isDemoEvaluationMode: boolean;
+  setDemoEvaluationMode: (enabled: boolean) => void;
+  switchDemoRole: (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => void;
   login: (email: string, pass: string) => boolean;
   loginWithMetaMask: () => Promise<boolean>;
   loginWithSeedPhrase: (phrase: string) => boolean;
@@ -36,9 +40,9 @@ interface AuthContextType {
 
 const DEFAULT_DEMO_USER: UserProfile = {
   name: "Charaf Eddine Bessanane",
-  nationalId: "EU-ID-829104752",
-  email: "charaf.bessanane@identity-eudi.eu",
-  organization: "European Digital Identity Framework",
+  nationalId: "ACAD-SSI-829104",
+  email: "researcher@academic-ssi.local",
+  organization: "Open Academic SSI Prototype Framework",
   did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
   walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   seedPhrase: "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard",
@@ -49,12 +53,13 @@ const DEFAULT_DEMO_USER: UserProfile = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("secure_ssi_token"));
+  const [isDemoEvaluationMode, setDemoEvaluationMode] = useState<boolean>(true);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem("secure_ssi_user");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // If old format user with studentId exists, migrate to sovereign identity
         if (!parsed.assuranceLevel) {
           return {
             ...DEFAULT_DEMO_USER,
@@ -71,6 +76,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return DEFAULT_DEMO_USER;
   });
+
+  const switchDemoRole = (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => {
+    const roleDids: Record<string, string> = {
+      HOLDER: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+      ISSUER: "did:ssi:platform:governance-authority",
+      VERIFIER: "did:verifier:platform:compliance-office",
+      GUARDIAN: "did:guardian:social-recovery:quorum-member",
+      ADMIN: "did:admin:platform:system-operator"
+    };
+
+    const roleOrgs: Record<string, string> = {
+      HOLDER: "Academic SSI Prototype Framework",
+      ISSUER: "Accredited SSI Issuance Authority (Prototype)",
+      VERIFIER: "Digital Verification & Trust Inspection Service",
+      GUARDIAN: "EIP-4337 Social Recovery Network",
+      ADMIN: "SSI Platform Infrastructure & Security Administration"
+    };
+
+    setUser((prev) => {
+      const base = prev || DEFAULT_DEMO_USER;
+      return {
+        ...base,
+        role: role,
+        did: roleDids[role] || base.did,
+        organization: roleOrgs[role] || base.organization
+      };
+    });
+  };
 
   useEffect(() => {
     if (user) {
@@ -196,7 +229,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         user,
+        token,
         isAuthenticated: !!user,
+        isDemoEvaluationMode,
+        setDemoEvaluationMode,
+        switchDemoRole,
         login,
         loginWithMetaMask,
         loginWithSeedPhrase,

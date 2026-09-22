@@ -381,3 +381,44 @@ body {
 .table-enterprise tr:hover td {
   background-color: rgba(255, 255, 255, 0.02);
 }
+
+/* Micro-animations & Card Hovers */
+.credential-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+.portal-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.4) !important;
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.5) !important;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Responsive Overrides */
+@media (max-width: 900px) {
+  .enterprise-header {
+    padding: 0 12px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+  
+  .mobile-sidebar-toggle {
+    display: block !important;
+  }
+}
+
