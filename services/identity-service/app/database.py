@@ -101,54 +101,51 @@ def initialize_database():
     conn.commit()
 
     # Seed initial user and credentials if database is freshly created
-    cursor.execute("SELECT COUNT(*) FROM users WHERE email = 'b210109591@subu.edu.tr'")
+    cursor.execute("SELECT COUNT(*) FROM users WHERE email = 'charaf.bessanane@identity-eudi.eu'")
     if cursor.fetchone()[0] == 0:
         now_iso = datetime.now(timezone.utc).isoformat()
-        demo_did = "did:key:z6MkuBesnaStudentKey2026SUBUEVM"
+        demo_did = "did:key:z6MkuBesnaSecureHolder2026Ed25519"
         demo_wallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 
         cursor.execute("""
         INSERT INTO users (email, password_hash, name, student_id, department, did, wallet_address, seed_phrase, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            "b210109591@subu.edu.tr",
+            "charaf.bessanane@identity-eudi.eu",
             hash_password("123456"),
             "Charaf Eddine Bessanane",
-            "B210109591",
-            "Bilgisayar Mühendisliği",
+            "EUDI-ID-829104752",
+            "European Digital Identity Framework",
             demo_did,
             demo_wallet,
             "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard",
             now_iso
         ))
 
-        # Seed initial 6 government & academic credentials
+        # Seed initial 6 government & eIDAS qualified credentials
         initial_creds = [
             (
-                "urn:uuid:subu-diploma-2026-b210109591",
+                "urn:uuid:qeaa-arch-2026-cert-4401",
                 demo_did,
                 demo_wallet,
-                "UniversityDegreeCredential",
-                "Bilgisayar Mühendisliği Lisans Diploması",
-                "EDUCATION",
-                "did:web:subu.edu.tr",
-                "Sakarya Uygulamalı Bilimler Üniversitesi",
-                "2026-06-25",
-                "Süresiz",
+                "QualifiedElectronicAttestationCredential",
+                "Nitelikli Sistem Mimari Nitelik Tasdiki (QEAA)",
+                "QUALIFIED",
+                "did:web:trust.eudi.europa.eu",
+                "European Cybersecurity & Identity Certification Body",
+                "2025-06-20",
+                "2028-06-20",
                 "ACTIVE",
                 json.dumps({
-                    "Öğrenci Adı": "Charaf Eddine Bessanane",
-                    "Öğrenci No": "B210109591",
-                    "Fakülte": "Teknoloji Fakültesi",
-                    "Bölüm": "Bilgisayar Mühendisliği",
-                    "Derece": "Lisans (B.Sc.)",
-                    "GPA": "3.82 / 4.00",
-                    "Mezuniyet": "Yüksek Onur Derecesi",
-                    "T.C. Kimlik": "12345678901"
+                    "Sertifika Sahibi": "Charaf Eddine Bessanane",
+                    "Unvan": "Senior Distributed Systems & SSI Security Architect",
+                    "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
+                    "Akreditasyon No": "EU-QEAA-9981-SEC",
+                    "Verilis Standardi": "eIDAS Regulation (EU) 910/2014 Annex V"
                 }),
-                "z3s9PqRtXvM8SUBUSignedProofValueValidW3C2026Ed25519",
-                8,
-                "GPA >= 3.00 && Derece == 'Lisans'",
+                "z4r8NmKyTwJ7QEAAEuCybersecurityArchitectSignedEd25519",
+                6,
+                "Unvan == 'Senior Distributed Systems Architect'",
                 now_iso
             ),
             (
@@ -156,26 +153,26 @@ def initialize_database():
                 demo_did,
                 demo_wallet,
                 "NationalIdCredential",
-                "T.C. Dijital Ulusal Kimlik Kartı",
+                "T.C. Dijital Ulusal Kimlik Karti",
                 "IDENTITY",
                 "did:gov:tr:nvi",
-                "T.C. Nüfus ve Vatandaşlık İşleri Genel Müdürlüğü",
+                "T.C. Nufus ve Vatandaslik Isleri Genel Mudurlugu",
                 "2024-01-15",
                 "2034-01-15",
                 "ACTIVE",
                 json.dumps({
                     "T.C. Kimlik No": "12345678901",
-                    "Adı Soyadı": "Charaf Eddine Bessanane",
+                    "Adi Soyadi": "Charaf Eddine Bessanane",
                     "Uyruk": "T.C.",
-                    "Doğum Yeri": "Sakarya",
-                    "Doğum Tarihi": "2003-11-12",
-                    "Anne Adı": "Fatma",
-                    "Baba Adı": "Mustafa",
+                    "Dogum Yeri": "Istanbul",
+                    "Dogum Tarihi": "1999-04-12",
+                    "Anne Adi": "Fatma",
+                    "Baba Adi": "Mustafa",
                     "Seri No": "A24K98120"
                 }),
                 "z3sNVITurkeyNationalIdVerifiedEd25519Seal2026",
                 5,
-                "Uyruk == 'T.C.' && Kimlik Kartı Aktif",
+                "Uyruk == 'T.C.' && Kimlik Karti Aktif",
                 now_iso
             ),
             (
@@ -186,22 +183,22 @@ def initialize_database():
                 "Biyometrik Dijital Pasaport",
                 "TRAVEL",
                 "did:gov:tr:egm-pasaport",
-                "Emniyet Genel Müdürlüğü Pasaport Dairesi",
+                "Emniyet Genel Mudurlugu Pasaport Dairesi",
                 "2024-05-10",
                 "2034-05-10",
                 "ACTIVE",
                 json.dumps({
                     "Pasaport No": "U12345678",
                     "Ad Soyad": "Charaf Eddine Bessanane",
-                    "Ülke Kodu": "TUR",
-                    "Doğum Tarihi": "2003-11-12",
+                    "Ulke Kodu": "TUR",
+                    "Dogum Tarihi": "1999-04-12",
                     "Cinsiyet": "E",
-                    "Pasaport Türü": "Bordo (Umuma Mahsus)",
-                    "Biyometrik Çip İmzası": "0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1f"
+                    "Pasaport Turu": "Bordo (Umuma Mahsus)",
+                    "Biyometrik Cip Imzasi": "0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1f"
                 }),
                 "z3sPassportBiometricChipVerifiedEd25519GovTR",
                 11,
-                "Yaş >= 18 (Reşitlik İspatı)",
+                "Yas >= 18 (Resitlik Ispati)",
                 now_iso
             ),
             (
@@ -209,23 +206,23 @@ def initialize_database():
                 demo_did,
                 demo_wallet,
                 "DriverLicenseCredential",
-                "Dijital Sürücü Belgesi (Ehliyet)",
+                "Dijital Surucu Belgesi (Ehliyet)",
                 "TRANSPORT",
                 "did:gov:tr:trafik-tescil",
-                "Emniyet Trafik Tescil Başkanlığı",
+                "Emniyet Trafik Tescil Baskanligi",
                 "2023-08-20",
                 "2033-08-20",
                 "ACTIVE",
                 json.dumps({
                     "Belge No": "TR-548912",
-                    "Sürücü Adı": "Charaf Eddine Bessanane",
-                    "Sınıflar": "B (Otomobil), A2 (Motosiklet)",
+                    "Surucu Adi": "Charaf Eddine Bessanane",
+                    "Siniflar": "B (Otomobil), A2 (Motosiklet)",
                     "Kan Grubu": "A Rh(+)",
-                    "Ceza Puanı": "0"
+                    "Ceza Puani": "0"
                 }),
                 "z3sTrafficDirectorateDriverLicenseValidProofEd25519",
                 6,
-                "B Sınıfı Yetki == Aktif",
+                "B Sinifi Yetki == Aktif",
                 now_iso
             ),
             (
@@ -233,23 +230,23 @@ def initialize_database():
                 demo_did,
                 demo_wallet,
                 "HealthCertificateCredential",
-                "E-Nabız Dijital Sağlık ve Aşı Kartı",
+                "E-Nabiz Dijital Saglik ve Asi Karti",
                 "HEALTH",
                 "did:gov:tr:saglik-bakanligi",
-                "T.C. Sağlık Bakanlığı E-Nabız",
+                "T.C. Saglik Bakanligi E-Nabiz",
                 "2025-02-14",
                 "2027-02-14",
                 "ACTIVE",
                 json.dumps({
-                    "Hasta Adı": "Charaf Eddine Bessanane",
+                    "Hasta Adi": "Charaf Eddine Bessanane",
                     "Kan Grubu": "A Rh(+)",
-                    "Aşı Durumu": "Tam Doz (3 Doz Tamamlandı)",
-                    "Kronik Rahatsızlık": "Yok",
-                    "Organ Bağışı": "Onaylı Bağışçı"
+                    "Asi Durumu": "Tam Doz (3 Doz Tamamlandi)",
+                    "Kronik Rahatsizlik": "Yok",
+                    "Organ Bagisi": "Onayli Bagisci"
                 }),
                 "z3sHealthMinistryVaccineProofSignatureEd25519",
                 9,
-                "Kan Grubu == 'A Rh(+)' && Aşı Durumu == 'Tam'",
+                "Kan Grubu == 'A Rh(+)' && Asi Durumu == 'Tam'",
                 now_iso
             ),
             (
@@ -257,18 +254,18 @@ def initialize_database():
                 demo_did,
                 demo_wallet,
                 "BankKycCredential",
-                "Banka KYC & Finansal Güvenlik Belgesi",
+                "Banka KYC & Finansal Guvenlik Belgesi",
                 "FINANCE",
                 "did:bank:tr:bddk-finans",
-                "BDDK ve Finansal Güven Kuruluşu",
+                "BDDK ve Finansal Guven Kurulusu",
                 "2025-09-01",
                 "2026-09-01",
                 "ACTIVE",
                 json.dumps({
-                    "Müşteri Adı": "Charaf Eddine Bessanane",
-                    "Onaylı IBAN": "TR56 0006 2000 0001 2345 6789 01",
-                    "Kredi Güven Skoru": "1780 (Çok Yüksek / A+)",
-                    "KYC Doğrulama Düzeyi": "Seviye-3 (Biyometrik Onaylı)"
+                    "Musteri Adi": "Charaf Eddine Bessanane",
+                    "Onayli IBAN": "TR56 0006 2000 0001 2345 6789 01",
+                    "Kredi Guven Skoru": "1780 (Cok Yuksek / A+)",
+                    "KYC Dogrulama Duzeyi": "Seviye-3 (Biyometrik Onayli)"
                 }),
                 "z3sBankingKYCFTier3VerifiedSignatureEd25519",
                 14,
@@ -287,9 +284,9 @@ def initialize_database():
 
         # Seed initial 3 guardians for social recovery
         initial_guardians = [
-            (demo_wallet, "Dr. Danışman Hoca", "Akademik / Resmi Vasi", "did:key:z6MkuGuardian1Danisman", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", 1, now_iso),
-            (demo_wallet, "Nüfus & Güven Kurumu", "Kurumsal Onaycı", "did:key:z6MkuGuardian2Kurumsal", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", 1, now_iso),
-            (demo_wallet, "Güvenilir Temsilci", "Bireysel Vasi", "did:key:z6MkuGuardian3Temsilci", "0x90F79bf6EB2c4f870365E785982E1f101E93b906", 0, now_iso)
+            (demo_wallet, "Kurumsal Guvenlik Otoritesi", "Resmi eIDAS Vasisi", "did:key:z6MkuGuardian1Authority", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", 1, now_iso),
+            (demo_wallet, "Ulusal Guven Kurumu", "Kurumsal Dogrulayici", "did:key:z6MkuGuardian2NationalTrust", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", 1, now_iso),
+            (demo_wallet, "Bagimsiz Denetim Vasisi", "Bireysel Vasi", "did:key:z6MkuGuardian3Auditor", "0x90F79bf6EB2c4f870365E785982E1f101E93b906", 0, now_iso)
         ]
         cursor.executemany("""
         INSERT INTO guardians (wallet_address, guardian_name, guardian_role, guardian_did, guardian_address, approved, created_at)

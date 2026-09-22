@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useWallet } from "../../context/WalletContext";
+import { fetchCredentials, BackendCredential } from "../../services/api";
 
 export type HolderScreen = 
   | "DASHBOARD" | "IDENTITY" | "WALLET" | "CREDENTIALS" | "CREDENTIAL_DETAIL" 
@@ -9,7 +10,7 @@ export type HolderScreen =
 export interface VerifiableCredentialItem {
   id: string;
   title: string;
-  category: "IDENTITY" | "QUALIFIED" | "PROFESSIONAL" | "FINANCE";
+  category: "IDENTITY" | "QUALIFIED" | "PROFESSIONAL" | "FINANCE" | "TRAVEL" | "TRANSPORT" | "HEALTH";
   type: string;
   issuer: string;
   issuerName: string;
@@ -27,7 +28,7 @@ export interface VerifiableCredentialItem {
   };
 }
 
-const INITIAL_CREDENTIALS: VerifiableCredentialItem[] = [
+const INITIAL_FALLBACK_CREDENTIALS: VerifiableCredentialItem[] = [
   {
     id: "urn:uuid:eudi-natid-2026-tr-9021",
     title: "eIDAS Yüksek Güvenlikli Ulusal Kimlik Kartı",
@@ -81,32 +82,6 @@ const INITIAL_CREDENTIALS: VerifiableCredentialItem[] = [
       predicate: "Unvan == 'Senior Distributed Systems Architect' (Akreditasyon No Gizlenerek)",
       hiddenFields: ["Akreditasyon No"]
     }
-  },
-  {
-    id: "urn:uuid:fin-kyc-aml-tier3-8812",
-    title: "Kurumsal Bankacılık AML/KYC Uyumluluk Tasdiki",
-    category: "FINANCE",
-    type: "FinancialComplianceCredential",
-    issuer: "did:web:fin-authority.eudi.eu",
-    issuerName: "European Banking & AML Supervisory Authority",
-    issuedDate: "2026-02-10",
-    expiryDate: "2027-02-10",
-    status: "ACTIVE",
-    statusListIndex: 512,
-    claims: {
-      "Müşteri Kimliği": "DID-HOLDER-902184",
-      "KYC Doğrulama Seviyesi": "Tier 3 (Enhanced Due Diligence)",
-      "AML Risk Profili": "Low Risk / Compliant",
-      "FATF Raporlama": "Verified Clean",
-      "Onaylayan Kurum": "Financially Regulated Identity Authority"
-    },
-    proofValue: "z8k2PqLmNxV1BankAMLVerifiedTier3Proof2026Ed25519",
-    aiRiskScore: 3,
-    zkpRule: {
-      description: "Finansal Uyumluluk ve Temiz AML Doğrulaması",
-      predicate: "AML Risk Profili == 'Low Risk' && Tier >= 2",
-      hiddenFields: ["Müşteri Kimliği"]
-    }
   }
 ];
 
@@ -117,8 +92,41 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
   const { user } = useAuth();
   const { account } = useWallet();
 
-  const [credentials, setCredentials] = useState<VerifiableCredentialItem[]>(INITIAL_CREDENTIALS);
-  const [selectedCredential, setSelectedCredential] = useState<VerifiableCredentialItem>(INITIAL_CREDENTIALS[0]);
+  const [credentials, setCredentials] = useState<VerifiableCredentialItem[]>(INITIAL_FALLBACK_CREDENTIALS);
+  const [selectedCredential, setSelectedCredential] = useState<VerifiableCredentialItem>(INITIAL_FALLBACK_CREDENTIALS[0]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Fetch real credentials from backend on load
+  useEffect(() => {
+    fetchCredentials()
+      .then((backendCreds) => {
+        if (backendCreds && backendCreds.length > 0) {
+          const mapped: VerifiableCredentialItem[] = backendCreds.map((c, idx) => ({
+            id: c.id,
+            title: c.title,
+            category: (c.category as any) || "IDENTITY",
+            type: c.credential_type,
+            issuer: c.issuer,
+            issuerName: c.issuer_name || "Official EUDI Issuer",
+            issuedDate: c.issued_date,
+            expiryDate: c.expiry_date || "Süresiz",
+            status: c.status,
+            statusListIndex: (idx + 1) * 64,
+            claims: typeof c.claims === "string" ? JSON.parse(c.claims) : (c.claims || {}),
+            proofValue: c.proof_value || "z3sProofValEd25519SignedW3C",
+            aiRiskScore: c.ai_risk_score || 5,
+            zkpRule: {
+              description: `${c.title} Seçici İfşa Kuralı`,
+              predicate: c.zkp_predicate || "W3C VC 2.0 ZKP Valid",
+              hiddenFields: []
+            }
+          }));
+          setCredentials(mapped);
+          setSelectedCredential(mapped[0]);
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
   
   // Present & Consent state
   const [requestUri, setRequestUri] = useState("openid4vp://authorize?client_id=did:web:enterprise-verifier.eu&response_uri=http://localhost:8000/api/v1/identity/presentations/verify&nonce=n-88a91c7f&dcql_query=eudi_kyc_req");

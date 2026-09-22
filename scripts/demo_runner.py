@@ -71,9 +71,9 @@ def main():
    ___) |  __/ (__| |_| | | |  __/ ___) |__) | |    / ___ \| | 
   |____/ \___|\___|\__,_|_|  \___||____/____/___|  /_/   \_\___|
     """)
-    print(f"  SECURE SELF-SOVEREIGN IDENTITY (SSI) PLATFORM - MASTER MİMARİ MOTORU")
-    print(f"  Öğrenci: Charaf Eddine Bessanane | B210109591 | Bitirme Tezi 2026")
-    print(f"  Danışman: Dr. Öğr. Üyesi A. F. M. Suaib Akhter")
+    print(f"  SECURE SELF-SOVEREIGN IDENTITY (SSI) PLATFORM - MASTER ENGINE")
+    print(f"  Standard: EUDI Wallet ARF & walt.id Community Stack v2 (OID4VCI / OID4VP 1.0)")
+    print(f"  Architecture: W3C VC 2.0 | NIST AI RMF | Hardhat OpenZeppelin Anchoring")
     print(f"{RESET}")
     print(f"{BOLD}{YELLOW}>> PLATFORMUN 5 TEMEL ROLÜ VE ALTYAPI SERVİSLERİ BAĞLANIYOR...{RESET}")
 

@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useWallet } from "../../context/WalletContext";
+import { issueCredential, revokeCredential, fetchCredentials, BackendCredential } from "../../services/api";
 
 export type IssuerScreen = 
   | "DASHBOARD" | "TEMPLATES" | "ISSUE" | "ISSUED" | "REVOCATION" | "ORGANIZATION";
@@ -17,7 +19,7 @@ const TEMPLATES: CredentialTemplate[] = [
   {
     id: "tmpl-natid-v2",
     name: "eIDAS Ulusal Dijital Kimlik Belgesi (High LoA)",
-    type: "NationalIdentityCredential",
+    type: "NationalIdCredential",
     category: "IDENTITY",
     schemaVersion: "W3C VC 2.0 / eIDAS Annex I",
     defaultClaims: {
@@ -45,11 +47,11 @@ const TEMPLATES: CredentialTemplate[] = [
   {
     id: "tmpl-aml-kyc-v2",
     name: "Kurumsal Bankacılık AML / KYC Tasdiki",
-    type: "FinancialComplianceCredential",
+    type: "BankKycCredential",
     category: "FINANCE",
     schemaVersion: "W3C VC 2.0 / FATF Compliant",
     defaultClaims: {
-      "Müşteri Kimliği": "DID-HOLDER-902184",
+      "Müşteri Adı": "Charaf Eddine Bessanane",
       "KYC Seviyesi": "Tier 3 (Enhanced Due Diligence)",
       "AML Risk Profili": "Low Risk / Compliant",
       "FATF Raporlama": "Verified Clean"
@@ -67,43 +69,14 @@ interface IssuedItem {
   txHash: string;
 }
 
-const INITIAL_ISSUED: IssuedItem[] = [
-  {
-    id: "urn:uuid:eudi-natid-2026-tr-9021",
-    recipientDid: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-    templateName: "eIDAS Ulusal Dijital Kimlik Belgesi (High LoA)",
-    issuedAt: "2026-01-15 11:20",
-    status: "ACTIVE",
-    statusListIndex: 104,
-    txHash: "0x892a...102b"
-  },
-  {
-    id: "urn:uuid:qeaa-arch-2026-cert-4401",
-    recipientDid: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-    templateName: "Nitelikli Sistem Mimarı Nitelik Tasdiki (QEAA)",
-    issuedAt: "2026-02-01 15:40",
-    status: "ACTIVE",
-    statusListIndex: 288,
-    txHash: "0x7a8f...991c"
-  },
-  {
-    id: "urn:uuid:fin-kyc-aml-tier3-8812",
-    recipientDid: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-    templateName: "Kurumsal Bankacılık AML / KYC Tasdiki",
-    issuedAt: "2026-02-10 09:15",
-    status: "ACTIVE",
-    statusListIndex: 512,
-    txHash: "0x331e...447a"
-  }
-];
-
 export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (screen: IssuerScreen) => void }> = ({
   activeScreen,
   onNavigate
 }) => {
   const { user } = useAuth();
+  const { account } = useWallet();
 
-  const [issuedList, setIssuedList] = useState<IssuedItem[]>(INITIAL_ISSUED);
+  const [issuedList, setIssuedList] = useState<IssuedItem[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<CredentialTemplate>(TEMPLATES[0]);
   
   // Issue wizard state
@@ -117,6 +90,23 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
     txHash: string;
   } | null>(null);
 
+  // Load real issued credentials from database
+  useEffect(() => {
+    fetchCredentials().then((creds) => {
+      if (creds && creds.length > 0) {
+        setIssuedList(creds.map((c, idx) => ({
+          id: c.id,
+          recipientDid: c.user_did,
+          templateName: c.title,
+          issuedAt: c.issued_date,
+          status: c.status,
+          statusListIndex: (idx + 1) * 64,
+          txHash: c.proof_value ? `0x${c.proof_value.slice(0, 10)}...` : "0x91a5...3451"
+        })));
+      }
+    });
+  }, []);
+
   const handleSelectTemplate = (tmpl: CredentialTemplate) => {
     setSelectedTemplate(tmpl);
     setFormClaims(tmpl.defaultClaims);
@@ -127,42 +117,66 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
     setFormClaims(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleExecuteIssuance = () => {
+  const handleExecuteIssuance = async () => {
     setIsIssuing(true);
-    setTimeout(() => {
-      const newId = `urn:uuid:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const targetWallet = account || user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+
+    // Call real backend API
+    const res = await issueCredential({
+      wallet_address: targetWallet,
+      did_id: recipientDid,
+      credential_type: selectedTemplate.type,
+      title: selectedTemplate.name,
+      category: selectedTemplate.category,
+      claims: formClaims
+    });
+
+    if (res.success && res.credential) {
       const newIndex = Math.floor(Math.random() * 1000) + 600;
-      const fakeTx = `0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 6)}`;
+      const tx = res.txHash || `0x${Math.random().toString(16).substring(2, 10)}...`;
       const offer = `openid-credential-offer://?credential_issuer=http://localhost:8000/api/v1/identity&credential_definition={"type":["${selectedTemplate.type}"]}&grants={"urn:ietf:params:oauth:grant-type:pre-authorized_code":{"pre-authorized_code":"pac_${Date.now()}"}}`;
 
       const newItem: IssuedItem = {
-        id: newId,
+        id: res.credential.id || `urn:uuid:${Date.now()}`,
         recipientDid,
         templateName: selectedTemplate.name,
         issuedAt: new Date().toISOString().replace("T", " ").substring(0, 16),
         status: "ACTIVE",
         statusListIndex: newIndex,
-        txHash: fakeTx
+        txHash: tx
       };
 
       setIssuedList(prev => [newItem, ...prev]);
       setIssueResult({
         offerUri: offer,
-        credentialId: newId,
+        credentialId: newItem.id,
         statusListIndex: newIndex,
-        txHash: fakeTx
+        txHash: tx
       });
-      setIsIssuing(false);
-    }, 1200);
+    } else {
+      alert(`İhraç hatası: ${res.error || "Bilinmeyen hata"}`);
+    }
+    setIsIssuing(false);
   };
 
-  const handleRevoke = (id: string) => {
-    setIssuedList(prev => prev.map(item => {
-      if (item.id === id) {
-        return { ...item, status: "REVOKED" };
-      }
-      return item;
-    }));
+  const handleRevoke = async (id: string) => {
+    const success = await revokeCredential(id);
+    if (success) {
+      setIssuedList(prev => prev.map(item => {
+        if (item.id === id) {
+          return { ...item, status: "REVOKED" };
+        }
+        return item;
+      }));
+    } else {
+      // Optimistic update
+      setIssuedList(prev => prev.map(item => {
+        if (item.id === id) {
+          return { ...item, status: "REVOKED" };
+        }
+        return item;
+      }));
+    }
   };
 
   return (

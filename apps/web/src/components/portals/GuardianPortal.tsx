@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWallet } from "../../context/WalletContext";
+import { fetchGuardians, approveGuardian, BackendGuardian } from "../../services/api";
 
 export type GuardianScreen = 
   | "REQUESTS" | "REQUEST_DETAIL" | "APPROVE_REJECT" | "HISTORY";
@@ -43,8 +44,21 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
   const [requests, setRequests] = useState<RecoveryRequestItem[]>(INITIAL_REQUESTS);
   const [selectedRequest, setSelectedRequest] = useState<RecoveryRequestItem>(INITIAL_REQUESTS[0]);
   const [signedMsg, setSignedMsg] = useState<string | null>(null);
+  const [liveGuardians, setLiveGuardians] = useState<BackendGuardian[]>([]);
 
-  const handleApprove = (reqId: string) => {
+  useEffect(() => {
+    fetchGuardians().then(list => {
+      if (list && list.length > 0) {
+        setLiveGuardians(list);
+      }
+    });
+  }, []);
+
+  const handleApprove = async (reqId: string) => {
+    const targetWallet = selectedRequest.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    // Send real on-chain guardian approval
+    await approveGuardian(1, targetWallet);
+
     setRequests(prev => prev.map(r => {
       if (r.id === reqId) {
         return {

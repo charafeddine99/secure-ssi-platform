@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { fetchGatewayStatus, fetchBlockchainStatus, fetchAuditLogs, BackendAuditLog, BlockchainStatus } from "../../services/api";
 
 export type AdminScreen = 
   | "USERS" | "ORGANIZATIONS" | "TRUST" | "FRAUD" | "RECOVERY" | "BLOCKCHAIN" | "AUDIT" | "SYSTEM";
@@ -16,18 +17,26 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate: (scr
     blockchain_node: "HEALTHY"
   });
 
+  const [blockchainInfo, setBlockchainInfo] = useState<BlockchainStatus | null>(null);
+  const [realAuditLogs, setRealAuditLogs] = useState<BackendAuditLog[]>([]);
+
   // Fetch real system status from Gateway (:8000)
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/system/status")
-      .then(res => res.json())
-      .then(data => {
-        if (data.gateway_status) setGatewayStatus(data.gateway_status);
-        if (data.system_health) setSystemHealth(data.system_health);
-        if (data.services) setServices(prev => ({ ...prev, ...data.services }));
-      })
-      .catch(() => {
-        // Keep optimistic default if local proxy handles
-      });
+    fetchGatewayStatus().then(data => {
+      if (data) {
+        setGatewayStatus(data.gateway_status);
+        setSystemHealth(data.system_health);
+        setServices(prev => ({ ...prev, ...data.services }));
+      }
+    });
+
+    fetchBlockchainStatus().then(info => {
+      if (info) setBlockchainInfo(info);
+    });
+
+    fetchAuditLogs().then(logs => {
+      if (logs && logs.length > 0) setRealAuditLogs(logs);
+    });
   }, []);
 
   return (
@@ -259,18 +268,17 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate: (scr
               </tr>
             </thead>
             <tbody>
-              {[
-                { type: "CREDENTIAL_ISSUED", actor: "did:web:trust.eudi.europa.eu", hash: "0x892a10...99ab", time: "10 dk önce", st: "COMMITTED" },
-                { type: "PRESENTATION_VERIFIED", actor: "did:web:enterprise-verifier.eu", hash: "0x7a8f12...129a", time: "25 dk önce", st: "COMMITTED" },
-                { type: "BITSTRING_STATUS_UPDATED", actor: "did:web:trust.eudi.europa.eu", hash: "0xa4b190...c31e", time: "1 saat önce", st: "COMMITTED" },
-                { type: "GUARDIAN_APPROVED", actor: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", hash: "0x331e44...447a", time: "2 saat önce", st: "COMMITTED" }
-              ].map((ev, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  <td style={{ padding: "10px", fontWeight: "700", color: "#60a5fa" }}>{ev.type}</td>
-                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{ev.actor}</td>
-                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{ev.hash}</td>
-                  <td style={{ padding: "10px", color: "var(--text-tertiary)" }}>{ev.time}</td>
-                  <td style={{ padding: "10px", textAlign: "right", color: "#4ade80", fontWeight: "700" }}>{ev.st}</td>
+              {(realAuditLogs.length > 0 ? realAuditLogs.slice(0, 10) : [
+                { id: 1, event_type: "CREDENTIAL_ISSUED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "10 dk önce" },
+                { id: 2, event_type: "PRESENTATION_VERIFIED", actor_did: "did:web:enterprise-verifier.eu", target_wallet: "0xf39Fd...", created_at: "25 dk önce" },
+                { id: 3, event_type: "BITSTRING_STATUS_UPDATED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "1 saat önce" }
+              ]).map((ev: any, i: number) => (
+                <tr key={ev.id || i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  <td style={{ padding: "10px", fontWeight: "700", color: "#60a5fa" }}>{ev.event_type}</td>
+                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{ev.actor_did || "system:node"}</td>
+                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{ev.target_wallet ? `${ev.target_wallet.slice(0, 16)}...` : "0x91a5ef...3451"}</td>
+                  <td style={{ padding: "10px", color: "var(--text-tertiary)" }}>{ev.created_at ? ev.created_at.substring(0, 19).replace("T", " ") : "Az önce"}</td>
+                  <td style={{ padding: "10px", textAlign: "right", color: "#4ade80", fontWeight: "700" }}>COMMITTED</td>
                 </tr>
               ))}
             </tbody>
