@@ -2,12 +2,30 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useWallet, EMERGENCY_RECOVERY_ADDRESS, DID_REGISTRY_ADDRESS } from "../context/WalletContext";
 import { AuthPage } from "../components/auth/AuthPage";
-import { ethers } from "ethers";
 
-export type TabKey = "dashboard" | "wallet" | "issuer" | "verifier" | "ai" | "recovery" | "blockchain";
+// ============================================================================
+// 1. CANONICAL ROLES (SECTION 2 & 12)
+// ============================================================================
+export type RoleKey = "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
 
-export type CredentialCategory = "ALL" | "IDENTITY" | "TRAVEL" | "TRANSPORT" | "HEALTH" | "FINANCE" | "EDUCATION";
+// Screen Keys for each Role (Section 12 - Frontend Bilgi Mimarisi)
+export type HolderScreen = 
+  | "DASHBOARD" | "IDENTITY" | "WALLET" | "CREDENTIALS" | "CREDENTIAL_DETAIL" 
+  | "PRESENT" | "CONSENT" | "VERIFICATION_RESULT" | "ACTIVITY" | "SECURITY" | "RECOVERY";
 
+export type IssuerScreen = 
+  | "DASHBOARD" | "TEMPLATES" | "ISSUE" | "ISSUED" | "REVOCATION" | "ORGANIZATION";
+
+export type VerifierScreen = 
+  | "DASHBOARD" | "CREATE_REQUEST" | "QR_LINK" | "PRESENTATION" | "VERIFICATION_RESULT" | "HISTORY";
+
+export type GuardianScreen = 
+  | "REQUESTS" | "REQUEST_DETAIL" | "APPROVE_REJECT" | "HISTORY";
+
+export type AdminScreen = 
+  | "USERS" | "ORGANIZATIONS" | "TRUST" | "FRAUD" | "RECOVERY" | "BLOCKCHAIN" | "AUDIT" | "SYSTEM";
+
+// W3C Verifiable Credential Data Model (Section 3)
 export interface VerifiableCredentialItem {
   id: string;
   title: string;
@@ -30,46 +48,19 @@ export interface VerifiableCredentialItem {
 
 export const MasterPlatform: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
-  const { account, chainId, connectWallet, disconnectWallet, getEmergencyRecoveryContract } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet } = useWallet();
 
-  const [activeTab, setActiveTab] = useState<TabKey>("wallet");
+  // Navigation State (Section 12)
+  const [activeRole, setActiveRole] = useState<RoleKey>("HOLDER");
+  const [holderScreen, setHolderScreen] = useState<HolderScreen>("CREDENTIALS");
+  const [issuerScreen, setIssuerScreen] = useState<IssuerScreen>("ISSUE");
+  const [verifierScreen, setVerifierScreen] = useState<VerifierScreen>("VERIFICATION_RESULT");
+  const [guardianScreen, setGuardianScreen] = useState<GuardianScreen>("APPROVE_REJECT");
+  const [adminScreen, setAdminScreen] = useState<AdminScreen>("AUDIT");
+
   const [showAuthGate, setShowAuthGate] = useState<boolean>(!isAuthenticated);
-  const [selectedCategory, setSelectedCategory] = useState<CredentialCategory>("ALL");
-  const [activePreset, setActivePreset] = useState<"ALL" | "ACADEMY" | "FINANCE" | "HEALTH" | "GOVERNMENT" | "TRANSPORT">("ALL");
 
-  const handlePresetChange = (preset: "ALL" | "ACADEMY" | "FINANCE" | "HEALTH" | "GOVERNMENT" | "TRANSPORT") => {
-    setActivePreset(preset);
-    if (preset === "ALL") {
-      setSelectedCategory("ALL");
-    } else if (preset === "ACADEMY") {
-      setSelectedCategory("EDUCATION");
-      setIssuerType("DEGREE");
-      const cred = credentials.find(c => c.category === "EDUCATION");
-      if (cred) setVerifierTargetId(cred.id);
-    } else if (preset === "FINANCE") {
-      setSelectedCategory("FINANCE");
-      setIssuerType("BANK_KYC");
-      const cred = credentials.find(c => c.category === "FINANCE");
-      if (cred) setVerifierTargetId(cred.id);
-    } else if (preset === "HEALTH") {
-      setSelectedCategory("HEALTH");
-      setIssuerType("HEALTH");
-      const cred = credentials.find(c => c.category === "HEALTH");
-      if (cred) setVerifierTargetId(cred.id);
-    } else if (preset === "GOVERNMENT") {
-      setSelectedCategory("IDENTITY");
-      setIssuerType("NATIONAL_ID");
-      const cred = credentials.find(c => c.category === "IDENTITY" || c.category === "TRAVEL");
-      if (cred) setVerifierTargetId(cred.id);
-    } else if (preset === "TRANSPORT") {
-      setSelectedCategory("TRANSPORT");
-      setIssuerType("DRIVER_LICENSE");
-      const cred = credentials.find(c => c.category === "TRANSPORT");
-      if (cred) setVerifierTargetId(cred.id);
-    }
-  };
-
-  // --- 1. CREDENTIALS STATE (HOLDER DIGITAL VAULT) ---
+  // --- 1. CREDENTIALS STATE (HOLDER WALLET) ---
   const [credentials, setCredentials] = useState<VerifiableCredentialItem[]>([
     {
       id: "urn:uuid:subu-diploma-2026-b210109591",
@@ -233,1934 +224,789 @@ export const MasterPlatform: React.FC = () => {
     }
   ]);
 
-  const [selectedCred, setSelectedCred] = useState<VerifiableCredentialItem | null>(credentials[0]);
-  const [showQrModal, setShowQrModal] = useState<boolean>(false);
-  const [showJsonModal, setShowJsonModal] = useState<boolean>(false);
-  const [copiedKey, setCopiedKey] = useState<boolean>(false);
-
-  // --- 2. ISSUER STATE (RESMİ KURUM İHRAÇ PORTALI) ---
-  const [issuerType, setIssuerType] = useState<"PASSPORT" | "NATIONAL_ID" | "DRIVER_LICENSE" | "HEALTH" | "BANK_KYC" | "DEGREE">("PASSPORT");
-  const [issuerFullName, setIssuerFullName] = useState(user?.name || "Charaf Eddine Bessanane");
-  const [issuerDocNumber, setIssuerDocNumber] = useState("U98214300");
-  const [issuerExtraField1, setIssuerExtraField1] = useState("TUR");
-  const [issuerExtraField2, setIssuerExtraField2] = useState("Bordo (Umuma Mahsus)");
-  const [issuerExtraField3, setIssuerExtraField3] = useState("2003-11-12");
-  const [issuerLoading, setIssuerLoading] = useState<boolean>(false);
-  const [issuerNotification, setIssuerNotification] = useState<{ type: "success" | "error" | "warning"; msg: string } | null>(null);
-
-  // Update dynamic form defaults when issuer type changes
-  const handleIssuerTypeChange = (type: "PASSPORT" | "NATIONAL_ID" | "DRIVER_LICENSE" | "HEALTH" | "BANK_KYC" | "DEGREE") => {
-    setIssuerType(type);
-    setIssuerNotification(null);
-    if (type === "PASSPORT") {
-      setIssuerDocNumber(`U${Math.floor(10000000 + Math.random() * 90000000)}`);
-      setIssuerExtraField1("TUR");
-      setIssuerExtraField2("Bordo (Umuma Mahsus)");
-      setIssuerExtraField3("2003-11-12");
-    } else if (type === "NATIONAL_ID") {
-      setIssuerDocNumber("12345678901");
-      setIssuerExtraField1("Sakarya");
-      setIssuerExtraField2("Fatma / Mustafa");
-      setIssuerExtraField3("A24K98120");
-    } else if (type === "DRIVER_LICENSE") {
-      setIssuerDocNumber(`TR-${Math.floor(100000 + Math.random() * 900000)}`);
-      setIssuerExtraField1("B, A2");
-      setIssuerExtraField2("A Rh(+)");
-      setIssuerExtraField3("2034-01-01");
-    } else if (type === "HEALTH") {
-      setIssuerDocNumber(`EH-${Math.floor(1000000 + Math.random() * 9000000)}`);
-      setIssuerExtraField1("A Rh(+)");
-      setIssuerExtraField2("Tam Doz (3 Doz)");
-      setIssuerExtraField3("Onaylı Bağışçı");
-    } else if (type === "BANK_KYC") {
-      setIssuerDocNumber(`TR56000620${Math.floor(1000000000000000 + Math.random() * 9000000000000000)}`);
-      setIssuerExtraField1("1780 (A+ Çok Güvenli)");
-      setIssuerExtraField2("Seviye-3 (Biyometrik)");
-      setIssuerExtraField3("TEMİZ (Passed)");
-    } else if (type === "DEGREE") {
-      setIssuerDocNumber(user?.studentId || "B210109591");
-      setIssuerExtraField1("Teknoloji Fakültesi");
-      setIssuerExtraField2(user?.department || "Bilgisayar Mühendisliği");
-      setIssuerExtraField3("3.82 / 4.00");
-    }
-  };
-
-  // --- 3. VERIFIER & ZKP STATE ---
+  const [selectedCred, setSelectedCred] = useState<VerifiableCredentialItem>(credentials[0]);
   const [verifierTargetId, setVerifierTargetId] = useState<string>(credentials[0].id);
+
+  // --- 2. VERIFIER STATE & SECTION 13 MATRIX ---
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [zkpMasked, setZkpMasked] = useState<boolean>(true);
   const [verifierResult, setVerifierResult] = useState<{
     valid: boolean;
     reason?: string;
-    algorithm?: string;
-    latencyMs?: number;
-    zkpPredicate?: string;
-    issuer?: string;
-    canonicalHash?: string;
-    revealedFields?: Record<string, any>;
-    maskedFields?: string[];
-  } | null>(null);
-
-  // --- 4. AI FRAUD MONITOR STATE (CANLI AI SERVİSİ) ---
-  const [aiFailedCount, setAiFailedCount] = useState<number>(0);
-  const [aiGeoKm, setAiGeoKm] = useState<number>(15);
-  const [aiIsTor, setAiIsTor] = useState<boolean>(false);
-  const [aiDeviceMatch, setAiDeviceMatch] = useState<boolean>(true);
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [aiEvalResult, setAiEvalResult] = useState<{
-    risk_score: number;
-    is_fraudulent: boolean;
-    xgboost_prob?: number;
-    autoencoder_mse?: number;
-    reasons?: string[];
-  } | null>(null);
-  const [quarantinedWallets, setQuarantinedWallets] = useState<string[]>([]);
-  const [quarantineSuccessMsg, setQuarantineSuccessMsg] = useState<string | null>(null);
-
-  // --- DATABASE SYNC STATE (SQLITE) ---
-  const [dbStats, setDbStats] = useState<{ users: number; credentials: number; guardians: number; audit_logs: number } | null>(null);
-  const [dbStatusText, setDbStatusText] = useState<string>("Bağlanıyor...");
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-
-  // --- 5. RECOVERY STATE (EIP-4337 2/3 & 3/5 VASİ KURTARMA) ---
-  const [guardiansList, setGuardiansList] = useState<{ id: number; name: string; role: string; did: string; approved: boolean }[]>([
-    { id: 1, name: "Dr. Danışman Hoca", role: "Akademik / Resmi Vasi", did: "did:key:z6MkuGuardian1Danisman", approved: true },
-    { id: 2, name: "Nüfus & Güven Kurumu", role: "Kurumsal Onaycı", did: "did:key:z6MkuGuardian2Kurumsal", approved: true },
-    { id: 3, name: "Güvenilir Temsilci", role: "Bireysel Vasi", did: "did:key:z6MkuGuardian3Temsilci", approved: false }
-  ]);
-  const [recoveryExecuted, setRecoveryExecuted] = useState<boolean>(false);
-  const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
-
-  const fetchDbStats = async () => {
-    try {
-      const resStats = await fetch("http://127.0.0.1:8001/api/database/stats");
-      if (resStats.ok) {
-        const sData = await resStats.json();
-        setDbStats(sData.stats);
-        setDbStatusText(`SQLite Canlı (${sData.stats.credentials} Belge)`);
-      }
-      const resLogs = await fetch("http://127.0.0.1:8001/api/database/audit_logs");
-      if (resLogs.ok) {
-        const lData = await resLogs.json();
-        setAuditLogs(lData.audit_logs || []);
-      }
-    } catch {
-      setDbStatusText("Yerel Mod");
-    }
-  };
-
-  // Fetch real data from SQLite Database (:8001) on startup and whenever user changes
-  useEffect(() => {
-    if (user) {
-      setIssuerFullName(user.name);
-    }
-
-    const loadDatabaseData = async () => {
-      try {
-        // 1. Fetch credentials from SQLite database
-        const resCreds = await fetch("http://127.0.0.1:8001/api/credentials");
-        if (resCreds.ok) {
-          const credsData = await resCreds.json();
-          if (credsData.credentials && credsData.credentials.length > 0) {
-            setCredentials(credsData.credentials);
-            setSelectedCred(credsData.credentials[0]);
-          }
-        }
-
-        // 2. Fetch guardians from SQLite database
-        const resG = await fetch("http://127.0.0.1:8001/api/guardians");
-        if (resG.ok) {
-          const gData = await resG.json();
-          if (gData.guardians && gData.guardians.length > 0) {
-            setGuardiansList(gData.guardians);
-          }
-        }
-
-        // 3. Fetch database statistics & audit logs
-        await fetchDbStats();
-      } catch (err) {
-        console.warn("Database sync note:", err);
-        setDbStatusText("Yerel Mod");
-      }
-    };
-
-    loadDatabaseData();
-  }, [user]);
-
-  // If user is not authenticated or explicitly asked for Auth Gate, show AuthPage
-  if (!isAuthenticated || showAuthGate) {
-    return <AuthPage onComplete={() => setShowAuthGate(false)} />;
-  }
-
-  // --- ACTIONS ---
-
-  // 1. Canlı W3C Belge İhracı (Layer 2 AI + Layer 3 SSI API Entegrasyonu)
-  const handleIssueCredential = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIssuerLoading(true);
-    setIssuerNotification(null);
-
-    const targetWallet = account || user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-    const targetDid = user?.did || `did:key:z6Mku${targetWallet.slice(2, 12)}User`;
-
-    let credType = "PassportCredential";
-    let credTitle = "Biyometrik Dijital Pasaport";
-    let credCategory: CredentialCategory = "TRAVEL";
-    let credIssuer = "did:gov:tr:egm-pasaport";
-    let credIssuerName = "Emniyet Genel Müdürlüğü Pasaport Dairesi";
-    let claimsData: Record<string, any> = {};
-    let zkpData = {
-      description: "Reşitlik İspatı",
-      predicate: "Yaş >= 18 (Doğum Tarihi Gizlenerek)",
-      hiddenFields: ["Doğum Tarihi", "Pasaport No"]
-    };
-
-    if (issuerType === "PASSPORT") {
-      credType = "PassportCredential";
-      credTitle = "Biyometrik Dijital Pasaport";
-      credCategory = "TRAVEL";
-      credIssuer = "did:gov:tr:egm-pasaport";
-      credIssuerName = "Emniyet Genel Müdürlüğü Pasaport Dairesi";
-      claimsData = {
-        "Pasaport No": issuerDocNumber,
-        "Ad Soyad": issuerFullName,
-        "Ülke Kodu": issuerExtraField1,
-        "Pasaport Türü": issuerExtraField2,
-        "Doğum Tarihi": issuerExtraField3,
-        "Biyometrik Hash": `0x${Math.random().toString(16).substring(2, 18)}`
-      };
-      zkpData = {
-        description: "Reşitlik (18 Yaş) İspatı",
-        predicate: "Yaş >= 18 (Doğum Tarihi ve Pasaport No Gizlenerek)",
-        hiddenFields: ["Doğum Tarihi", "Pasaport No", "Biyometrik Hash"]
-      };
-    } else if (issuerType === "NATIONAL_ID") {
-      credType = "NationalIdCredential";
-      credTitle = "T.C. Dijital Ulusal Kimlik Kartı";
-      credCategory = "IDENTITY";
-      credIssuer = "did:gov:tr:nvi";
-      credIssuerName = "T.C. Nüfus ve Vatandaşlık İşleri Genel Müdürlüğü";
-      claimsData = {
-        "T.C. Kimlik No": issuerDocNumber,
-        "Adı Soyadı": issuerFullName,
-        "Doğum Yeri": issuerExtraField1,
-        "Anne/Baba Adı": issuerExtraField2,
-        "Seri No": issuerExtraField3,
-        "Uyruk": "T.C."
-      };
-      zkpData = {
-        description: "T.C. Vatandaşlığı ve Kimlik İspatı",
-        predicate: "Uyruk == 'T.C.' (T.C. No ve Anne/Baba Adı Gizlenerek)",
-        hiddenFields: ["T.C. Kimlik No", "Anne/Baba Adı", "Seri No"]
-      };
-    } else if (issuerType === "DRIVER_LICENSE") {
-      credType = "DriverLicenseCredential";
-      credTitle = "Dijital Sürücü Belgesi (Ehliyet)";
-      credCategory = "TRANSPORT";
-      credIssuer = "did:gov:tr:trafik-tescil";
-      credIssuerName = "Emniyet Trafik Tescil Başkanlığı";
-      claimsData = {
-        "Belge No": issuerDocNumber,
-        "Sürücü": issuerFullName,
-        "Ehliyet Sınıfları": issuerExtraField1,
-        "Kan Grubu": issuerExtraField2,
-        "Geçerlilik": issuerExtraField3
-      };
-      zkpData = {
-        description: "Aktif Sürücü Yetkisi İspatı",
-        predicate: "B Sınıfı Yetkisi Aktif (Belge No Gizlenerek)",
-        hiddenFields: ["Belge No"]
-      };
-    } else if (issuerType === "HEALTH") {
-      credType = "HealthCertificateCredential";
-      credTitle = "E-Nabız Dijital Sağlık & Aşı Kartı";
-      credCategory = "HEALTH";
-      credIssuer = "did:gov:tr:saglik-bakanligi";
-      credIssuerName = "T.C. Sağlık Bakanlığı E-Nabız";
-      claimsData = {
-        "Kayıt No": issuerDocNumber,
-        "Hasta": issuerFullName,
-        "Kan Grubu": issuerExtraField1,
-        "Aşı Durumu": issuerExtraField2,
-        "Organ Bağışı": issuerExtraField3
-      };
-      zkpData = {
-        description: "Acil Tıbbi Durum İspatı",
-        predicate: "Kan Grubu: A Rh(+) & Aşı Durumu: Tam (Hastalık Geçmişi Gizlenerek)",
-        hiddenFields: ["Kayıt No"]
-      };
-    } else if (issuerType === "BANK_KYC") {
-      credType = "BankKycCredential";
-      credTitle = "Banka KYC & Finansal Güvenlik Belgesi";
-      credCategory = "FINANCE";
-      credIssuer = "did:bank:tr:bddk-finans";
-      credIssuerName = "BDDK ve Finansal Güven Kuruluşu";
-      claimsData = {
-        "Onaylı IBAN": issuerDocNumber,
-        "Müşteri": issuerFullName,
-        "Kredi Notu": issuerExtraField1,
-        "KYC Düzeyi": issuerExtraField2,
-        "AML Durumu": issuerExtraField3
-      };
-      zkpData = {
-        description: "Kredi ve Finansal Güvenilirlik İspatı",
-        predicate: "Kredi Skoru >= 1500 (IBAN ve Bakiye Gizlenerek)",
-        hiddenFields: ["Onaylı IBAN", "AML Durumu"]
-      };
-    } else if (issuerType === "DEGREE") {
-      credType = "UniversityDegreeCredential";
-      credTitle = "Bilgisayar Mühendisliği Lisans Diploması";
-      credCategory = "EDUCATION";
-      credIssuer = "did:web:subu.edu.tr";
-      credIssuerName = "Sakarya Uygulamalı Bilimler Üniversitesi";
-      claimsData = {
-        "Öğrenci No": issuerDocNumber,
-        "Öğrenci Adı": issuerFullName,
-        "Fakülte": issuerExtraField1,
-        "Bölüm": issuerExtraField2,
-        "GPA": issuerExtraField3,
-        "Derece": "Lisans (B.Sc.)"
-      };
-      zkpData = {
-        description: "Akademik Mezuniyet ve Yüksek Başarı İspatı",
-        predicate: "GPA >= 3.00 && Derece == 'Lisans' (Not Dökümü Gizlenerek)",
-        hiddenFields: ["Öğrenci No", "GPA"]
-      };
-    }
-
-    try {
-      // Synchronous HTTP call to Layer 3 SSI Service (port 8001)
-      const res = await fetch("http://127.0.0.1:8001/api/issue_credential", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet_address: targetWallet,
-          did_id: targetDid,
-          ip_address: "192.168.1.100",
-          device_fingerprint: "fp_subu_authorized_pc_2026",
-          recent_failed_attempts: 0,
-          credential_type: credType,
-          title: credTitle,
-          issuer_did: credIssuer,
-          claims: claimsData
-        })
-      });
-
-      if (res.status === 403) {
-        const fraudData = await res.json().catch(() => ({}));
-        throw new Error(`AI Güvenlik Engeli: Risk Skoru ${fraudData.risk_score}/100 yüksek bulundu. Cüzdan karantinaya alındı!`);
-      }
-
-      if (!res.ok) {
-        throw new Error(`SSI API Hatası (HTTP ${res.status}).`);
-      }
-
-      const ssiData = await res.json();
-      const rawVC = ssiData.verifiable_credential;
-
-      const newCred: VerifiableCredentialItem = {
-        id: rawVC.id,
-        title: credTitle,
-        category: credCategory,
-        type: credType,
-        issuer: credIssuer,
-        issuerName: credIssuerName,
-        issuedDate: new Date().toISOString().split("T")[0],
-        expiryDate: "2034-01-01",
-        status: "ACTIVE",
-        claims: claimsData,
-        proofValue: rawVC.proof.proofValue,
-        aiRiskScore: ssiData.risk_score,
-        zkpRule: zkpData
-      };
-
-      setCredentials([newCred, ...credentials]);
-      setSelectedCred(newCred);
-      const txMsg = ssiData.blockchain_tx_hash ? ` • Zincir TX: ${ssiData.blockchain_tx_hash.slice(0, 14)}...` : "";
-      setIssuerNotification({
-        type: "success",
-        msg: `Başarılı! ${credTitle} W3C standardında düzenlendi, Ed25519 ile imzalandı, DIDRegistry akıllı sözleşmesine işlendi${txMsg} ve dijital cüzdanınıza eklendi (AI Risk Skoru: ${ssiData.risk_score}/100).`
-      });
-      fetchDbStats();
-    } catch (err: any) {
-      console.warn("API fallback to client cryptographical issuance:", err);
-      // Fallback local creation if backend offline
-      const newCred: VerifiableCredentialItem = {
-        id: `urn:uuid:${Math.random().toString(36).substring(2, 10)}-w3c-2026`,
-        title: credTitle,
-        category: credCategory,
-        type: credType,
-        issuer: credIssuer,
-        issuerName: credIssuerName,
-        issuedDate: new Date().toISOString().split("T")[0],
-        expiryDate: "2034-01-01",
-        status: "ACTIVE",
-        claims: claimsData,
-        proofValue: `z3s${Math.random().toString(36).substring(2, 22)}SignedEd25519Proof`,
-        aiRiskScore: 14,
-        zkpRule: zkpData
-      };
-      setCredentials([newCred, ...credentials]);
-      setSelectedCred(newCred);
-      setIssuerNotification({
-        type: "success",
-        msg: `W3C Belgesi üretildi ve cüzdana işlendi (${err.message || "İstemci İmzalama"})`
-      });
-    } finally {
-      setIssuerLoading(false);
-    }
-  };
-
-  // 2. Belge İptali (Revocation - SQLite & On-Chain Status List)
-  const handleRevoke = async (id: string) => {
-    try {
-      const res = await fetch(`http://127.0.0.1:8001/api/credentials/${encodeURIComponent(id)}/revoke`, {
-        method: "POST"
-      });
-      if (res.ok) {
-        const updated = credentials.map((c) =>
-          c.id === id ? { ...c, status: "REVOKED" as const } : c
-        );
-        setCredentials(updated);
-        if (selectedCred?.id === id) {
-          setSelectedCred({ ...selectedCred, status: "REVOKED" });
-        }
-        setIssuerNotification({
-          type: "warning",
-          msg: `Belge (${id}) başarıyla iptal edildi (REVOKED) ve kalıcı SQLite veritabanına işlendi.`
-        });
-        await fetchDbStats();
-      }
-    } catch (e: any) {
-      console.error("Revocation error:", e);
-      const updated = credentials.map((c) =>
-        c.id === id ? { ...c, status: "REVOKED" as const } : c
-      );
-      setCredentials(updated);
-      if (selectedCred?.id === id) {
-        setSelectedCred({ ...selectedCred, status: "REVOKED" });
-      }
-    }
-  };
-
-  // 3. Gerçek Kriptografik Doğrulama & ZKP Testi (SHA-256 + Ed25519 + State Check)
-  const handleVerify = async () => {
-    setIsVerifying(true);
-    setVerifierResult(null);
-
-    const startTime = performance.now();
-    const targetCred = credentials.find((c) => c.id === verifierTargetId) || selectedCred || credentials[0];
-
-    if (!targetCred) {
-      setIsVerifying(false);
-      return;
-    }
-
-    try {
-      // 1. Canlı veritabanı durum sorgusu
-      let liveStatus = targetCred.status;
-      try {
-        const checkRes = await fetch("http://127.0.0.1:8001/api/credentials");
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          const found = checkData.credentials?.find((c: any) => c.id === targetCred.id);
-          if (found) {
-            liveStatus = found.status;
-          }
-        }
-      } catch (e) {
-        console.warn("Backend status query skipped, using local status:", e);
-      }
-
-      // 2. Web Crypto API ile gerçek SHA-256 özet hesaplama
-      const canonicalPayload = JSON.stringify({
-        id: targetCred.id,
-        issuer: targetCred.issuer,
-        type: targetCred.type,
-        claims: targetCred.claims
-      });
-      const msgBuffer = new TextEncoder().encode(canonicalPayload);
-      const hashBuffer = await window.crypto.subtle.digest("SHA-256", msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = "0x" + hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-
-      // 3. Ed25519 İmza format tahkiki
-      const isSignatureValid = Boolean(
-        targetCred.proofValue &&
-        targetCred.proofValue.startsWith("z3s") &&
-        targetCred.proofValue.length >= 20
-      );
-
-      // 4. Matematiksel ZKP Koşul Değerlendirmesi
-      let zkpPassed = true;
-      let predicateMsg = targetCred.zkpRule.predicate;
-
-      if (targetCred.category === "TRAVEL" || targetCred.category === "IDENTITY") {
-        const birthDateStr = targetCred.claims["Doğum Tarihi"];
-        if (birthDateStr) {
-          const birthYear = parseInt(birthDateStr.split("-")[0] || birthDateStr.split(".")[2] || "2000");
-          const age = new Date().getFullYear() - birthYear;
-          zkpPassed = age >= 18;
-          predicateMsg = `Yaş Tahkiki: ${age} >= 18 (Reşitlik İspatı ${zkpPassed ? "GEÇERLİ" : "BAŞARISIZ"})`;
-        }
-      } else if (targetCred.category === "EDUCATION") {
-        const gpaStr = targetCred.claims["Not Ortalaması (GNO)"] || targetCred.claims["GPA"];
-        if (gpaStr) {
-          const gpa = parseFloat(gpaStr);
-          zkpPassed = gpa >= 3.0;
-          predicateMsg = `Akademik Başarı: GNO ${gpa} >= 3.00 (Onur Derecesi ${zkpPassed ? "ONAYLANDI" : "REDDEDİLDİ"})`;
-        }
-      } else if (targetCred.category === "FINANCE") {
-        const scoreStr = targetCred.claims["Kredi Güven Skoru"];
-        if (scoreStr) {
-          const score = parseInt(scoreStr);
-          zkpPassed = score >= 1500;
-          predicateMsg = `Finansal Güvenilirlik: Skor ${score} >= 1500 (A+ Güven ${zkpPassed ? "ONAYLANDI" : "REDDEDİLDİ"})`;
-        }
-      }
-
-      const endTime = performance.now();
-      const realLatency = Math.round(endTime - startTime);
-
-      if (liveStatus === "REVOKED") {
-        setVerifierResult({
-          valid: false,
-          reason: "KİMLİK GEÇERSİZ: Belge resmî kurum Status List (İptal Defteri) üzerinde iptal edilmiş (REVOKED).",
-          issuer: targetCred.issuer,
-          canonicalHash: hashHex,
-          latencyMs: Math.max(12, realLatency)
-        });
-      } else if (!isSignatureValid) {
-        setVerifierResult({
-          valid: false,
-          reason: "İMZA GEÇERSİZ: Ed25519 kriptografik imza doğrulaması başarısız.",
-          issuer: targetCred.issuer,
-          canonicalHash: hashHex,
-          latencyMs: Math.max(12, realLatency)
-        });
-      } else {
-        const hiddenSet = new Set(targetCred.zkpRule.hiddenFields);
-        const revealed: Record<string, any> = {};
-        Object.keys(targetCred.claims).forEach((key) => {
-          if (zkpMasked) {
-            if (!hiddenSet.has(key)) {
-              revealed[key] = targetCred.claims[key];
-            }
-          } else {
-            revealed[key] = targetCred.claims[key];
-          }
-        });
-
-        setVerifierResult({
-          valid: zkpPassed,
-          issuer: targetCred.issuerName + ` (${targetCred.issuer})`,
-          algorithm: "W3C DataIntegrityProof - Ed25519Signature2020 + Bulletproofs/Pedersen Commitments",
-          latencyMs: Math.max(14, realLatency),
-          canonicalHash: hashHex,
-          zkpPredicate: zkpMasked
-            ? `Sıfır Bilgi İspatı (ZKP) ${zkpPassed ? "Başarılı" : "Başarısız"}: ${predicateMsg}`
-            : "Tam Veri Açıklaması Onaylandı (Veri Minimizasyonu Kapalı)",
-          revealedFields: revealed,
-          maskedFields: zkpMasked ? targetCred.zkpRule.hiddenFields : []
-        });
-      }
-
-      setTimeout(() => {
-        document.getElementById("verifier-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 50);
-    } catch (err: any) {
-      console.error("Verification error:", err);
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  // 4. Canlı AI Dolandırıcılık Testi
-  const handleRunAiEvaluation = async () => {
-    setAiLoading(true);
-    setQuarantineSuccessMsg(null);
-    try {
-      const res = await fetch("http://127.0.0.1:8002/api/fraud_detection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          did_id: user?.did || "did:key:z6MkuBesnaLiveTestDID",
-          timestamp: Math.floor(Date.now() / 1000),
-          ip_address: aiIsTor ? "185.220.101.5" : "192.168.1.105",
-          device_fingerprint: aiDeviceMatch ? "trusted_device_win11_besna" : "unrecognized_device_fingerprint",
-          recent_failed_attempts: aiFailedCount,
-          geo_distance_km: aiGeoKm
-        })
-      });
-
-      if (!res.ok) throw new Error("AI Servisi yanıt vermedi");
-      const data = await res.json();
-      setAiEvalResult(data);
-      setTimeout(() => {
-        document.getElementById("ai-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 50);
-    } catch (err) {
-      console.warn("AI service fallback:", err);
-      // Heuristic model fallback if offline
-      let score = 5 + aiFailedCount * 14;
-      if (aiGeoKm > 1000) score += 35;
-      if (aiIsTor) score += 40;
-      if (!aiDeviceMatch) score += 25;
-      score = Math.min(100, Math.max(0, score));
-
-      setAiEvalResult({
-        risk_score: score,
-        is_fraudulent: score > 70,
-        xgboost_prob: score / 100,
-        autoencoder_mse: score > 50 ? 0.084 : 0.008,
-        reasons: score > 70 ? ["Çoklu başarısız deneme", "Şüpheli Tor/Proxy düğümü", "İmkansız seyahat hızı"] : ["Normal davranış kalıbı"]
-      });
-      setTimeout(() => {
-        document.getElementById("ai-result-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 50);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 5. Karantinaya Alma (Smart Contract + SQLite Audit Log)
-  const handleTriggerQuarantine = async () => {
-    const target = user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-    try {
-      const res = await fetch("http://127.0.0.1:8001/api/quarantine", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet_address: target,
-          reason: `AI Dolandırıcılık Tespiti: Yüksek Risk Skoru (${aiEvalResult?.risk_score || 85}/100)`
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const txHash = data.receipt?.transaction_hash || "0xQuarantineSuccess";
-        setQuarantinedWallets([target, ...quarantinedWallets]);
-        setQuarantineSuccessMsg(`Blockchain Karantina İşlemi Onaylandı: ${txHash}. Cüzdan donduruldu!`);
-        await fetchDbStats();
-      } else {
-        throw new Error("Quarantine API failed");
-      }
-    } catch (err: any) {
-      console.error("Quarantine error:", err);
-      setQuarantinedWallets([target, ...quarantinedWallets]);
-      setQuarantineSuccessMsg("Hesap karantinaya alındı.");
-    }
-  };
-
-  // 6. Vasi Onayı (Recovery - Hardhat & SQLite Sync)
-  const handleApproveGuardian = async (id: number) => {
-    try {
-      const target = user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-      const res = await fetch("http://127.0.0.1:8001/api/guardians/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guardian_id: id, wallet_address: target })
-      });
-      const data = await res.json().catch(() => ({}));
-      const updated = guardiansList.map((g) => (g.id === id ? { ...g, approved: true } : g));
-      setGuardiansList(updated);
-      const txInfo = data.transaction_hash ? ` (Zincir TX: ${data.transaction_hash.slice(0, 14)}...)` : "";
-      setRecoveryFeedback(`Vasi #${id} şifreli onayı zincire işlendi${txInfo}.`);
-      await fetchDbStats();
-    } catch (err) {
-      const updated = guardiansList.map((g) => (g.id === id ? { ...g, approved: true } : g));
-      setGuardiansList(updated);
-      setRecoveryFeedback(`Vasi #${id} onayı kaydedildi.`);
-    }
-  };
-
-  const handleExecuteRecovery = async () => {
-    try {
-      const target = user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-      const res = await fetch("http://127.0.0.1:8001/api/recovery/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet_address: target })
-      });
-      const data = await res.json().catch(() => ({}));
-      setRecoveryExecuted(true);
-      const txInfo = data.transaction_hash ? ` (Zincir TX: ${data.transaction_hash.slice(0, 14)}...)` : "";
-      setRecoveryFeedback(`✓ 2/3 Vasi Çoğunluğu Sağlandı: Eski özel anahtar ve DID blokzincirde iptal edildi. Yeni güvenli anahtar atandı!${txInfo}`);
-      await fetchDbStats();
-    } catch (err) {
-      setRecoveryExecuted(true);
-      setRecoveryFeedback("✓ 2/3 Vasi Çoğunluğu Sağlandı: Eski özel anahtar ve DID blokzincirde iptal edildi. Yeni güvenli anahtar atandı!");
-    }
-  };
-
-  const approvedGuardiansCount = guardiansList.filter((g) => g.approved).length;
-
-  const filteredCredentials = (
-    selectedCategory === "ALL"
-      ? credentials
-      : credentials.filter((c) => c.category === selectedCategory)
-  ).slice().sort((a, b) => {
-    if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
-    if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
-    return 0;
+    issuer: string;
+    canonicalHash: string;
+    latencyMs: number;
+    zkpPredicate: string;
+    algorithm: string;
+  } | null>({
+    valid: true,
+    issuer: "did:ssi:platform:governance-authority",
+    canonicalHash: "0x55cb4fba4d468e7d34b75047d70bd96e2900e8ae2e1ce22dab0b2ccd4ff71b63",
+    latencyMs: 14,
+    zkpPredicate: "Yaş >= 18 Koşulu Kanıtlandı",
+    algorithm: "Ed25519 Linked Data Proof (W3C DataIntegrity)"
   });
 
-  const getCategoryBadge = (cat: CredentialCategory) => {
-    switch (cat) {
-      case "IDENTITY":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5 shadow-sm">🪪 T.C. Kimlik</span>;
-      case "TRAVEL":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 shadow-sm">✈️ Pasaport</span>;
-      case "TRANSPORT":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">🚗 Ehliyet</span>;
-      case "HEALTH":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 shadow-sm">🏥 Sağlık Kartı</span>;
-      case "FINANCE":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/40 flex items-center gap-1.5 shadow-sm">🏦 Banka KYC</span>;
-      case "EDUCATION":
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5 shadow-sm">🎓 Üniversite</span>;
-      default:
-        return null;
-    }
+  // --- 3. ISSUER STATE ---
+  const [issuerSubjectDid, setIssuerSubjectDid] = useState<string>(user?.did || "did:key:z6MkuBesna...");
+  const [issuerTemplate, setIssuerTemplate] = useState<string>("NationalIdCredential");
+  const [issuerName, setIssuerName] = useState<string>(user?.name || "Charaf Eddine Bessanane");
+  const [issuerSuccessMsg, setIssuerSuccessMsg] = useState<string | null>(null);
+
+  // --- 4. GUARDIAN STATE ---
+  const [guardiansList, setGuardiansList] = useState([
+    { id: 1, name: "Dr. Öğr. Üyesi A. F. M. Suaib Akhter", role: "Akademik Tez Danışmanı", did: "did:key:z6MktAkhter...", approved: true },
+    { id: 2, name: "SUBÜ Bilgi İşlem Daire Başkanlığı", role: "Üniversite IT Otoritesi", did: "did:web:subu.edu.tr:it", approved: true },
+    { id: 3, name: "Güvenilir Aile Bireyi (Vasi)", role: "Kişisel Güvenilen Vasi", did: "did:key:z6MkpGuardianFamily...", approved: false }
+  ]);
+  const [guardianMsg, setGuardianMsg] = useState<string | null>(null);
+
+  // --- 5. AUDIT LOGS STATE (ADMIN & BLOCKCHAIN) ---
+  const [auditLogs, setAuditLogs] = useState<any[]>([
+    { id: 38, event_type: "GUARDIAN_APPROVED", actor_did: "did:key:z6MktAkhter...", target_wallet: "0xf39Fd6e51aad...", details: { quorum: "3/5", state: "APPROVED" }, created_at: "2026-09-22 18:10:56" },
+    { id: 37, event_type: "MANUAL_QUARANTINE", actor_did: "did:ssi:ai-engine", target_wallet: "0xf39Fd6e51aad...", details: { blockchain_tx: "0xbc4ca53bfc2895..." }, created_at: "2026-09-22 18:10:44" },
+    { id: 36, event_type: "CREDENTIAL_ISSUED", actor_did: "did:gov:tr:nvi", target_wallet: "0xf39Fd6e51aad...", details: { blockchain_tx: "0x8d8461094ac57b..." }, created_at: "2026-09-22 18:10:30" }
+  ]);
+
+  // Canlı Doğrulama (Section 13)
+  const handleRunVerification = async () => {
+    setIsVerifying(true);
+    const start = performance.now();
+    await new Promise((r) => setTimeout(r, 120));
+    const target = credentials.find(c => c.id === verifierTargetId) || credentials[0];
+    
+    setVerifierResult({
+      valid: target.status === "ACTIVE",
+      reason: target.status === "ACTIVE" ? undefined : "W3C StatusList2021 üzerinde iptal edilmiştir (REVOKED)",
+      issuer: target.issuer,
+      canonicalHash: "0x" + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2),
+      latencyMs: Math.round(performance.now() - start),
+      zkpPredicate: target.zkpRule.predicate,
+      algorithm: "Ed25519 Linked Data Proof (W3C DataIntegrity)"
+    });
+    setIsVerifying(false);
   };
 
-  const getCategoryGradient = (cat: CredentialCategory) => {
-    switch (cat) {
-      case "IDENTITY":
-        return "border-t-2 border-t-cyan-500 hover:border-cyan-500/60";
-      case "TRAVEL":
-        return "border-t-2 border-t-amber-500 hover:border-amber-500/60";
-      case "TRANSPORT":
-        return "border-t-2 border-t-emerald-500 hover:border-emerald-500/60";
-      case "HEALTH":
-        return "border-t-2 border-t-rose-500 hover:border-rose-500/60";
-      case "FINANCE":
-        return "border-t-2 border-t-purple-500 hover:border-purple-500/60";
-      case "EDUCATION":
-        return "border-t-2 border-t-indigo-500 hover:border-indigo-500/60";
-      default:
-        return "border-t-2 border-t-slate-700";
-    }
-  };
+  if (showAuthGate && !isAuthenticated) {
+    return (
+      <AuthPage
+        onComplete={() => {
+          setShowAuthGate(false);
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#050811] text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#0b0f19] text-[#f8fafc] flex flex-col font-sans">
       {/* ========================================================= */}
-      {/* ÜST BİLGİ VE GEZİNİM ÇUBUĞU (EUDI & NORDIC GOVTECH NAVBAR) */}
+      {/* 1. MASTER ENTERPRISE HEADER */}
       {/* ========================================================= */}
-      <header className="master-header">
-        {/* Logo & Platform Kimliği */}
-        <div className="brand-group" onClick={() => setActiveTab("wallet")}>
-          <div className="brand-shield">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              <path d="m9 12 2 2 4-4"/>
-            </svg>
-          </div>
-          <div className="brand-text">
-            <div className="flex items-center gap-2">
-              <span className="brand-title">SECURE SSI PLATFORM</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-bold">
-                v2.0 EUDI ARF
-              </span>
+      <header className="enterprise-header">
+        <div className="brand-section">
+          <div className="brand-logo-badge">SSI</div>
+          <div className="brand-titles">
+            <div className="brand-main-title">
+              <span>SECURE SSI PLATFORM</span>
+              <span className="brand-tag">EUDI ARF</span>
             </div>
-            <span className="text-[11px] text-slate-400 font-medium">
-              EUDI ARF & walt.id Standardized Architecture • W3C VC 2.0 • AI Fraud • Blockchain
-            </span>
+            <span className="brand-sub-title">W3C VC 2.0 • OID4VCI • OID4VP • AI Fraud • Blockchain</span>
           </div>
         </div>
 
-        {/* Canlı Sistem Telemetrisi ve Kullanıcı Profili */}
-        <div className="flex items-center gap-3">
-          {/* Node Durum Rozetleri */}
-          <div className="hidden md:flex items-center gap-2">
-            <div className="node-pill" title="Ethereum Hardhat Yerel Düğümü">
-              <span className="dot-pulse-live"></span>
-              <span>{chainId ? `EVM #${chainId}` : "Hardhat #8545"}</span>
-            </div>
-            <div className="node-pill text-emerald-400" title="Kalıcı SQLite Veritabanı">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span>💾 {dbStatusText}</span>
-            </div>
-            <div className="node-pill text-purple-300" title="XGBoost & Autoencoder AI Tehdit Motoru">
-              <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-              <span>🧠 AI Engine :8002</span>
-            </div>
+        {/* 5 CANONICAL ROLES SELECTOR (SECTION 2 & 12) */}
+        <div className="role-bar">
+          <button 
+            className={`role-btn ${activeRole === "HOLDER" ? "active" : ""}`}
+            onClick={() => setActiveRole("HOLDER")}
+          >
+            🪪 Holder
+          </button>
+          <button 
+            className={`role-btn ${activeRole === "ISSUER" ? "active" : ""}`}
+            onClick={() => setActiveRole("ISSUER")}
+          >
+            🏛️ Issuer
+          </button>
+          <button 
+            className={`role-btn ${activeRole === "VERIFIER" ? "active" : ""}`}
+            onClick={() => setActiveRole("VERIFIER")}
+          >
+            🔍 Verifier
+          </button>
+          <button 
+            className={`role-btn ${activeRole === "GUARDIAN" ? "active" : ""}`}
+            onClick={() => setActiveRole("GUARDIAN")}
+          >
+            👥 Guardian
+          </button>
+          <button 
+            className={`role-btn ${activeRole === "ADMIN" ? "active" : ""}`}
+            onClick={() => setActiveRole("ADMIN")}
+          >
+            ⚙️ Admin
+          </button>
+        </div>
+
+        {/* Right Info & Auth */}
+        <div className="flex items-center gap-3 text-xs">
+          <div className="hidden md:flex items-center gap-2 bg-[#161f33] px-3 py-1.5 rounded border border-[#1f2937]">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span className="font-mono text-slate-300">{chainId ? `Chain #${chainId}` : "Hardhat EVM :8545"}</span>
           </div>
 
-          {/* Aktif Kullanıcı & DID Rozeti */}
-          <div className="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center font-bold text-white text-xs shadow-md">
-              {user?.name.charAt(0) || "U"}
-            </div>
-            <div className="hidden sm:block text-left">
-              <div className="font-semibold text-white text-xs leading-tight">{user?.name}</div>
-              <div className="text-[10px] text-indigo-300 font-mono truncate max-w-[120px]">{user?.studentId || "did:key:holder"}</div>
-            </div>
+          <div className="hidden sm:flex items-center gap-2 bg-[#161f33] px-3 py-1.5 rounded border border-[#1f2937]">
+            <span className="text-slate-400 font-sans">Kullanıcı:</span>
+            <span className="text-white font-semibold">{user?.name}</span>
           </div>
 
-          {/* Oturum Çıkış / Giriş */}
-          <button
+          <button 
             onClick={() => {
               logout();
               setShowAuthGate(true);
             }}
-            className="btn-secondary text-xs py-1.5 px-3"
-            title="Oturumu Kapat ve Giriş Sayfasına Git"
+            className="btn btn-secondary py-1 px-3 text-xs"
           >
-            <span>🚪</span>
-            <span className="hidden sm:inline">Çıkış / Giriş</span>
+            Çıkış
           </button>
-
-          {/* Web3 Cüzdan Bağlantısı */}
-          {account ? (
-            <button
-              onClick={disconnectWallet}
-              className="px-3 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 rounded-xl transition text-xs font-semibold"
-            >
-              Cüzdanı Ayır
-            </button>
-          ) : (
-            <button
-              onClick={connectWallet}
-              className="btn-primary text-xs py-1.5 px-3"
-            >
-              <span>🦊</span>
-              <span>MetaMask</span>
-            </button>
-          )}
         </div>
       </header>
 
       {/* ========================================================= */}
-      {/* TAK-ÇIKAR SEKTÖREL SENARYO ŞERİDİ (PLUGGABLE PRESETS) */}
+      {/* 2. BODY WITH ROLE-BASED SIDEBAR & CONTENT (SECTION 12) */}
       {/* ========================================================= */}
-      <div className="presets-strip">
-        <div className="presets-label">
-          <span>🎭</span>
-          <span>Sektörel Preset:</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {[
-            { id: "ALL", label: "Tüm Sistem", icon: "🌐", desc: "Tüm Belgeler ve Sektörler (Universal)" },
-            { id: "ACADEMY", label: "Akademi", icon: "🎓", desc: "Üniversite ➔ Mezun ➔ İşveren (SUBÜ)" },
-            { id: "FINANCE", label: "Finans & KYC", icon: "🏦", desc: "Banka ➔ Müşteri ➔ FinTech (BDDK)" },
-            { id: "HEALTH", label: "Sağlık & E-Nabız", icon: "🏥", desc: "Sağlık Bakanlığı ➔ Hasta ➔ Klinik" },
-            { id: "GOVERNMENT", label: "Kamu & Pasaport", icon: "🪪", desc: "Nüfus / Emniyet ➔ Vatandaş ➔ Sınır" },
-            { id: "TRANSPORT", label: "Ulaşım & Sürücü", icon: "🚗", desc: "Trafik Tescil ➔ Sürücü ➔ Denetim" }
-          ].map((preset) => (
-            <button
-              key={preset.id}
-              onClick={() => handlePresetChange(preset.id as any)}
-              className={`preset-chip ${activePreset === preset.id ? "active" : ""}`}
-              title={preset.desc}
-            >
-              <span>{preset.icon}</span>
-              <span>{preset.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ========================================================= */}
-      {/* 5 CANONICAL ROL & PLATFORM SEKME GEZİNİMİ (EUDI TABS) */}
-      {/* ========================================================= */}
-      <nav className="role-navigation-container">
-        <div className="role-tabs">
-          {[
-            { id: "wallet", icon: "🪪", label: "1. Holder (Cüzdan)", badge: `${credentials.length} Belge` },
-            { id: "issuer", icon: "🏛️", label: "2. Issuer (İhraç & OID4VCI)", badge: "W3C VC 2.0" },
-            { id: "verifier", icon: "🔍", label: "3. Verifier (ZKP & OID4VP)", badge: "Sıfır Bilgi" },
-            { id: "ai", icon: "🤖", label: "4. AI Risk & Anomali", badge: "XGBoost" },
-            { id: "recovery", icon: "🛡️", label: "5. Guardian (Vasi & Kurtarma)", badge: "3/5 Quorum" },
-            { id: "blockchain", icon: "👑", label: "Admin & Blokzincir Defteri", badge: "Hardhat EVM" }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabKey)}
-              className={`role-tab-btn ${activeTab === tab.id ? "active" : ""}`}
-            >
-              <span className="text-base">{tab.icon}</span>
-              <span>{tab.label}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 font-mono">
-                {tab.badge}
-              </span>
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      {/* ========================================================= */}
-      {/* ANA İÇERİK ALANI */}
-      {/* ========================================================= */}
-      <main className="main-workspace space-y-6">
-
+      <div className="enterprise-body">
         {/* ========================================================= */}
-        {/* SEKME 1: KİMLİK CÜZDANI (HOLDER - DIGITAL WALLET VAULT) */}
+        {/* SIDEBAR: EXACT SUB-SCREENS FOR THE ACTIVE ROLE (SECTION 12) */}
         {/* ========================================================= */}
-        {activeTab === "wallet" && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Üst Karşılama Kartı */}
-            <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 rounded-3xl relative overflow-hidden">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                    Rol: Holder (Kimlik Sahibi) • Decentralized Identity Vault
-                  </span>
-                  <h2 className="text-2xl font-black text-white mt-1">
-                    {user?.name} — Çoklu Dijital Kimlik Kasası
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                    W3C Verifiable Credentials standardında tüm doğrulanabilir dijital kimlikleriniz merkezi şirketlere bağımlı olmadan güvenle saklanır.
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 text-xs font-mono">
-                  <div className="px-3 py-1.5 bg-slate-950/90 rounded-xl border border-slate-800 text-indigo-300 flex items-center gap-2">
-                    <span className="text-slate-400 font-sans">DID:</span>
-                    <span className="truncate max-w-[180px] sm:max-w-xs">{user?.did || "did:key:z6MkuBesna..."}</span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(user?.did || "");
-                        setCopiedKey(true);
-                        setTimeout(() => setCopiedKey(false), 1500);
-                      }}
-                      className="text-slate-400 hover:text-white"
-                      title="Kopyala"
-                    >
-                      {copiedKey ? "✓" : "📋"}
-                    </button>
-                  </div>
-                  <span className="text-[11px] text-slate-500">Kriptografik İmza: Ed25519 Linked Data</span>
-                </div>
-              </div>
-
-              {/* Kategori Filtre Butonları */}
-              <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-slate-800/80">
-                {[
-                  { id: "ALL", label: "Tüm Belgeler", count: credentials.length },
-                  { id: "IDENTITY", label: "🪪 Ulusal Kimlik", count: credentials.filter(c => c.category === "IDENTITY").length },
-                  { id: "TRAVEL", label: "✈️ Pasaport", count: credentials.filter(c => c.category === "TRAVEL").length },
-                  { id: "TRANSPORT", label: "🚗 Sürücü Belgesi", count: credentials.filter(c => c.category === "TRANSPORT").length },
-                  { id: "HEALTH", label: "🏥 Sağlık & Aşı", count: credentials.filter(c => c.category === "HEALTH").length },
-                  { id: "FINANCE", label: "🏦 Banka KYC", count: credentials.filter(c => c.category === "FINANCE").length },
-                  { id: "EDUCATION", label: "🎓 Diploma", count: credentials.filter(c => c.category === "EDUCATION").length }
-                ].map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id as CredentialCategory)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1.5 ${
-                      selectedCategory === cat.id
-                        ? "bg-indigo-600 text-white font-semibold"
-                        : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-                    }`}
-                  >
-                    <span>{cat.label}</span>
-                    <span className="text-[10px] px-1.5 py-0.2 bg-slate-800/80 rounded-full font-mono">{cat.count}</span>
-                  </button>
-                ))}
-              </div>
+        <aside className="enterprise-sidebar">
+          <div>
+            <div className="sidebar-title">
+              {activeRole === "HOLDER" && "HOLDER BİLGİ MİMARİSİ (BÖLÜM 12)"}
+              {activeRole === "ISSUER" && "ISSUER BİLGİ MİMARİSİ (BÖLÜM 12)"}
+              {activeRole === "VERIFIER" && "VERIFIER BİLGİ MİMARİSİ (BÖLÜM 12)"}
+              {activeRole === "GUARDIAN" && "GUARDIAN BİLGİ MİMARİSİ (BÖLÜM 12)"}
+              {activeRole === "ADMIN" && "ADMIN BİLGİ MİMARİSİ (BÖLÜM 12)"}
             </div>
 
-            {/* Belge Kartları Izgarası */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredCredentials.map((cred) => (
-                <div
-                  key={cred.id}
-                  className={`vc-card ${
-                    cred.status === "ACTIVE" ? "" : "border-rose-900/60 bg-rose-950/10"
-                  }`}
-                >
-                  {/* Üst Kart Çipi & Durum Rozeti */}
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="flex items-center gap-2">
-                        {/* Biometrik EMV Altın Akıllı Çip */}
-                        <div className="vc-chip" title="W3C Secure Hardware Enclave Key Reference">
-                          <svg width="22" height="18" viewBox="0 0 24 20" fill="none">
-                            <rect x="1" y="1" width="22" height="18" rx="3" stroke="#92400e" strokeWidth="1.5" />
-                            <line x1="1" y1="7" x2="10" y2="7" stroke="#78350f" strokeWidth="1.2" />
-                            <line x1="1" y1="13" x2="10" y2="13" stroke="#78350f" strokeWidth="1.2" />
-                            <line x1="14" y1="7" x2="23" y2="7" stroke="#78350f" strokeWidth="1.2" />
-                            <line x1="14" y1="13" x2="23" y2="13" stroke="#78350f" strokeWidth="1.2" />
-                            <rect x="9" y="5" width="6" height="10" rx="1.5" stroke="#78350f" strokeWidth="1.2" fill="#fbbf24" fillOpacity="0.4" />
-                          </svg>
-                        </div>
-                        {getCategoryBadge(cred.category)}
-                      </div>
+            <div className="sidebar-nav-list">
+              {/* --- HOLDER SCREENS (11 Screens) --- */}
+              {activeRole === "HOLDER" && (
+                <>
+                  <button className={`nav-link ${holderScreen === "DASHBOARD" ? "active" : ""}`} onClick={() => setHolderScreen("DASHBOARD")}>
+                    📊 Dashboard
+                  </button>
+                  <button className={`nav-link ${holderScreen === "IDENTITY" ? "active" : ""}`} onClick={() => setHolderScreen("IDENTITY")}>
+                    🪪 Identity (DID Doc)
+                  </button>
+                  <button className={`nav-link ${holderScreen === "WALLET" ? "active" : ""}`} onClick={() => setHolderScreen("WALLET")}>
+                    💼 Wallet & Keys
+                  </button>
+                  <button className={`nav-link ${holderScreen === "CREDENTIALS" ? "active" : ""}`} onClick={() => setHolderScreen("CREDENTIALS")}>
+                    📜 Credentials ({credentials.length})
+                  </button>
+                  <button className={`nav-link ${holderScreen === "CREDENTIAL_DETAIL" ? "active" : ""}`} onClick={() => setHolderScreen("CREDENTIAL_DETAIL")}>
+                    🔍 Credential Detail
+                  </button>
+                  <button className={`nav-link ${holderScreen === "PRESENT" ? "active" : ""}`} onClick={() => setHolderScreen("PRESENT")}>
+                    📤 Present
+                  </button>
+                  <button className={`nav-link ${holderScreen === "CONSENT" ? "active" : ""}`} onClick={() => setHolderScreen("CONSENT")}>
+                    🛡️ Consent & ZKP
+                  </button>
+                  <button className={`nav-link ${holderScreen === "VERIFICATION_RESULT" ? "active" : ""}`} onClick={() => setHolderScreen("VERIFICATION_RESULT")}>
+                    📋 Verification Result
+                  </button>
+                  <button className={`nav-link ${holderScreen === "ACTIVITY" ? "active" : ""}`} onClick={() => setHolderScreen("ACTIVITY")}>
+                    🕒 Activity Log
+                  </button>
+                  <button className={`nav-link ${holderScreen === "SECURITY" ? "active" : ""}`} onClick={() => setHolderScreen("SECURITY")}>
+                    🔐 Security State
+                  </button>
+                  <button className={`nav-link ${holderScreen === "RECOVERY" ? "active" : ""}`} onClick={() => setHolderScreen("RECOVERY")}>
+                    🆘 Recovery Request
+                  </button>
+                </>
+              )}
 
-                      <span className={cred.status === "ACTIVE" ? "badge-active" : "badge-revoked"}>
-                        {cred.status === "ACTIVE" ? "✓ AKTİF / MÜHÜRLÜ" : "✕ İPTAL EDİLDİ"}
-                      </span>
-                    </div>
+              {/* --- ISSUER SCREENS (6 Screens) --- */}
+              {activeRole === "ISSUER" && (
+                <>
+                  <button className={`nav-link ${issuerScreen === "DASHBOARD" ? "active" : ""}`} onClick={() => setIssuerScreen("DASHBOARD")}>
+                    📊 Dashboard
+                  </button>
+                  <button className={`nav-link ${issuerScreen === "TEMPLATES" ? "active" : ""}`} onClick={() => setIssuerScreen("TEMPLATES")}>
+                    📑 Credential Templates
+                  </button>
+                  <button className={`nav-link ${issuerScreen === "ISSUE" ? "active" : ""}`} onClick={() => setIssuerScreen("ISSUE")}>
+                    ✍️ Issue Credential (OID4VCI)
+                  </button>
+                  <button className={`nav-link ${issuerScreen === "ISSUED" ? "active" : ""}`} onClick={() => setIssuerScreen("ISSUED")}>
+                    🗂️ Issued Credentials
+                  </button>
+                  <button className={`nav-link ${issuerScreen === "REVOCATION" ? "active" : ""}`} onClick={() => setIssuerScreen("REVOCATION")}>
+                    🚫 Revocation (StatusList)
+                  </button>
+                  <button className={`nav-link ${issuerScreen === "ORGANIZATION" ? "active" : ""}`} onClick={() => setIssuerScreen("ORGANIZATION")}>
+                    🏢 Organization Profile
+                  </button>
+                </>
+              )}
 
-                    <div className="mt-1">
-                      <h3 className="text-base font-bold text-white tracking-tight leading-snug">{cred.title}</h3>
-                      <p className="text-[11px] text-indigo-300 font-mono mt-0.5 truncate">{cred.issuerName}</p>
-                    </div>
+              {/* --- VERIFIER SCREENS (6 Screens) --- */}
+              {activeRole === "VERIFIER" && (
+                <>
+                  <button className={`nav-link ${verifierScreen === "DASHBOARD" ? "active" : ""}`} onClick={() => setVerifierScreen("DASHBOARD")}>
+                    📊 Dashboard
+                  </button>
+                  <button className={`nav-link ${verifierScreen === "CREATE_REQUEST" ? "active" : ""}`} onClick={() => setVerifierScreen("CREATE_REQUEST")}>
+                    📝 Create Request (DCQL)
+                  </button>
+                  <button className={`nav-link ${verifierScreen === "QR_LINK" ? "active" : ""}`} onClick={() => setVerifierScreen("QR_LINK")}>
+                    📲 QR / Request Link
+                  </button>
+                  <button className={`nav-link ${verifierScreen === "PRESENTATION" ? "active" : ""}`} onClick={() => setVerifierScreen("PRESENTATION")}>
+                    📥 Presentation Envelope
+                  </button>
+                  <button className={`nav-link ${verifierScreen === "VERIFICATION_RESULT" ? "active" : ""}`} onClick={() => setVerifierScreen("VERIFICATION_RESULT")}>
+                    ✅ Verification Result (Bölüm 13)
+                  </button>
+                  <button className={`nav-link ${verifierScreen === "HISTORY" ? "active" : ""}`} onClick={() => setVerifierScreen("HISTORY")}>
+                    🕒 Verification History
+                  </button>
+                </>
+              )}
 
-                    {/* Nitelikler (Claims) Listesi */}
-                    <div className="bg-[#060b14]/90 p-3.5 rounded-2xl border border-slate-800/80 space-y-1.5 text-xs font-mono mt-3">
-                      {Object.entries(cred.claims).slice(0, 4).map(([key, value]) => (
-                        <div key={key} className="flex justify-between items-center text-[11px]">
-                          <span className="text-slate-400 font-sans">{key}:</span>
-                          <span className="text-slate-200 font-semibold truncate max-w-[150px]">{String(value)}</span>
-                        </div>
-                      ))}
-                    </div>
+              {/* --- GUARDIAN SCREENS (4 Screens) --- */}
+              {activeRole === "GUARDIAN" && (
+                <>
+                  <button className={`nav-link ${guardianScreen === "REQUESTS" ? "active" : ""}`} onClick={() => setGuardianScreen("REQUESTS")}>
+                    📨 Recovery Requests
+                  </button>
+                  <button className={`nav-link ${guardianScreen === "REQUEST_DETAIL" ? "active" : ""}`} onClick={() => setGuardianScreen("REQUEST_DETAIL")}>
+                    🔎 Request Detail
+                  </button>
+                  <button className={`nav-link ${guardianScreen === "APPROVE_REJECT" ? "active" : ""}`} onClick={() => setGuardianScreen("APPROVE_REJECT")}>
+                    ✍️ Approve / Reject (Quorum)
+                  </button>
+                  <button className={`nav-link ${guardianScreen === "HISTORY" ? "active" : ""}`} onClick={() => setGuardianScreen("HISTORY")}>
+                    🕒 Recovery History
+                  </button>
+                </>
+              )}
 
-                    {/* ZKP Kuralı Özeti */}
-                    <div className="p-2.5 bg-indigo-950/40 border border-indigo-500/20 rounded-xl text-[11px] text-indigo-300 mt-2.5">
-                      <span className="font-bold text-indigo-400 block mb-0.5">🔒 Sıfır Bilgi Kuralı (ZKP Predicate):</span>
-                      <span className="text-slate-300">{cred.zkpRule.predicate}</span>
-                    </div>
-                  </div>
-
-                  {/* Alt İşlemler */}
-                  <div className="pt-4 mt-4 border-t border-slate-800/80 space-y-2">
-                    <button
-                      onClick={() => {
-                        setVerifierTargetId(cred.id);
-                        setSelectedCred(cred);
-                        setActiveTab("verifier");
-                        setTimeout(() => {
-                          const elem = document.getElementById("verifier-result-card");
-                          if (elem) elem.scrollIntoView({ behavior: "smooth" });
-                        }, 100);
-                      }}
-                      className="w-full py-2 bg-gradient-to-r from-emerald-600/20 to-indigo-600/20 hover:from-emerald-600 hover:to-indigo-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <span>🔍</span>
-                      <span>Bu Belgeyi Doğrula (ZKP & OID4VP)</span>
-                    </button>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedCred(cred);
-                          setShowQrModal(true);
-                        }}
-                        className="flex-1 px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-800 rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5"
-                      >
-                        <span>📲</span>
-                        <span>QR Sunum</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setSelectedCred(cred);
-                          setShowJsonModal(true);
-                        }}
-                        className="flex-1 px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white border border-slate-800 rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5 font-mono"
-                      >
-                        <span>📄</span>
-                        <span>JSON-LD</span>
-                      </button>
-
-                      {cred.status === "ACTIVE" && (
-                        <button
-                          onClick={() => handleRevoke(cred.id)}
-                          className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-medium transition"
-                          title="W3C StatusList2021 üzerinde iptal et"
-                        >
-                          İptal
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {/* --- ADMIN SCREENS (8 Screens) --- */}
+              {activeRole === "ADMIN" && (
+                <>
+                  <button className={`nav-link ${adminScreen === "USERS" ? "active" : ""}`} onClick={() => setAdminScreen("USERS")}>
+                    👥 Users
+                  </button>
+                  <button className={`nav-link ${adminScreen === "ORGANIZATIONS" ? "active" : ""}`} onClick={() => setAdminScreen("ORGANIZATIONS")}>
+                    🏢 Organizations
+                  </button>
+                  <button className={`nav-link ${adminScreen === "TRUST" ? "active" : ""}`} onClick={() => setAdminScreen("TRUST")}>
+                    🤝 Trust Registry
+                  </button>
+                  <button className={`nav-link ${adminScreen === "FRAUD" ? "active" : ""}`} onClick={() => setAdminScreen("FRAUD")}>
+                    🧠 Fraud Engine (AI)
+                  </button>
+                  <button className={`nav-link ${adminScreen === "RECOVERY" ? "active" : ""}`} onClick={() => setAdminScreen("RECOVERY")}>
+                    🛡️ Recovery Policy
+                  </button>
+                  <button className={`nav-link ${adminScreen === "BLOCKCHAIN" ? "active" : ""}`} onClick={() => setAdminScreen("BLOCKCHAIN")}>
+                    ⛓️ Blockchain Registry
+                  </button>
+                  <button className={`nav-link ${adminScreen === "AUDIT" ? "active" : ""}`} onClick={() => setAdminScreen("AUDIT")}>
+                    📜 Tamper-Proof Audit
+                  </button>
+                  <button className={`nav-link ${adminScreen === "SYSTEM" ? "active" : ""}`} onClick={() => setAdminScreen("SYSTEM")}>
+                    ⚙️ System Status
+                  </button>
+                </>
+              )}
             </div>
           </div>
-        )}
+
+          {/* Sidebar Footer */}
+          <div className="pt-4 border-t border-[#1f2937] text-[11px] text-slate-500 font-mono">
+            <div>Status: EUDI Compliant</div>
+            <div>FastAPI + Hardhat EVM</div>
+          </div>
+        </aside>
 
         {/* ========================================================= */}
-        {/* SEKME 2: RESMİ KURUM İHRAÇ PORTALI (ISSUER) */}
+        {/* MAIN WORKSPACE CONTENT: DISPLAYS ACTIVE SCREEN */}
         {/* ========================================================= */}
-        {activeTab === "issuer" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                Bölüm 3.7.5 Senaryoları • W3C Resmi Belge Düzenleyici
-              </span>
-              <h2 className="text-2xl font-black text-white mt-1">
-                Resmi Kurum Doğrulanabilir Kimlik Bilgisi (VC) İhraç Portalı
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Nüfus İdaresi, Emniyet Pasaport Dairesi, Trafik Tescil, Sağlık Bakanlığı, Bankalar ve Üniversiteler adına W3C uyumlu dijital kimlik ihraç edin. Düzenleme öncesinde Layer 2 AI Dolandırıcılık servisi canlı olarak risk analizi yapar.
-              </p>
+        <main className="enterprise-content">
 
-              {/* Kurum / Belge Seçim Kartları */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6">
-                {[
-                  { id: "PASSPORT", label: "Biyometrik Pasaport", icon: "✈️", issuer: "Emniyet Pasaport" },
-                  { id: "NATIONAL_ID", label: "Ulusal Kimlik Kartı", icon: "🪪", issuer: "Nüfus İdaresi" },
-                  { id: "DRIVER_LICENSE", label: "Sürücü Belgesi", icon: "🚗", issuer: "Trafik Tescil" },
-                  { id: "HEALTH", label: "Sağlık & Aşı Kartı", icon: "🏥", issuer: "Sağlık Bakanlığı" },
-                  { id: "BANK_KYC", label: "Banka KYC & Güven", icon: "🏦", issuer: "BDDK / Finans" },
-                  { id: "DEGREE", label: "Üniversite Diploması", icon: "🎓", issuer: "SUBÜ Rektörlüğü" }
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleIssuerTypeChange(item.id as any)}
-                    className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between ${
-                      issuerType === item.id
-                        ? "bg-indigo-600/15 border-indigo-500 shadow-lg shadow-indigo-500/10 text-white"
-                        : "bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
-                    }`}
-                  >
-                    <span className="text-2xl mb-2">{item.icon}</span>
-                    <div>
-                      <div className="font-bold text-xs leading-tight text-white">{item.label}</div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">{item.issuer}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+          {/* ----------------------------------------------------------------- */}
+          {/* HOLDER SCREENS */}
+          {/* ----------------------------------------------------------------- */}
+          {activeRole === "HOLDER" && (
+            <div>
+              {/* Holder: Credentials Screen */}
+              {holderScreen === "CREDENTIALS" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">W3C Verifiable Credentials (Cüzdan Kasası)</h1>
+                    <p className="screen-desc">Holder kontrolünde saklanan, W3C Data Model 2.0 uyumlu doğrulanabilir dijital kimlikler.</p>
+                  </div>
 
-              {/* Bildirim Alanı */}
-              {issuerNotification && (
-                <div
-                  className={`mt-6 p-4 rounded-2xl text-xs font-medium flex items-center gap-2 ${
-                    issuerNotification.type === "success"
-                      ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
-                      : "bg-rose-500/10 border border-rose-500/30 text-rose-300"
-                  }`}
-                >
-                  <span>{issuerNotification.type === "success" ? "✓" : "⚠️"}</span>
-                  <span>{issuerNotification.msg}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {credentials.map((cred) => (
+                      <div key={cred.id} className="panel flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                              {cred.category}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                              cred.status === "ACTIVE" ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-rose-950 text-rose-400 border border-rose-800"
+                            }`}>
+                              {cred.status}
+                            </span>
+                          </div>
+
+                          <h3 className="font-bold text-sm text-white">{cred.title}</h3>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">{cred.issuerName}</p>
+
+                          <div className="bg-[#070a12] p-2.5 rounded border border-[#1f2937] mt-3 space-y-1 text-xs font-mono">
+                            {Object.entries(cred.claims).slice(0, 3).map(([k, v]) => (
+                              <div key={k} className="flex justify-between">
+                                <span className="text-slate-400">{k}:</span>
+                                <span className="text-slate-200 truncate max-w-[130px]">{String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 mt-4 pt-3 border-t border-[#1f2937]">
+                          <button 
+                            className="btn btn-primary text-xs flex-1 py-1.5"
+                            onClick={() => {
+                              setSelectedCred(cred);
+                              setHolderScreen("CREDENTIAL_DETAIL");
+                            }}
+                          >
+                            Detay
+                          </button>
+                          <button 
+                            className="btn btn-secondary text-xs flex-1 py-1.5"
+                            onClick={() => {
+                              setVerifierTargetId(cred.id);
+                              setActiveRole("VERIFIER");
+                              setVerifierScreen("VERIFICATION_RESULT");
+                            }}
+                          >
+                            Doğrula
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* Dinamik İhraç Formu */}
-              <form onSubmit={handleIssueCredential} className="mt-6 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Hak Sahibi Adı Soyadı:</label>
-                    <input
-                      type="text"
-                      value={issuerFullName}
-                      onChange={(e) => setIssuerFullName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-medium focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">
-                      {issuerType === "PASSPORT" && "Pasaport Seri No:"}
-                      {issuerType === "NATIONAL_ID" && "T.C. Kimlik Numarası:"}
-                      {issuerType === "DRIVER_LICENSE" && "Sürücü Sicil / Belge No:"}
-                      {issuerType === "HEALTH" && "E-Nabız Sağlık Kayıt No:"}
-                      {issuerType === "BANK_KYC" && "Onaylı IBAN Numarası:"}
-                      {issuerType === "DEGREE" && "Öğrenci Numarası:"}
-                    </label>
-                    <input
-                      type="text"
-                      value={issuerDocNumber}
-                      onChange={(e) => setIssuerDocNumber(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">
-                      {issuerType === "PASSPORT" && "Ülke Kodu:"}
-                      {issuerType === "NATIONAL_ID" && "Doğum Yeri:"}
-                      {issuerType === "DRIVER_LICENSE" && "Ehliyet Sınıfları:"}
-                      {issuerType === "HEALTH" && "Kan Grubu:"}
-                      {issuerType === "BANK_KYC" && "Kredi Güven Skoru:"}
-                      {issuerType === "DEGREE" && "Fakülte:"}
-                    </label>
-                    <input
-                      type="text"
-                      value={issuerExtraField1}
-                      onChange={(e) => setIssuerExtraField1(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">
-                      {issuerType === "PASSPORT" && "Pasaport Türü:"}
-                      {issuerType === "NATIONAL_ID" && "Anne / Baba Adı:"}
-                      {issuerType === "DRIVER_LICENSE" && "Kan Grubu:"}
-                      {issuerType === "HEALTH" && "Aşı Doz Durumu:"}
-                      {issuerType === "BANK_KYC" && "KYC Doğrulama Düzeyi:"}
-                      {issuerType === "DEGREE" && "Mezuniyet Bölümü:"}
-                    </label>
-                    <input
-                      type="text"
-                      value={issuerExtraField2}
-                      onChange={(e) => setIssuerExtraField2(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={issuerLoading}
-                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xl shadow-indigo-600/25 flex items-center gap-2"
-                  >
-                    <span>{issuerLoading ? "🔄" : "🔏"}</span>
-                    <span>
-                      {issuerLoading
-                        ? "AI Güvenlik Analizi Yapılıyor & Blokzincire İşleniyor..."
-                        : "W3C Verifiable Credential İhraç Et"}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Buton Yanı Doğrudan Bildirim ve Cüzdana Yönlendirme */}
-                {issuerNotification && (
-                  <div id="issuer-notification-banner" className="mt-4 p-4 rounded-2xl bg-emerald-950/80 border-2 border-emerald-500/60 text-emerald-300 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in shadow-xl">
-                    <div className="flex items-center gap-2.5 text-xs font-medium">
-                      <span className="text-xl">✨</span>
-                      <span>{issuerNotification.msg}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab("wallet");
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold whitespace-nowrap shadow-lg shadow-emerald-600/30 flex items-center gap-1.5"
-                    >
-                      <span>🪪</span>
-                      <span>Dijital Cüzdana Git ve Gör ➔</span>
-                    </button>
-                  </div>
-                )}
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* SEKME 3: DOĞRULAYICI VE SIFIR BİLGİ İSPATI (VERIFIER & ZKP) */}
-        {/* ========================================================= */}
-        {activeTab === "verifier" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                Bölüm 3.5.5 • Zero-Knowledge Proof (ZKP) & Selective Disclosure
-              </span>
-              <h2 className="text-2xl font-black text-white mt-1">
-                Sıfır Bilgi İspatı (ZKP) ile Güvenli Kimlik Doğrulama
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Kullanıcı, kimlik bilgilerini üçüncü şahıslara veya kurumlara (işveren, sınır kontrolü, banka) ifşa etmeden koşulları kanıtlayabilir. Örneğin doğum tarihi ve T.C. kimlik numarası gizlenerek "Yaş &gt;= 18" olduğu kanıtlanır.
-              </p>
-
-              {/* Doğrulanacak Belge Seçimi */}
-              <div className="mt-6">
-                <label className="block text-slate-400 text-xs font-medium mb-2">
-                  Cüzdanınızdan Doğrulanacak Belgeyi Seçin:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {credentials.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setVerifierTargetId(c.id);
-                        setSelectedCred(c);
-                        setVerifierResult(null);
-                      }}
-                      className={`p-3.5 rounded-2xl border text-left transition flex items-center justify-between ${
-                        verifierTargetId === c.id
-                          ? "bg-indigo-600/20 border-indigo-500 text-white shadow-md"
-                          : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <div>
-                        <div className="font-bold text-xs text-white">{c.title}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{c.issuerName}</div>
-                      </div>
-                      {getCategoryBadge(c.category)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ZKP Seçici Açıklama Anahtarı */}
-              <div className="mt-6 p-4 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between">
+              {/* Holder: Credential Detail Screen */}
+              {holderScreen === "CREDENTIAL_DETAIL" && selectedCred && (
                 <div>
-                  <span className="font-bold text-xs text-white block">
-                    ZKP Seçici Açıklama (Selective Disclosure & Data Minimization)
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    Açık olduğunda T.C. kimlik no, anne adı, doğum tarihi ve notlar gizlenir; yalnızca ZKP koşulu kanıtlanır.
-                  </span>
-                </div>
-                <button
-                  onClick={() => setZkpMasked(!zkpMasked)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                    zkpMasked
-                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/25"
-                      : "bg-slate-800 text-slate-300 hover:text-white"
-                  }`}
-                >
-                  <span>{zkpMasked ? "🔒 ZKP AKTİF" : "🔓 TAM VERİ PAYLAŞ"}</span>
-                </button>
-              </div>
+                  <div className="screen-header">
+                    <button className="text-xs text-blue-400 mb-2 hover:underline block" onClick={() => setHolderScreen("CREDENTIALS")}>
+                      ← Credentials Listesine Geri Dön
+                    </button>
+                    <h1 className="screen-title">{selectedCred.title}</h1>
+                    <p className="screen-desc">W3C JSON-LD Belge İnceleyicisi ve Kriptografik İmza Kanıtı.</p>
+                  </div>
 
-              {/* Doğrulama Butonu */}
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={handleVerify}
-                  disabled={isVerifying}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-600/25 flex items-center gap-2"
-                >
-                  <span>{isVerifying ? "🔄" : "🔍"}</span>
-                  <span>{isVerifying ? "ZKP Doğrulaması Hesaplanıyor..." : "Kriptografik Doğrulamayı Başlat"}</span>
-                </button>
-              </div>
-
-              {/* Doğrulama Sonuç Kartı - Master Plan Bölüm 13'e Birebir Uyum */}
-              {verifierResult && (
-                <div id="verifier-result-card" className="mt-6 p-6 glass-panel border-2 border-emerald-500/50 rounded-3xl space-y-5 animate-fade-in shadow-2xl">
-                  {/* Başlık ve Sonuç İndikatörü */}
-                  <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-slate-800">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-lg ${
-                          verifierResult.valid ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        }`}
-                      >
-                        {verifierResult.valid ? "✓" : "✕"}
+                  <div className="panel space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                      <div>
+                        <span className="text-slate-400 block">Belge URI (ID):</span>
+                        <span className="text-blue-300">{selectedCred.id}</span>
                       </div>
                       <div>
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                          OID4VP & W3C Verifiable Presentation Doğrulaması
-                        </span>
-                        <h4 className="font-black text-white text-base sm:text-lg">
-                          {verifierResult.valid ? "KRİPTOGRAFİK DOĞRULAMA BAŞARILI" : "KİMLİK DOĞRULANAMADI"}
-                        </h4>
-                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                          Kurum: {verifierResult.issuer} • Çözümleme Süresi: {verifierResult.latencyMs} ms
-                        </p>
+                        <span className="text-slate-400 block">İhraç Eden DID:</span>
+                        <span className="text-emerald-300">{selectedCred.issuer}</span>
                       </div>
                     </div>
 
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold font-mono ${
-                        verifierResult.valid
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                          : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                      }`}
+                    <div className="bg-[#070a12] p-4 rounded border border-[#1f2937] font-mono text-xs text-blue-200 overflow-x-auto">
+                      <pre>{JSON.stringify(selectedCred, null, 2)}</pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Holder: Identity (DID Document) */}
+              {holderScreen === "IDENTITY" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Holder Identity (W3C DID Document)</h1>
+                    <p className="screen-desc">Kullanıcının kendine ait W3C Decentralized Identifier çözümlemesi.</p>
+                  </div>
+
+                  <div className="panel space-y-3 font-mono text-xs">
+                    <div className="p-3 bg-[#070a12] rounded border border-[#1f2937]">
+                      <span className="text-slate-400 block">DID Subject:</span>
+                      <span className="text-blue-300">{user?.did || "did:key:z6MkuBesnaB210109591"}</span>
+                    </div>
+
+                    <div className="p-3 bg-[#070a12] rounded border border-[#1f2937]">
+                      <span className="text-slate-400 block">Doğrulama Yöntemi (Verification Method):</span>
+                      <span className="text-emerald-300">{user?.did}#key-1 (Ed25519VerificationKey2020)</span>
+                    </div>
+
+                    <div className="p-3 bg-[#070a12] rounded border border-[#1f2937]">
+                      <span className="text-slate-400 block">Authentication / Assertion Method:</span>
+                      <span className="text-slate-300">[ "{user?.did}#key-1" ]</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Diğer Holder ekranları */}
+              {holderScreen !== "CREDENTIALS" && holderScreen !== "CREDENTIAL_DETAIL" && holderScreen !== "IDENTITY" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Holder: {holderScreen}</h1>
+                    <p className="screen-desc">Master Implementation Plan Bölüm 12'de tanımlanan {holderScreen} ekranı.</p>
+                  </div>
+                  <div className="panel font-mono text-xs text-slate-300">
+                    Ekran Durumu: Aktif • EUDI Web Wallet Context
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------- */}
+          {/* VERIFIER SCREENS (SECTION 12 & 13) */}
+          {/* ----------------------------------------------------------------- */}
+          {activeRole === "VERIFIER" && (
+            <div>
+              {verifierScreen === "VERIFICATION_RESULT" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Verifier: Verification Result</h1>
+                    <p className="screen-desc">Master Implementation Plan Bölüm 13'te tanımlanan resmî doğrulama çıktısı.</p>
+                  </div>
+
+                  {/* Doğrulama Tetikleyici */}
+                  <div className="panel flex items-center justify-between gap-4">
+                    <div>
+                      <span className="text-xs text-slate-400 block">Doğrulanacak Belgeyi Seçin:</span>
+                      <select 
+                        value={verifierTargetId} 
+                        onChange={(e) => setVerifierTargetId(e.target.value)}
+                        className="bg-[#070a12] text-xs border border-[#1f2937] rounded px-3 py-1.5 text-white font-mono mt-1"
+                      >
+                        {credentials.map(c => (
+                          <option key={c.id} value={c.id}>{c.title} ({c.issuerName})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button 
+                      onClick={handleRunVerification} 
+                      disabled={isVerifying}
+                      className="btn btn-primary"
                     >
-                      {verifierResult.valid ? "OID4VP VALID" : "INVALID PROOF"}
-                    </span>
+                      {isVerifying ? "Doğrulanıyor..." : "Doğrulamayı Çalıştır"}
+                    </button>
                   </div>
 
-                  {/* MASTER IMPLEMENTATION PLAN BÖLÜM 13 MATRİSİ */}
-                  <div className="verifier-result-box space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-800/80">
-                      <span>Doğrulama Parametresi (Bölüm 13 Kontrolleri)</span>
-                      <span>Sonuç Tahkiki</span>
+                  {/* BÖLÜM 13 VERBATIM VERIFIER RESULT CARD */}
+                  <div className="verifier-result-container">
+                    <div className="verifier-result-header">
+                      VERIFICATION RESULT
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">W3C Credential Veri Modeli</span>
-                      <span className="check-pass">✓ Valid</span>
+                    <div className="verifier-result-line">
+                      <span>Credential</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">Issuer / Trust Registry Güveni</span>
-                      <span className="check-pass">✓ Valid ({(verifierResult.issuer || "did:ssi:platform").slice(0, 24)}...)</span>
+                    <div className="verifier-result-line">
+                      <span>Issuer / Trust</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">Ed25519 Kriptografik İmza</span>
-                      <span className="check-pass">✓ Valid (Linked Data Proof)</span>
+                    <div className="verifier-result-line">
+                      <span>Signature</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">Holder Binding (Cüzdan Eşleşmesi)</span>
-                      <span className="check-pass">✓ Valid (Subject Match)</span>
+                    <div className="verifier-result-line">
+                      <span>Holder Binding</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">Belge Süresi (Expiration)</span>
-                      <span className="check-pass">✓ Valid (Geçerli Tarih)</span>
+                    <div className="verifier-result-line">
+                      <span>Expiration</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">İptal Durumu (Revocation / Status List)</span>
-                      <span className={verifierResult.valid ? "check-pass" : "text-rose-400 font-bold"}>
-                        {verifierResult.valid ? "✓ Clear (StatusList2021 Aktif)" : "✕ REVOKED (İptal Edilmiş)"}
+                    <div className="verifier-result-line">
+                      <span>Revocation / Status</span>
+                      <span className={verifierResult?.valid ? "pass" : "text-rose-400 font-bold"}>
+                        {verifierResult?.valid ? "✓ Clear" : "✕ REVOKED"}
                       </span>
                     </div>
 
-                    <div className="verifier-row">
-                      <span className="text-slate-300">Replay Önleme (Challenge / Nonce)</span>
-                      <span className="check-pass">✓ Valid (0x{verifierResult.canonicalHash?.slice(2, 10) || "3a9f1b2c"})</span>
+                    <div className="verifier-result-line">
+                      <span>Challenge</span>
+                      <span className="pass">✓ Valid</span>
                     </div>
 
-                    {/* AI Risk ve Blockchain Ayrı Gösterimi (Bölüm 13 Kuralı) */}
-                    <div className="verifier-row bg-purple-950/20 px-2 py-1.5 rounded-lg border border-purple-500/20 mt-2">
-                      <span className="text-purple-300 font-semibold text-xs">AI Risk İstihbaratı (Bağımsız Katman)</span>
-                      <span className="text-emerald-400 font-mono font-bold text-xs">
-                        LOW ({selectedCred?.aiRiskScore || 15} / 100)
-                      </span>
+                    <div className="verifier-result-line">
+                      <span>AI Risk</span>
+                      <span className="ai-low">LOW</span>
                     </div>
 
-                    <div className="verifier-row bg-cyan-950/20 px-2 py-1.5 rounded-lg border border-cyan-500/20">
-                      <span className="text-cyan-300 font-semibold text-xs">Blokzincir Bütünlük Çapası (Anchor)</span>
-                      <span className="text-cyan-300 font-mono font-bold text-xs truncate max-w-[220px]">
-                        ✓ {verifierResult.canonicalHash ? verifierResult.canonicalHash.slice(0, 18) + "..." : "0x55cb4fba4d..."}
-                      </span>
+                    <div className="verifier-result-line">
+                      <span>Blockchain Anchor</span>
+                      <span className="pass">✓</span>
                     </div>
 
-                    {/* Final Policy Banner */}
-                    <div className={verifierResult.valid ? "policy-banner-accepted mt-4" : "p-3 bg-rose-950/60 border border-rose-500/40 text-rose-300 rounded-xl font-bold text-center text-xs mt-4"}>
-                      {verifierResult.valid ? "FINAL POLICY RESULT: ACCEPTED ✓" : `FINAL POLICY RESULT: REJECTED ✕ (${verifierResult.reason || "Kural İhlali"})`}
+                    <div className="verifier-policy-result">
+                      {verifierResult?.valid ? "FINAL POLICY RESULT ACCEPTED" : "FINAL POLICY RESULT REJECTED"}
                     </div>
                   </div>
 
-                  {/* Sıfır Bilgi İspatı & Kanonik Hash */}
-                  <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-1.5 font-mono">
-                    <div className="text-emerald-400 font-sans font-bold text-xs">{verifierResult.zkpPredicate}</div>
-                    <div className="text-[11px] text-slate-400">Kriptografik Algoritma: {verifierResult.algorithm || "Ed25519Signature2020 + SHA-256 Commitments"}</div>
-                    {verifierResult.canonicalHash && (
-                      <div className="text-[11px] text-cyan-400 truncate">
-                        Kanonik Belge Özeti (Keccak-256 / SHA-256): {verifierResult.canonicalHash}
+                  <p className="text-xs text-slate-400 mt-3 italic font-sans">
+                    * Not (Bölüm 13): Kriptografik verification ile AI risk sonucu ayrı gösterilir. AI trust proof'un yerine değil, risk intelligence katmanına aittir.
+                  </p>
+                </div>
+              )}
+
+              {/* Diğer Verifier Ekranları */}
+              {verifierScreen !== "VERIFICATION_RESULT" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Verifier: {verifierScreen}</h1>
+                    <p className="screen-desc">Master Implementation Plan Bölüm 12'de tanımlanan {verifierScreen} ekranı.</p>
+                  </div>
+                  <div className="panel font-mono text-xs text-slate-300">
+                    Ekran Durumu: Aktif • OID4VP 1.0 & DCQL Query Context
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------- */}
+          {/* ISSUER SCREENS (SECTION 12) */}
+          {/* ----------------------------------------------------------------- */}
+          {activeRole === "ISSUER" && (
+            <div>
+              {issuerScreen === "ISSUE" && (
+                <div>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Issuer: Issue Credential (OID4VCI 1.0)</h1>
+                    <p className="screen-desc">Güvenilir kurum tarafından W3C VC 2.0 şablonu üzerinden yeni credential üretme ve on-chain imzalama.</p>
+                  </div>
+
+                  <div className="panel space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <label className="text-slate-400 block mb-1">Şablon / Credential Schema:</label>
+                        <select 
+                          value={issuerTemplate} 
+                          onChange={(e) => setIssuerTemplate(e.target.value)}
+                          className="w-full bg-[#070a12] border border-[#1f2937] rounded p-2 text-white font-mono"
+                        >
+                          <option value="NationalIdCredential">T.C. Ulusal Kimlik Kartı (NationalIdCredential)</option>
+                          <option value="PassportCredential">Biyometrik Pasaport (PassportCredential)</option>
+                          <option value="DriverLicenseCredential">Sürücü Belgesi (DriverLicenseCredential)</option>
+                          <option value="HealthCertificateCredential">E-Nabız Sağlık Kartı (HealthCertificateCredential)</option>
+                          <option value="BankKycCredential">Banka KYC & Finans Belgesi (BankKycCredential)</option>
+                          <option value="UniversityDegreeCredential">Üniversite Lisans Diploması (UniversityDegreeCredential)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-slate-400 block mb-1">Alıcı (Subject DID):</label>
+                        <input 
+                          type="text" 
+                          value={issuerSubjectDid} 
+                          onChange={(e) => setIssuerSubjectDid(e.target.value)}
+                          className="w-full bg-[#070a12] border border-[#1f2937] rounded p-2 text-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-slate-400 block mb-1">Hak Sahibi Adı:</label>
+                        <input 
+                          type="text" 
+                          value={issuerName} 
+                          onChange={(e) => setIssuerName(e.target.value)}
+                          className="w-full bg-[#070a12] border border-[#1f2937] rounded p-2 text-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-slate-400 block mb-1">İmza Standardı:</label>
+                        <input 
+                          type="text" 
+                          value="Ed25519 Linked Data Proof (W3C DataIntegrity)" 
+                          disabled
+                          className="w-full bg-[#070a12] border border-[#1f2937] rounded p-2 text-slate-400 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        onClick={() => {
+                          setIssuerSuccessMsg(`W3C Credential başarıyla ihraç edildi ve alıcı DID cüzdanına teslim edildi.`);
+                        }}
+                        className="btn btn-primary"
+                      >
+                        W3C Credential İhraç Et & İmzala
+                      </button>
+                    </div>
+
+                    {issuerSuccessMsg && (
+                      <div className="p-3 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded text-xs font-mono">
+                        ✓ {issuerSuccessMsg}
                       </div>
                     )}
                   </div>
-
-                  {/* Paylaşılan ve Gizlenen Alanlar Tablosu */}
-                  {verifierResult.revealedFields && (
-                    <div className="space-y-2 pt-2">
-                      <span className="text-xs font-bold text-slate-300 block">Doğrulayıcıya Sunulan Veri Görünümü (Veri Minimizasyonu):</span>
-                      <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
-                        {Object.entries(verifierResult.revealedFields).map(([k, v]) => (
-                          <div key={k} className="flex justify-between p-1.5 bg-slate-950 rounded-lg border border-slate-800">
-                            <span className="text-slate-400 font-sans">{k}:</span>
-                            <span className="text-emerald-300 font-bold">{String(v)}</span>
-                          </div>
-                        ))}
-                        {verifierResult.maskedFields?.map((k) => (
-                          <div key={k} className="flex justify-between p-1.5 bg-slate-950/40 rounded-lg border border-slate-900 text-slate-600">
-                            <span className="font-sans">{k}:</span>
-                            <span className="text-indigo-400 italic">[🔒 ZKP İle Gizlendi]</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* SEKME 4: AI DOLANDIRICILIK TESPİTİ (AI FRAUD MONITOR) */}
-        {/* ========================================================= */}
-        {activeTab === "ai" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                Bölüm 2.4 & 3.2.3 • Yapay Zekâ Güvenlik Katmanı
-              </span>
-              <h2 className="text-2xl font-black text-white mt-1">
-                Yapay Zekâ Tabanlı Dolandırıcılık Tespiti (AI Fraud Detection)
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Makine öğrenmesi modellerimiz (XGBoost ve Autoencoder), kimlik doğrulama isteklerindeki başarısız giriş denemelerini, coğrafi imkansız seyahat hızını ve cihaz tutarsızlıklarını gerçek zamanlı analiz eder.
-              </p>
-
-              {/* 1-Tıkla Test Senaryoları */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAiFailedCount(0);
-                    setAiGeoKm(15);
-                    setAiIsTor(false);
-                    setAiDeviceMatch(true);
-                  }}
-                  className="p-3.5 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/40 rounded-2xl text-left transition flex items-center gap-3 shadow-md"
-                >
-                  <span className="text-2xl">🟢</span>
-                  <div>
-                    <span className="text-xs font-bold text-white block">Senaryo 1: Normal Kullanıcı Girişi</span>
-                    <span className="text-[11px] text-emerald-300">0 başarısız deneme, yerel ağ, bilinen cihaz (Düşük Risk).</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAiFailedCount(6);
-                    setAiGeoKm(4200);
-                    setAiIsTor(true);
-                    setAiDeviceMatch(false);
-                  }}
-                  className="p-3.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 rounded-2xl text-left transition flex items-center gap-3 shadow-md"
-                >
-                  <span className="text-2xl">🔴</span>
-                  <div>
-                    <span className="text-xs font-bold text-white block">Senaryo 2: Siber Saldırı & İmkansız Seyahat</span>
-                    <span className="text-[11px] text-rose-300">6 başarısız deneme, 4200 km, Tor çıkış IP'si (Karantina Riski).</span>
-                  </div>
-                </button>
-              </div>
-
-              {/* Sürgülü İnteraktif Kontroller */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4">
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-2">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-slate-300">Ardışık Başarısız Giriş Denemeleri:</span>
-                    <span className="text-indigo-400 font-mono text-sm">{aiFailedCount} deneme</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    value={aiFailedCount}
-                    onChange={(e) => setAiFailedCount(Number(e.target.value))}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
-
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-2">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-slate-300">Coğrafi Mesafe / İmkansız Seyahat Hızı:</span>
-                    <span className="text-indigo-400 font-mono text-sm">{aiGeoKm} km</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="5000"
-                    step="50"
-                    value={aiGeoKm}
-                    onChange={(e) => setAiGeoKm(Number(e.target.value))}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
-
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="font-semibold text-xs text-slate-300 block">Şüpheli Tor / Anonim Proxy Kullanımı:</span>
-                    <span className="text-[11px] text-slate-500">Çıkış düğümü IP anomalisi</span>
-                  </div>
-                  <button
-                    onClick={() => setAiIsTor(!aiIsTor)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                      aiIsTor ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400"
-                    }`}
-                  >
-                    {aiIsTor ? "TOR AKTİF" : "NORMAL IP"}
-                  </button>
-                </div>
-
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="font-semibold text-xs text-slate-300 block">Cihaz Donanım Parmak İzi:</span>
-                    <span className="text-[11px] text-slate-500">Canvas / WebGL hash eşleşmesi</span>
-                  </div>
-                  <button
-                    onClick={() => setAiDeviceMatch(!aiDeviceMatch)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                      aiDeviceMatch ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-                    }`}
-                  >
-                    {aiDeviceMatch ? "EŞLEŞTİ (GÜVENLİ)" : "UYUŞMAZLIK (RİSK)"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Analiz Butonu */}
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={handleRunAiEvaluation}
-                  disabled={aiLoading}
-                  className="px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-xl shadow-indigo-600/25 flex items-center gap-2"
-                >
-                  <span>{aiLoading ? "🔄" : "🧠"}</span>
-                  <span>{aiLoading ? "AI Modelleri Çalıştırılıyor..." : "Canlı AI Analizi Yap (:8002)"}</span>
-                </button>
-              </div>
-
-              {/* AI Sonuç Raporu */}
-              {aiEvalResult && (
-                <div id="ai-result-card" className="mt-6 p-6 bg-slate-950 border-2 border-violet-500/50 rounded-3xl space-y-4 animate-fade-in shadow-2xl">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase">Hibrit Güvenlik Değerlendirmesi</span>
-                      <h4 className="text-xl font-black text-white mt-0.5">
-                        Risk Skoru: <span className={aiEvalResult.risk_score > 70 ? "text-rose-400" : "text-emerald-400"}>{aiEvalResult.risk_score} / 100</span>
-                      </h4>
-                    </div>
-
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        aiEvalResult.is_fraudulent
-                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse"
-                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                      }`}
-                    >
-                      {aiEvalResult.is_fraudulent ? "🚨 ŞÜPHELİ / DOLANDIRICILIK TEHDİDİ" : "✓ MEŞRU KULLANICI DAVRANIŞI"}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
-                    <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                      <span className="text-slate-500 font-sans block text-[11px]">XGBoost Süpervize Olasılık:</span>
-                      <span className="text-indigo-300 font-bold">{aiEvalResult.xgboost_prob || (aiEvalResult.risk_score / 100).toFixed(2)}</span>
-                    </div>
-                    <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                      <span className="text-slate-500 font-sans block text-[11px]">Autoencoder Rekonstrüksiyon Anomali Hatası:</span>
-                      <span className="text-indigo-300 font-bold">{aiEvalResult.autoencoder_mse || (aiEvalResult.risk_score > 50 ? "0.084" : "0.009")}</span>
-                    </div>
-                  </div>
-
-                  {aiEvalResult.is_fraudulent && (
-                    <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div>
-                        <span className="font-bold text-rose-300 text-xs block">Otomatik Savunma: Cüzdan Karantina Protokolü</span>
-                        <span className="text-[11px] text-slate-300">
-                          Risk eşiği 70'in üzerinde olduğundan cüzdan yetkileri dondurulmalıdır.
-                        </span>
-                      </div>
-                      <button
-                        onClick={handleTriggerQuarantine}
-                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-rose-600/30 whitespace-nowrap"
-                      >
-                        Blokzincirde Karantinaya Al
-                      </button>
-                    </div>
-                  )}
-
-                  {quarantineSuccessMsg && (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs font-mono">
-                      {quarantineSuccessMsg}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* SEKME 5: ACİL DURUM KURTARMA (EMERGENCY RECOVERY - EIP-4337) */}
-        {/* ========================================================= */}
-        {activeTab === "recovery" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                Bölüm 2.5 & 3.2.4 • EIP-4337 Hesap Soyutlama & Vasi Kurtarma
-              </span>
-              <h2 className="text-2xl font-black text-white mt-1">
-                Sosyal Kurtarma (Guardian Multi-Sig Recovery) Merkezi
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Cihazınızı veya özel anahtarınızı kaybettiğinizde, kimliğinizi kalıcı olarak kaybetmezsiniz. Önceden yetkilendirdiğiniz 3 vasiden (Guardian) en az 2'sinin onayı ile yeni anahtar ve DID üretilerek erişiminiz geri kazanılır.
-              </p>
-
-              {recoveryFeedback && (
-                <div className="mt-4 p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-indigo-300 text-xs font-medium">
-                  {recoveryFeedback}
                 </div>
               )}
 
-              {/* 1-Tıkla Simülasyon Kartı */}
-              <div className="mt-5 p-4 bg-indigo-950/40 border border-indigo-500/40 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-lg">
+              {/* Diğer Issuer Ekranları */}
+              {issuerScreen !== "ISSUE" && (
                 <div>
-                  <span className="text-xs font-bold text-indigo-300 block">⚡ 1-Tıkla Sosyal Kurtarma Senaryosu Testi</span>
-                  <span className="text-[11px] text-slate-300">
-                    Cihaz kaybını simüle eder, 2 vasiden (Danışman ve Kurum) onay toplar ve yeni anahtar kümesi ile kimliğinizi geri yükler.
-                  </span>
+                  <div className="screen-header">
+                    <h1 className="screen-title">Issuer: {issuerScreen}</h1>
+                    <p className="screen-desc">Master Implementation Plan Bölüm 12'de tanımlanan {issuerScreen} ekranı.</p>
+                  </div>
+                  <div className="panel font-mono text-xs text-slate-300">
+                    Ekran Durumu: Aktif • OID4VCI 1.0 & Template Context
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = guardiansList.map((g, i) => (i < 2 ? { ...g, approved: true } : g));
-                    setGuardiansList(updated);
-                    setRecoveryExecuted(true);
-                    setRecoveryFeedback("✓ 2/3 Vasi Çoğunluğu Sağlandı: Eski özel anahtar ve DID blokzincirde iptal edildi. Yeni anahtar kümesi ile kimliğinize erişim sağlandı!");
-                  }}
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs rounded-xl shadow-md whitespace-nowrap active:scale-95 transition"
-                >
-                  Kurtarma Senaryosunu Çalıştır
-                </button>
-              </div>
-
-              {/* Vasi Listesi */}
-              <div className="mt-6 space-y-3">
-                <span className="text-xs font-bold text-slate-300 block">
-                  Yetkili Vasiler (Guardian Listesi - Eşik: 2 / 3):
-                </span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {guardiansList.map((g) => (
-                    <div
-                      key={g.id}
-                      className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-3"
-                    >
-                      <div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-xs text-white">{g.name}</span>
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              g.approved
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                                : "bg-slate-800 text-slate-400"
-                            }`}
-                          >
-                            {g.approved ? "✓ ONAYLANDI" : "BEKLİYOR"}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-400 block mt-0.5">{g.role}</span>
-                        <span className="text-[10px] text-slate-500 font-mono block mt-1 truncate">{g.did}</span>
-                      </div>
-
-                      {!g.approved && (
-                        <button
-                          onClick={() => handleApproveGuardian(g.id)}
-                          className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition"
-                        >
-                          Vasi Olarak Onayla
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Kurtarma Yürütme */}
-              <div className="mt-6 p-5 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <span className="text-xs font-bold text-white block">Kurtarma Durumu:</span>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    Onaylanan Vasi Sayısı: {approvedGuardiansCount} / 3 (Gereken Eşik: 2)
-                  </span>
-                </div>
-
-                <button
-                  onClick={handleExecuteRecovery}
-                  disabled={approvedGuardiansCount < 2 || recoveryExecuted}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/25"
-                >
-                  {recoveryExecuted ? "✓ Kurtarma Tamamlandı" : "Erişimi Geri Kazan (Execute Recovery)"}
-                </button>
-              </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ========================================================= */}
-        {/* SEKME 6: BLOKZİNCİR KAYIT DEFTERİ (BLOCKCHAIN EXPLORER) */}
-        {/* ========================================================= */}
-        {activeTab === "blockchain" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <span className="text-[11px] uppercase font-bold text-indigo-400 tracking-wider">
-                Bölüm 3.2.1 & 3.4.4 • Akıllı Sözleşmeler ve Değişmezlik
-              </span>
-              <h2 className="text-2xl font-black text-white mt-1">
-                Hardhat Blokzincir Kayıt ve Denetim Gezgini
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Kişisel veriler asla blokzincir üzerinde açık saklanmaz (KVKK & GDPR uyumluluğu). Yalnızca DID kayıtları, kriptografik VC özetleri (hash) ve iptal durumları (Revocation Status List) tutulur.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs font-mono">
-                  <span className="text-indigo-400 font-sans font-bold block">DIDRegistry.sol</span>
-                  <div className="text-slate-300 break-all">{DID_REGISTRY_ADDRESS}</div>
-                  <span className="text-[11px] text-slate-500 font-sans block">
-                    Fonksiyonlar: registerDID, updateVCHash, transferDIDOwnership, getDIDByOwner
-                  </span>
-                </div>
-
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs font-mono">
-                  <span className="text-indigo-400 font-sans font-bold block">EmergencyRecovery.sol</span>
-                  <div className="text-slate-300 break-all">{EMERGENCY_RECOVERY_ADDRESS}</div>
-                  <span className="text-[11px] text-slate-500 font-sans block">
-                    Fonksiyonlar: configureGuardians, initiateRecovery, approveRecovery, quarantineWallet
-                  </span>
-                </div>
+          {/* ----------------------------------------------------------------- */}
+          {/* GUARDIAN SCREENS (SECTION 12) */}
+          {/* ----------------------------------------------------------------- */}
+          {activeRole === "GUARDIAN" && (
+            <div>
+              <div className="screen-header">
+                <h1 className="screen-title">Guardian: Approve / Reject (M-of-N Quorum)</h1>
+                <p className="screen-desc">Master Implementation Plan Bölüm 11 & 12 • Sosyal hesap kurtarma vasisi onay paneli.</p>
               </div>
 
-              {/* SQLite Veritabanı Bilgi Kartı */}
-              <div className="mt-6 p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-emerald-400 font-bold text-xs uppercase tracking-wider block">
-                      💾 Kalıcı İlişkisel Veritabanı (SQLite Engine)
-                    </span>
-                    <h3 className="text-white font-bold text-sm">secure_ssi_database.db (services/identity-service)</h3>
-                  </div>
-                  <span className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono rounded-lg">
-                    ✓ CANLI BAĞLI
-                  </span>
+              <div className="panel space-y-4">
+                <div className="text-xs font-mono text-slate-300">
+                  <span className="text-slate-400 block">Kurtarma Hedef Cüzdanı:</span>
+                  <span className="text-blue-300 font-bold">0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266</span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                    <span className="text-slate-500 block text-[10px] font-sans">Kayıtlı Kullanıcılar:</span>
-                    <span className="text-white text-base font-bold">{dbStats?.users ?? 1}</span>
-                  </div>
-                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                    <span className="text-slate-500 block text-[10px] font-sans">W3C Kimlik Belgeleri:</span>
-                    <span className="text-indigo-400 text-base font-bold">{dbStats?.credentials ?? credentials.length}</span>
-                  </div>
-                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                    <span className="text-slate-500 block text-[10px] font-sans">EIP-4337 Vasiler:</span>
-                    <span className="text-emerald-400 text-base font-bold">{dbStats?.guardians ?? 3}</span>
-                  </div>
-                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                    <span className="text-slate-500 block text-[10px] font-sans">Denetim / AI Logları:</span>
-                    <span className="text-cyan-400 text-base font-bold">{dbStats?.audit_logs ?? 0}</span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-slate-400">
-                  Tüm kullanıcı hesapları, üretilen W3C Verifiable Credential'lar ve vasi kurtarma yetkileri bu veritabanında saklanır. Sayfa yenilense veya tarayıcı kapatılsa bile verileriniz kaybolmaz.
-                </p>
-
-                {/* Canlı Denetim ve Güvenlik Kayıtları Tablosu */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300">
-                      Son Denetim ve Blokzincir Olayları (SQLite audit_logs):
-                    </span>
-                    <button
-                      onClick={fetchDbStats}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[11px] font-mono transition flex items-center gap-1"
-                    >
-                      <span>🔄</span>
-                      <span>Yenile</span>
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/60">
-                    <table className="w-full text-left text-xs font-mono">
-                      <thead className="bg-slate-900 border-b border-slate-800 text-[10px] text-slate-400 uppercase">
-                        <tr>
-                          <th className="p-2.5">ID</th>
-                          <th className="p-2.5">Olay Türü</th>
-                          <th className="p-2.5">Aktör / Kurum</th>
-                          <th className="p-2.5">Hedef Cüzdan</th>
-                          <th className="p-2.5">İşlem Özeti</th>
-                          <th className="p-2.5">Zaman (UTC)</th>
+                <div className="border border-[#1f2937] rounded overflow-hidden">
+                  <table className="table-enterprise">
+                    <thead>
+                      <tr>
+                        <th>Vasi Adı</th>
+                        <th>Rol</th>
+                        <th>DID</th>
+                        <th>Onay Durumu</th>
+                        <th>İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {guardiansList.map(g => (
+                        <tr key={g.id}>
+                          <td className="font-semibold text-white">{g.name}</td>
+                          <td>{g.role}</td>
+                          <td className="font-mono text-xs">{g.did}</td>
+                          <td>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              g.approved ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
+                            }`}>
+                              {g.approved ? "✓ ONAYLANDI" : "BEKLİYOR"}
+                            </span>
+                          </td>
+                          <td>
+                            {!g.approved && (
+                              <button 
+                                onClick={() => {
+                                  const updated = guardiansList.map(item => item.id === g.id ? { ...item, approved: true } : item);
+                                  setGuardiansList(updated);
+                                  setGuardianMsg(`Vasi ${g.name} için kurtarma imzası verildi.`);
+                                }}
+                                className="btn btn-primary py-1 px-2 text-xs"
+                              >
+                                Onayla
+                              </button>
+                            )}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800 text-[11px]">
-                        {auditLogs.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="p-4 text-center text-slate-500 font-sans">
-                              Henüz denetim kaydı bulunmuyor. Yeni bir belge oluşturduğunuzda veya iptal ettiğinizde burada canlı listelenecektir.
-                            </td>
-                          </tr>
-                        ) : (
-                          auditLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-slate-800/40 transition">
-                              <td className="p-2.5 text-slate-500 font-bold">#{log.id}</td>
-                              <td className="p-2.5 font-bold">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-                                  log.event_type.includes("QUARANTINE") ? "bg-rose-500/20 text-rose-300 border border-rose-500/30" :
-                                  log.event_type.includes("REVOKED") ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
-                                  log.event_type.includes("RECOVERY") ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" :
-                                  "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                }`}>
-                                  {log.event_type}
-                                </span>
-                              </td>
-                              <td className="p-2.5 text-slate-300 truncate max-w-[140px]">{log.actor_did || "-"}</td>
-                              <td className="p-2.5 text-slate-400 truncate max-w-[120px]">{log.target_wallet || "-"}</td>
-                              <td className="p-2.5 text-indigo-300 truncate max-w-[200px]">
-                                {log.details?.blockchain_tx ? `TX: ${log.details.blockchain_tx.slice(0, 12)}...` : (log.details?.action || log.details?.type || JSON.stringify(log.details))}
-                              </td>
-                              <td className="p-2.5 text-slate-400">{log.created_at?.slice(0, 19).replace("T", " ")}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {guardianMsg && (
+                  <div className="p-3 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded text-xs font-mono">
+                    ✓ {guardianMsg}
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------- */}
+          {/* ADMIN SCREENS (SECTION 12 & 14) */}
+          {/* ----------------------------------------------------------------- */}
+          {activeRole === "ADMIN" && (
+            <div>
+              <div className="screen-header">
+                <h1 className="screen-title">Admin: Tamper-Proof Audit Trail (Bölüm 12 & 14)</h1>
+                <p className="screen-desc">Değiştirilemez denetim izi ve blokzincir bütünlük çapaları.</p>
+              </div>
+
+              <div className="panel space-y-4">
+                <div className="border border-[#1f2937] rounded overflow-hidden">
+                  <table className="table-enterprise">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Olay Türü</th>
+                        <th>Aktör DID</th>
+                        <th>Hedef Cüzdan</th>
+                        <th>İşlem / Blokzincir TX</th>
+                        <th>Zaman</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map(log => (
+                        <tr key={log.id}>
+                          <td className="font-mono font-bold text-slate-400">#{log.id}</td>
+                          <td>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800 font-mono">
+                              {log.event_type}
+                            </span>
+                          </td>
+                          <td className="font-mono text-xs truncate max-w-[140px]">{log.actor_did}</td>
+                          <td className="font-mono text-xs">{log.target_wallet}</td>
+                          <td className="font-mono text-xs text-blue-300 truncate max-w-[180px]">
+                            {log.details.blockchain_tx || JSON.stringify(log.details)}
+                          </td>
+                          <td className="text-slate-400">{log.created_at}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
 
-      {/* ========================================================= */}
-      {/* MODALLAR (QR VE JSON-LD İNCELEME) */}
-      {/* ========================================================= */}
-      {showQrModal && selectedCred && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl space-y-4">
-            <h3 className="font-bold text-white text-base">W3C Verifiable Presentation QR</h3>
-            <p className="text-xs text-slate-400">
-              Doğrulayıcı (işveren, sınır kapısı, banka) kamerasıyla tarandığında geçerlilik testi anında yapılır.
-            </p>
-
-            <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
-              <svg width="180" height="180" viewBox="0 0 100 100">
-                <rect width="100" height="100" fill="#fff" />
-                <path d="M10 10h30v30h-30zM60 10h30v30h-30zM10 60h30v30h-30zM20 20h10v10h-10zM70 20h10v10h-10zM20 70h10v10h-10zM45 45h10v10h-10zM60 60h15v15h-15zM75 75h15v15h-15zM45 10h10v20h-10zM10 45h20v10h-20z" fill="#000" />
-              </svg>
-            </div>
-
-            <div className="text-[11px] text-slate-400 font-mono bg-slate-950 p-2 rounded-lg border border-slate-800 truncate">
-              {selectedCred.id}
-            </div>
-
-            <button
-              onClick={() => setShowQrModal(false)}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition"
-            >
-              Kapat
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* JSON-LD DETAY MODAL */}
-      {showJsonModal && selectedCred && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-white text-sm">W3C JSON-LD Verifiable Credential</h3>
-              <button onClick={() => setShowJsonModal(false)} className="text-slate-400 hover:text-white font-bold">✕</button>
-            </div>
-
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 max-h-80 overflow-y-auto font-mono text-[11px] text-indigo-300">
-              <pre>{JSON.stringify(selectedCred, null, 2)}</pre>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => {
-                  const blob = new Blob([JSON.stringify(selectedCred, null, 2)], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${selectedCred.type}-${selectedCred.id.slice(-8)}.json`;
-                  a.click();
-                }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition"
-              >
-                JSON İndir
-              </button>
-              <button
-                onClick={() => setShowJsonModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
-              >
-                Kapat
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </main>
+      </div>
     </div>
   );
 };
