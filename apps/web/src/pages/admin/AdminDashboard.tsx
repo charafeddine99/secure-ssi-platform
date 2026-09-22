@@ -31,7 +31,7 @@ export const AdminDashboard: React.FC = () => {
 
   const microservices = [
     { name: "API Gateway & Proxy", port: 8000, status: gateway?.gateway_status || "ONLINE", role: "Central Ingress & CORS" },
-    { name: "SSI Core & SQLite Vault", port: 8001, status: gateway?.services?.identity_service || "HEALTHY", role: "W3C VC 2.0 & Ed25519 Engine" },
+    { name: "SSI Core & Identity Service", port: 8001, status: gateway?.services?.identity_service || "HEALTHY", role: "W3C VC 2.0 & Ed25519 (MongoDB Persistence)" },
     { name: "AI Fraud & Threat Engine", port: 8002, status: gateway?.services?.fraud_service || "HEALTHY", role: "XGBoost + Autoencoder Hybrid ML" },
     { name: "Social Recovery Service", port: 8003, status: gateway?.services?.recovery_service || "HEALTHY", role: "Shamir Secret Sharing & Multi-Sig" },
     { name: "Ethereum Hardhat Node", port: 8545, status: blockchain?.connected ? "ONLINE" : "ONLINE", role: `Block #${blockchain?.block_number ?? 67}` }

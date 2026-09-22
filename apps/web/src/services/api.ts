@@ -2,7 +2,7 @@
  * Real Backend API Integration Client for Secure SSI Platform
  * Connects frontend directly to:
  * - API Gateway (Port 8000)
- * - SSI Core & SQLite Database (Port 8001)
+ * - SSI Core & Identity Persistence Service (Port 8001)
  * - AI Fraud & Threat Detection Service (Port 8002)
  */
 
@@ -196,7 +196,7 @@ export async function approveGuardian(guardianId: number, walletAddress: string)
 }
 
 /**
- * Fetch audit logs from SQLite
+ * Fetch audit logs from authoritative persistence layer
  */
 export async function fetchAuditLogs(): Promise<BackendAuditLog[]> {
   try {

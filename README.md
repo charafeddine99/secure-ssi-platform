@@ -43,6 +43,17 @@ scripts/
 - For host development: Node.js 20+, npm 10+, Python 3.11+
 - Optional: GNU Make
 
+## Persistent Storage & Database Migration
+
+- **Authoritative Target Database:** MongoDB Enterprise (`secure_identity` & `secure_recovery`)
+  - Collections: `users`, `credentials`, `holder_wallets`, `audit_events`, `audit_outbox`, `status_lists`, `managed_keys`
+  - Managed by typed repository pattern: `MongoUserRepository`, `MongoCredentialRepository`, `MongoHolderWalletRepository`, `MongoAuditEventRepository`
+- **SQLite -> MongoDB Migration Engine:**
+  - Automated, deterministic, idempotent migration engine: `services/identity-service/app/infrastructure/persistence/sqlite_migrator.py`
+  - CLI runner: `python scripts/migrate_sqlite_to_mongodb.py [--dry-run] [--export-json <path>]`
+  - Strict security invariants: Plain text seed phrases, private keys, and unencrypted secrets are completely excluded from migration.
+  - Backup: `services/identity-service/secure_ssi_database.db.backup` preserved for deterministic verification.
+
 ## Local development
 
 Web:

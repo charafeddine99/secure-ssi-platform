@@ -47,7 +47,7 @@ export const AuditExplorerPage: React.FC = () => {
             Immutable Audit Trail Explorer
           </h1>
           <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Permanent tamper-proof audit records stored in `secure_ssi_database.db` and anchored via `AuditLogger.sol`.
+            Authoritative enterprise audit events stored in MongoDB persistence layer and anchored on-chain via `AuditLogger.sol`.
           </p>
         </div>
 

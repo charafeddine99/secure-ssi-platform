@@ -36,3 +36,5 @@ typechain-types/
 cache/
 *.tsbuildinfo
 *.db
+*.backup
+scratch/

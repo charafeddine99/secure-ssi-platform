@@ -29,7 +29,7 @@ export const ArchitectureDocsPage: React.FC = () => {
     {
       layer: "Layer 3",
       title: "SSI Credential & DID Engine",
-      tech: "Python 3.11, FastAPI (Port 8001), Web3.py, SQLite / MongoDB",
+      tech: "Python 3.11, FastAPI (Port 8001), Web3.py, MongoDB Persistence Layer",
       description: "Implements W3C Verifiable Credentials 2.0 issuance with Ed25519 Linked Data signatures, DIDComm v2 encryption, and status list management.",
       endpoints: [
         { method: "POST", path: "/api/issue_credential", desc: "Evaluates AI risk and generates W3C JSON-LD credential signed with Ed25519." },

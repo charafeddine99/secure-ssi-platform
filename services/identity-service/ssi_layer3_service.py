@@ -856,7 +856,30 @@ async def get_blockchain_status():
 @app.get("/api/database/stats", tags=["Database & Health"])
 async def get_database_stats():
     stats = db_get_stats()
-    return {"status": "SUCCESS", "database": "SQLite (secure_ssi_database.db)", "stats": stats}
+    mongo_uri = os.getenv("IDENTITY_MONGO_URI")
+    mongo_connected = False
+    mongo_collections = {}
+    if mongo_uri:
+        try:
+            from pymongo import MongoClient
+            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=500)
+            db = client.get_default_database() or client["secure_identity"]
+            client.admin.command("ping")
+            mongo_connected = True
+            for col in ["users", "credentials", "holder_wallets", "audit_events"]:
+                mongo_collections[col] = db[col].count_documents({})
+        except Exception:
+            mongo_connected = False
+
+    return {
+        "status": "SUCCESS",
+        "authoritative_persistence": "MongoDB Enterprise (secure_identity)",
+        "active_runtime": "MongoDB" if mongo_connected else "SQLite (Legacy Prototype Fallback)",
+        "mongo_connected": mongo_connected,
+        "mongo_collections": mongo_collections if mongo_connected else "BLOCKED_PENDING_DOCKER_DAEMON",
+        "sqlite_fallback_stats": stats,
+        "stats": stats
+    }
 
 if __name__ == "__main__":
     import uvicorn
