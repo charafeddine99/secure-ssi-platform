@@ -6,14 +6,14 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
   const [mode, setMode] = useState<"login" | "register" | "seed">("login");
 
   // Login form
-  const [loginEmail, setLoginEmail] = useState("b210109591@subu.edu.tr");
+  const [loginEmail, setLoginEmail] = useState("charaf.bessanane@identity-eudi.eu");
   const [loginPassword, setLoginPassword] = useState("123456");
 
   // Register form
   const [regName, setRegName] = useState("Charaf Eddine Bessanane");
-  const [regStudentId, setRegStudentId] = useState("B210109591");
-  const [regEmail, setRegEmail] = useState("b210109591@subu.edu.tr");
-  const [regDepartment, setRegDepartment] = useState("Bilgisayar Mühendisliği");
+  const [regNationalId, setRegNationalId] = useState("EU-ID-829104752");
+  const [regEmail, setRegEmail] = useState("charaf.bessanane@identity-eudi.eu");
+  const [regOrganization, setRegOrganization] = useState("European Digital Identity Framework");
   const [regPassword, setRegPassword] = useState("123456");
 
   // Seed phrase login
@@ -47,7 +47,7 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
       setErrorMsg("Lütfen Ad Soyad ve E-posta alanlarını doldurunuz.");
       return;
     }
-    const res = register(regName, regStudentId, regEmail, regDepartment, regPassword);
+    const res = register(regName, regNationalId, regEmail, regOrganization, regPassword);
     setNewIdentity({
       did: res.user.did,
       seedPhrase: res.seedPhrase,
@@ -58,11 +58,15 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
   const handleSeedLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    if (!seedPhraseInput.trim()) {
+      setErrorMsg("Lütfen 12 veya 24 kelimelik kurtarma tohum ifadenizi girin.");
+      return;
+    }
     const success = loginWithSeedPhrase(seedPhraseInput);
     if (success) {
       if (onComplete) onComplete();
     } else {
-      setErrorMsg("Geçersiz güvenlik ifadesi. En az 12 kelimelik tohum giriniz.");
+      setErrorMsg("Geçersiz kurtarma ifadesi. Lütfen en az 12 geçerli BIP-39 kelimesi girin.");
     }
   };
 
@@ -72,333 +76,476 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
     if (success) {
       if (onComplete) onComplete();
     } else {
-      setErrorMsg("MetaMask cüzdanına bağlanılamadı. Lütfen eklentinizi açın veya demo girişini kullanın.");
+      setErrorMsg("MetaMask bağlantısı kurulamadı. Lütfen cüzdan eklentinizi kontrol edin.");
     }
   };
 
-  const handleQuickDemo = () => {
-    quickDemoLogin();
-    if (onComplete) onComplete();
-  };
-
-  const copyText = (val: string) => {
-    navigator.clipboard.writeText(val);
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 relative overflow-hidden selection:bg-indigo-500 selection:text-white">
-      {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-10 right-10 w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-
-      {/* Main card */}
-      <div className="relative z-10 w-full max-w-lg bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
-        {/* University & Title Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-cyan-500 shadow-xl shadow-indigo-500/25 mb-3 text-2xl">
-            🎓
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "var(--bg-app)",
+      padding: "24px"
+    }}>
+      <div style={{
+        width: "100%",
+        maxWidth: "480px",
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-default)",
+        borderRadius: "12px",
+        padding: "32px",
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)"
+      }}>
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "48px",
+            height: "48px",
+            borderRadius: "10px",
+            backgroundColor: "var(--color-primary)",
+            color: "#ffffff",
+            fontWeight: "800",
+            fontSize: "20px",
+            marginBottom: "12px"
+          }}>
+            SSI
           </div>
-          <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-400 block mb-1">
-            T.C. Sakarya Uygulamalı Bilimler Üniversitesi
-          </span>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            Secure Self-Sovereign Identity
+          <h1 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", marginBottom: "6px" }}>
+            Secure SSI Platform
           </h1>
-          <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-sm mx-auto">
-            Yapay Zekâ Tabanlı Dolandırıcılık Tespiti ve Blokzincir Acil Kurtarma Portalı
+          <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+            EUDI Wallet ARF & W3C Verifiable Credentials 2.0
           </p>
         </div>
 
-        {/* If new identity created, show cryptographic seed credentials */}
-        {newIdentity ? (
-          <div className="space-y-4 animate-fade-in">
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs mb-1">
-                <span>✓</span>
-                <span>W3C DID ve Kriptografik Cüzdanınız Üretildi!</span>
-              </div>
-              <p className="text-[11px] text-slate-300">
-                Aşağıdaki 12 kelimelik güvenlik tohumu cüzdanınızın kurtarma anahtarıdır. Cihazınızı kaybetseniz bile kimliğinizi bununla kurtarabilirsiniz.
-              </p>
+        {/* Tab switcher */}
+        <div style={{
+          display: "flex",
+          backgroundColor: "var(--bg-subtle)",
+          padding: "4px",
+          borderRadius: "8px",
+          marginBottom: "24px",
+          border: "1px solid var(--border-default)"
+        }}>
+          <button
+            type="button"
+            onClick={() => { setMode("login"); setErrorMsg(null); setNewIdentity(null); }}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              fontSize: "12px",
+              fontWeight: "600",
+              borderRadius: "6px",
+              border: "none",
+              cursor: "pointer",
+              backgroundColor: mode === "login" ? "var(--color-primary)" : "transparent",
+              color: mode === "login" ? "#ffffff" : "var(--text-muted)",
+              transition: "all 0.15s ease"
+            }}
+          >
+            Giriş Yap
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("register"); setErrorMsg(null); setNewIdentity(null); }}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              fontSize: "12px",
+              fontWeight: "600",
+              borderRadius: "6px",
+              border: "none",
+              cursor: "pointer",
+              backgroundColor: mode === "register" ? "var(--color-primary)" : "transparent",
+              color: mode === "register" ? "#ffffff" : "var(--text-muted)",
+              transition: "all 0.15s ease"
+            }}
+          >
+            Yeni Kimlik
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("seed"); setErrorMsg(null); setNewIdentity(null); }}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              fontSize: "12px",
+              fontWeight: "600",
+              borderRadius: "6px",
+              border: "none",
+              cursor: "pointer",
+              backgroundColor: mode === "seed" ? "var(--color-primary)" : "transparent",
+              color: mode === "seed" ? "#ffffff" : "var(--text-muted)",
+              transition: "all 0.15s ease"
+            }}
+          >
+            Kurtarma İfadesi
+          </button>
+        </div>
+
+        {errorMsg && (
+          <div style={{
+            padding: "10px 14px",
+            borderRadius: "6px",
+            backgroundColor: "rgba(220, 38, 38, 0.12)",
+            border: "1px solid rgba(220, 38, 38, 0.3)",
+            color: "#ef4444",
+            fontSize: "12px",
+            marginBottom: "16px"
+          }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* 1. LOGIN MODE */}
+        {mode === "login" && (
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
+                Kurumsal E-Posta veya DID
+              </label>
+              <input
+                type="text"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="ornek@identity-eudi.eu veya did:key:..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px",
+                  outline: "none"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
+                Parola / PIN
+              </label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="••••••"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px",
+                  outline: "none"
+                }}
+              />
             </div>
 
-            <div className="space-y-2.5 text-xs">
-              <div>
-                <span className="text-slate-400 block text-[11px] mb-1 font-medium">Atanan W3C Decentralized Identifier (DID):</span>
-                <p className="font-mono bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-indigo-300 text-[11px] break-all select-all">
-                  {newIdentity.did}
-                </p>
-              </div>
+            <button
+              type="submit"
+              style={{
+                marginTop: "8px",
+                padding: "10px",
+                backgroundColor: "var(--color-primary)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              Kimlik Cüzdanına Giriş Yap
+            </button>
 
-              <div>
-                <span className="text-slate-400 block text-[11px] mb-1 font-medium">EVM Cüzdan Adresi:</span>
-                <p className="font-mono bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-slate-300 text-[11px] break-all">
-                  {newIdentity.walletAddress}
-                </p>
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "8px 0" }}>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-default)" }} />
+              <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>VEYA</span>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-default)" }} />
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-slate-400 text-[11px] font-medium">12 Kelimelik Kurtarma İfadesi (Seed Phrase):</span>
-                  <button
-                    onClick={() => copyText(newIdentity.seedPhrase)}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
-                  >
-                    {copied ? "Kopyalandı ✓" : "Kopyala"}
-                  </button>
-                </div>
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs font-mono font-medium leading-relaxed select-all">
-                  {newIdentity.seedPhrase}
-                </div>
+            <button
+              type="button"
+              onClick={handleMetaMask}
+              style={{
+                padding: "10px",
+                backgroundColor: "var(--bg-subtle)",
+                color: "var(--text-main)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
+            >
+              🦊 Web3 Cüzdan ile Doğrula (MetaMask)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { quickDemoLogin(); if (onComplete) onComplete(); }}
+              style={{
+                padding: "9px",
+                backgroundColor: "transparent",
+                color: "#60a5fa",
+                border: "1px dashed var(--border-accent)",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              ⚡ Hızlı Egemen Kimlik ile Devam Et
+            </button>
+          </form>
+        )}
+
+        {/* 2. REGISTER MODE */}
+        {mode === "register" && !newIdentity && (
+          <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
+                Ad Soyad
+              </label>
+              <input
+                type="text"
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
+                Ulusal Kimlik No / eIDAS Ref
+              </label>
+              <input
+                type="text"
+                value={regNationalId}
+                onChange={(e) => setRegNationalId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
+                E-Posta Adresi
+              </label>
+              <input
+                type="email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
+                Kurum / Çatı Çerçeve
+              </label>
+              <input
+                type="text"
+                value={regOrganization}
+                onChange={(e) => setRegOrganization(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                marginTop: "10px",
+                padding: "10px",
+                backgroundColor: "var(--color-primary)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              🔐 Kriptografik Kimlik & Anahtar Çifti Üret
+            </button>
+          </form>
+        )}
+
+        {/* 2B. NEW IDENTITY CREATED */}
+        {mode === "register" && newIdentity && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{
+              padding: "12px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(22, 163, 74, 0.12)",
+              border: "1px solid rgba(22, 163, 74, 0.3)",
+              color: "#4ade80",
+              fontSize: "13px",
+              fontWeight: "600"
+            }}>
+              ✓ Egemen Kimliğiniz Başarıyla Oluşturuldu
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
+                W3C DID Kimliği
+              </label>
+              <div style={{
+                padding: "8px",
+                backgroundColor: "var(--bg-input)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "6px",
+                fontFamily: "var(--font-mono)",
+                fontSize: "11px",
+                color: "#60a5fa",
+                wordBreak: "break-all"
+              }}>
+                {newIdentity.did}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "#f59e0b", marginBottom: "4px" }}>
+                ⚠️ 12 Kelimelik Kurtarma Tohum İfadesi (Bunu Güvenli Bir Yere Kaydedin)
+              </label>
+              <div style={{
+                padding: "12px",
+                backgroundColor: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                borderRadius: "6px",
+                fontFamily: "var(--font-mono)",
+                fontSize: "12px",
+                color: "#fcd34d",
+                lineHeight: "1.6"
+              }}>
+                {newIdentity.seedPhrase}
               </div>
             </div>
 
             <button
-              onClick={() => {
-                setNewIdentity(null);
-                if (onComplete) onComplete();
+              type="button"
+              onClick={() => copyToClipboard(newIdentity.seedPhrase)}
+              style={{
+                padding: "8px",
+                backgroundColor: "var(--bg-subtle)",
+                color: "var(--text-main)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "6px",
+                fontSize: "12px",
+                cursor: "pointer"
               }}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition duration-150"
             >
-              Cüzdanıma ve Sisteme Giriş Yap →
+              {copied ? "✓ Kopyalandı!" : "📋 Tohum İfadesini Kopyala"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { if (onComplete) onComplete(); }}
+              style={{
+                padding: "10px",
+                backgroundColor: "var(--color-primary)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              Cüzdanıma Devam Et
             </button>
           </div>
-        ) : (
-          <>
-            {/* Quick 1-Click Launch Banner */}
-            <div className="mb-5 p-4 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border border-indigo-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-xl">
-              <div>
-                <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Hızlı Başlat & Sunum Modu
-                </span>
-                <span className="text-xs font-bold text-white block mt-0.5">
-                  Charaf Eddine Bessanane (B210109591)
-                </span>
-                <span className="text-[10px] text-slate-400 block">
-                  SUBÜ Bilgisayar Mühendisliği Tasarımı
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleQuickDemo}
-                className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/30 transition active:scale-95 whitespace-nowrap flex items-center gap-1.5"
-              >
-                <span>🚀</span>
-                <span>Hemen Başlat</span>
-              </button>
-            </div>
-
-            {/* Mode selection tabs */}
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-5 text-xs font-medium">
-              <button
-                onClick={() => setMode("login")}
-                className={`flex-1 py-2 rounded-lg transition ${
-                  mode === "login"
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Giriş Yap
-              </button>
-              <button
-                onClick={() => setMode("register")}
-                className={`flex-1 py-2 rounded-lg transition ${
-                  mode === "register"
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Yeni Hesap / DID Oluştur
-              </button>
-              <button
-                onClick={() => setMode("seed")}
-                className={`flex-1 py-2 rounded-lg transition ${
-                  mode === "seed"
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Kurtarma İfadesi
-              </button>
-            </div>
-
-            {/* Error banner */}
-            {errorMsg && (
-              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs flex items-center justify-between">
-                <span>{errorMsg}</span>
-                <button onClick={() => setErrorMsg(null)} className="font-bold ml-2">✕</button>
-              </div>
-            )}
-
-            {/* Form 1: Login */}
-            {mode === "login" && (
-              <form onSubmit={handleLogin} className="space-y-3.5">
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">Kurumsal E-posta veya DID</label>
-                  <input
-                    type="text"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="b210109591@subu.edu.tr"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">Şifre / PIN</label>
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none transition"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition duration-150 mt-1"
-                >
-                  Giriş Yap
-                </button>
-
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-800"></div>
-                  </div>
-                  <div className="relative flex justify-center text-[10px] uppercase">
-                    <span className="bg-slate-900 px-2 text-slate-500 font-medium">veya tek tıkla bağlan</span>
-                  </div>
-                </div>
-
-                {/* Quick login options */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={handleMetaMask}
-                    className="py-2.5 px-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-[11px] font-medium text-slate-200 hover:text-white transition flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <span>🦊</span>
-                    <span>MetaMask Girişi</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleQuickDemo}
-                    className="py-2.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-[11px] font-semibold text-emerald-300 transition flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <span>⚡</span>
-                    <span>Hızlı Demo Girişi</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Form 2: Register */}
-            {mode === "register" && (
-              <form onSubmit={handleRegister} className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-slate-400 text-xs block mb-1 font-medium">Ad Soyad</label>
-                    <input
-                      type="text"
-                      value={regName}
-                      onChange={(e) => setRegName(e.target.value)}
-                      placeholder="Charaf Eddine Bessanane"
-                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 text-xs block mb-1 font-medium">Öğrenci Numarası</label>
-                    <input
-                      type="text"
-                      value={regStudentId}
-                      onChange={(e) => setRegStudentId(e.target.value)}
-                      placeholder="B210109591"
-                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">SUBÜ Kurumsal E-posta</label>
-                  <input
-                    type="email"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="b210109591@subu.edu.tr"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">Fakülte / Bölüm</label>
-                  <input
-                    type="text"
-                    value={regDepartment}
-                    onChange={(e) => setRegDepartment(e.target.value)}
-                    placeholder="Bilgisayar Mühendisliği"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">Cüzdan Şifresi (Yerel Koruma)</label>
-                  <input
-                    type="password"
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition duration-150 mt-2"
-                >
-                  Kriptografik DID ve Cüzdan Üret →
-                </button>
-              </form>
-            )}
-
-            {/* Form 3: Seed phrase login */}
-            {mode === "seed" && (
-              <form onSubmit={handleSeedLogin} className="space-y-3.5">
-                <div>
-                  <label className="text-slate-400 text-xs block mb-1 font-medium">12 Kelimelik Kurtarma İfadeniz</label>
-                  <textarea
-                    rows={3}
-                    value={seedPhraseInput}
-                    onChange={(e) => setSeedPhraseInput(e.target.value)}
-                    placeholder="apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-xs text-white font-mono outline-none"
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                  <p>• Cihazınızı kaybettiğinizde veya yeni bir cihaza geçtiğinizde kimliğinizi yükler.</p>
-                  <p>• Deterministik anahtar türetimi ile W3C kimlik kaydınız yeniden açılır.</p>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition duration-150"
-                >
-                  Kimliği Kurtar ve Giriş Yap
-                </button>
-              </form>
-            )}
-          </>
         )}
 
-        {/* Footer credits */}
-        <div className="mt-6 pt-4 border-t border-slate-800/80 text-center text-[10px] text-slate-500">
-          Charaf Eddine Bessanane • Danışman: Dr. Öğr. Üyesi A. F. M. Suaib Akhter
-        </div>
+        {/* 3. SEED LOGIN */}
+        {mode === "seed" && (
+          <form onSubmit={handleSeedLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
+                12 veya 24 Kelimelik Kurtarma İfadesi
+              </label>
+              <textarea
+                value={seedPhraseInput}
+                onChange={(e) => setSeedPhraseInput(e.target.value)}
+                placeholder="apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard..."
+                rows={4}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--bg-input)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-main)",
+                  fontSize: "12px",
+                  fontFamily: "var(--font-mono)",
+                  lineHeight: "1.5",
+                  resize: "vertical"
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                padding: "10px",
+                backgroundColor: "var(--color-primary)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              Kimliği Kurtar ve Giriş Yap
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

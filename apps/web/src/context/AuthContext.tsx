@@ -3,13 +3,18 @@ import { ethers } from "ethers";
 
 export interface UserProfile {
   name: string;
-  studentId: string;
+  nationalId: string;
   email: string;
-  department: string;
+  organization: string;
   did: string;
   walletAddress: string;
   privateKey?: string;
   seedPhrase?: string;
+  assuranceLevel: "LOW" | "SUBSTANTIAL" | "HIGH";
+  role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
+  // Backward compatibility fields for legacy views if any
+  studentId?: string;
+  department?: string;
 }
 
 interface AuthContextType {
@@ -20,9 +25,9 @@ interface AuthContextType {
   loginWithSeedPhrase: (phrase: string) => boolean;
   register: (
     name: string,
-    studentId: string,
+    nationalId: string,
     email: string,
-    department: string,
+    organization: string,
     password?: string
   ) => { user: UserProfile; seedPhrase: string };
   logout: () => void;
@@ -31,12 +36,14 @@ interface AuthContextType {
 
 const DEFAULT_DEMO_USER: UserProfile = {
   name: "Charaf Eddine Bessanane",
-  studentId: "B210109591",
-  email: "b210109591@subu.edu.tr",
-  department: "Bilgisayar Mühendisliği",
-  did: "did:key:z6MkuBesnaStudentKey2026SUBUEVM",
+  nationalId: "EU-ID-829104752",
+  email: "charaf.bessanane@identity-eudi.eu",
+  organization: "European Digital Identity Framework",
+  did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
   walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  seedPhrase: "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard"
+  seedPhrase: "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard",
+  assuranceLevel: "HIGH",
+  role: "HOLDER"
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,12 +53,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const saved = localStorage.getItem("secure_ssi_user");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // If old format user with studentId exists, migrate to sovereign identity
+        if (!parsed.assuranceLevel) {
+          return {
+            ...DEFAULT_DEMO_USER,
+            name: parsed.name || DEFAULT_DEMO_USER.name,
+            email: parsed.email || DEFAULT_DEMO_USER.email,
+            did: parsed.did || DEFAULT_DEMO_USER.did,
+            walletAddress: parsed.walletAddress || DEFAULT_DEMO_USER.walletAddress
+          };
+        }
+        return parsed;
       } catch (e) {
         return null;
       }
     }
-    // Auto-login with primary academic profile by default so dashboard is immediately accessible
     return DEFAULT_DEMO_USER;
   });
 
@@ -64,7 +81,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [user]);
 
   const login = (email: string, _pass: string): boolean => {
-    // Check local or existing
     const saved = localStorage.getItem("secure_ssi_user");
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -73,12 +89,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return true;
       }
     }
-    // Match demo
     if (email.toLowerCase() === DEFAULT_DEMO_USER.email.toLowerCase() || email === "admin" || email === "demo") {
       setUser(DEFAULT_DEMO_USER);
       return true;
     }
-    // Otherwise login with custom email
     const fallbackUser: UserProfile = {
       ...DEFAULT_DEMO_USER,
       email: email,
@@ -97,12 +111,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const addr = accounts[0];
           const did = `did:key:z6Mku${addr.slice(2, 14)}MetaMask`;
           const metaMaskUser: UserProfile = {
-            name: "MetaMask User",
-            studentId: "B210109591",
-            email: "metamask.user@subu.edu.tr",
-            department: "Bilgisayar Mühendisliği",
+            name: "Verified Sovereign Identity",
+            nationalId: `EVM-${addr.slice(2, 10).toUpperCase()}`,
+            email: `holder.${addr.slice(2, 8)}@ssi-vault.io`,
+            organization: "Self-Sovereign Identity Network",
             did: did,
-            walletAddress: addr
+            walletAddress: addr,
+            assuranceLevel: "HIGH",
+            role: "HOLDER"
           };
           setUser(metaMaskUser);
           return true;
@@ -119,16 +135,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const cleaned = phrase.trim();
       const words = cleaned.split(/\s+/);
       if (words.length >= 12) {
-        // Derive wallet from mnemonic
         const randomWallet = ethers.Wallet.createRandom();
         const derivedUser: UserProfile = {
-          name: "Recovered Identity",
-          studentId: "B210109591",
-          email: "recovered@subu.edu.tr",
-          department: "Bilgisayar Mühendisliği",
+          name: "Recovered Sovereign Identity",
+          nationalId: `REC-${randomWallet.address.slice(2, 10).toUpperCase()}`,
+          email: "recovered.identity@eudi-id.eu",
+          organization: "European Digital Identity Framework",
           did: `did:key:z6Mku${randomWallet.address.slice(2, 14)}Recovered`,
           walletAddress: randomWallet.address,
-          seedPhrase: cleaned
+          seedPhrase: cleaned,
+          assuranceLevel: "HIGH",
+          role: "HOLDER"
         };
         setUser(derivedUser);
         return true;
@@ -141,25 +158,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const register = (
     name: string,
-    studentId: string,
+    nationalId: string,
     email: string,
-    department: string,
+    organization: string,
     _password?: string
   ): { user: UserProfile; seedPhrase: string } => {
-    // Generate real cryptographic keypair & seed
     const newWallet = ethers.Wallet.createRandom();
     const generatedSeed = newWallet.mnemonic?.phrase || "venture pulse canyon timber galaxy velvet whisper anchor puzzle echo matrix flame";
     const generatedDid = `did:key:z6Mku${newWallet.address.slice(2, 18)}${Math.random().toString(36).substring(2, 6)}`;
 
     const newUser: UserProfile = {
       name,
-      studentId: studentId || "B210109591",
+      nationalId: nationalId || "EUDI-ID-902814",
       email,
-      department: department || "Bilgisayar Mühendisliği",
+      organization: organization || "Self-Sovereign Identity Network",
       did: generatedDid,
       walletAddress: newWallet.address,
       privateKey: newWallet.privateKey,
-      seedPhrase: generatedSeed
+      seedPhrase: generatedSeed,
+      assuranceLevel: "HIGH",
+      role: "HOLDER"
     };
 
     setUser(newUser);
