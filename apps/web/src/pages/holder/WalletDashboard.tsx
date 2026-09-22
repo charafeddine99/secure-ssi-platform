@@ -89,7 +89,8 @@ export const WalletDashboard: React.FC = () => {
     setLoading(true);
     try {
       const walletAddr = account || user?.walletAddress;
-      const data = await fetchCredentials(walletAddr);
+      const userDid = user?.did;
+      const data = await fetchCredentials(userDid, walletAddr);
       if (data && data.length > 0) {
         const mapped: CredentialCardData[] = data.map((d) => ({
           id: d.id,

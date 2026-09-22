@@ -69,13 +69,28 @@ export const SecuritySettingsPage: React.FC = () => {
           padding: "20px"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
           <div>
-            <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              12-Word Recovery Seed Phrase
-            </h3>
-            <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "2px 0 0 0" }}>
-              BIP-39 mnemonic phrase to restore cryptographic keys. Never share this with anyone.
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+                12-Word Recovery Seed Phrase
+              </h3>
+              <span
+                style={{
+                  fontSize: "0.65rem",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  backgroundColor: "#451a03",
+                  color: "#f59e0b",
+                  border: "1px solid #78350f",
+                  fontWeight: 600
+                }}
+              >
+                DEMO ARTIFACT — SIMULATED CUSTODY
+              </span>
+            </div>
+            <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
+              Simulated BIP-39 mnemonic phrase for academic evaluation. In production sovereign custody, raw seed phrases are never stored in databases or exposed in plaintext; keys remain in TEE/Secure Enclave hardware with Shamir SSS guardian recovery.
             </p>
           </div>
           <button
