@@ -1,18 +1,26 @@
 """
-Secure SSI Platform - SQLite Database Layer
-Handles permanent relational persistence for:
-- Users (Accounts, DIDs, Seed Phrases, EVM Wallets)
-- Verifiable Credentials (W3C JSON-LD, Claims, Status, Ed25519 Proofs)
-- Emergency Recovery Guardians (EIP-4337 Multi-Sig)
-- Audit & Security Logs (AI Fraud Assessments & Quarantine events)
+Secure SSI Platform - Legacy SQLite Database Layer (Deprecated Prototype / Migration Source).
+AUTHORITATIVE PRODUCTION PERSISTENCE IS MONGODB ENTERPRISE.
+
+This module is retained strictly as:
+1. Historical data extraction source for sqlite_migrator.py.
+2. Offline development fallback for script execution when Docker daemon is inactive.
 """
 
 import os
 import json
 import sqlite3
 import hashlib
+import warnings
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+
+warnings.warn(
+    "app.database (SQLite) is deprecated as a production persistence target. "
+    "Use MongoDB repositories in app.infrastructure.persistence.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 DB_FILE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -307,7 +315,7 @@ def db_register_user(name: str, student_id: str, email: str, department: str, pa
     cursor.execute("""
     INSERT INTO users (email, password_hash, name, student_id, department, did, wallet_address, seed_phrase, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (email, pwd_hash, name, student_id, department, did, wallet_address, seed_phrase, now_iso))
+    """, (email, pwd_hash, name, student_id, department, did, wallet_address, "[PURGED_PLAINTEXT_SECRET]", now_iso))
     conn.commit()
     user_id = cursor.lastrowid
     conn.close()
@@ -320,7 +328,7 @@ def db_register_user(name: str, student_id: str, email: str, department: str, pa
         "department": department,
         "did": did,
         "walletAddress": wallet_address,
-        "seedPhrase": seed_phrase
+        "seedPhrase": ""
     }
 
 def db_authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
