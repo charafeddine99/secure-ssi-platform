@@ -54,8 +54,12 @@ def main():
         try:
             from pymongo import MongoClient
             client = MongoClient(args.mongo_uri, serverSelectionTimeoutMS=2000)
-            client.admin.command("ping")
-            mongo_db = client.get_default_database() or client["secure_identity"]
+            try:
+                mongo_db = client.get_default_database()
+            except Exception:
+                mongo_db = None
+            if mongo_db is None:
+                mongo_db = client["secure_identity"]
             print(f"[+] Successfully connected to live MongoDB: {mongo_db.name}")
         except Exception as e:
             print(f"[!] Warning: Could not connect to live MongoDB: {e}")
@@ -75,6 +79,16 @@ def main():
     print(f"Target MongoDB Documents:")
     for k, v in result["target_mongo_documents"].items():
         print(f"  • {k}: {v} documents")
+    if "inserted_documents" in result:
+        print(f"Live Execution Counts:")
+        print(f"  • Inserted: {result['inserted_documents']}")
+        print(f"  • Updated: {result['updated_documents']}")
+        print(f"  • Skipped: {result['skipped_documents']}")
+        print(f"  • Errors: {result['errors']}")
+    if "final_mongo_counts" in result:
+        print(f"Final MongoDB Collection Counts:")
+        for k, v in result["final_mongo_counts"].items():
+            print(f"  • {k}: {v} documents")
     print("Security Invariants:")
     for k, v in result["security_validation"].items():
         print(f"  • {k}: {v}")

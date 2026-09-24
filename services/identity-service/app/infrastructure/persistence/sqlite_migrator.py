@@ -129,7 +129,7 @@ class SQLiteToMongoMigrator:
             })
 
         # 2. Credentials Transformation
-        for c in extracted["credentials"]:
+        for idx, c in enumerate(extracted["credentials"]):
             cred_id = c["id"]
             cred_oid = deterministic_object_id(f"cred:{cred_id}")
             created_dt = parse_iso_datetime(c["created_at"])
@@ -158,7 +158,7 @@ class SQLiteToMongoMigrator:
                 "revokedBy": None,
                 "revocationReason": None,
                 "statusListId": "https://identity.platform.eudi/status-lists/status-list-2021",
-                "statusListIndex": 104,
+                "statusListIndex": 104 + idx,
                 "statusEntryId": None,
                 "walletId": c["wallet_address"],
                 "ownerUserId": str(deterministic_object_id(f"user:{c['user_did']}")),
@@ -268,16 +268,42 @@ class SQLiteToMongoMigrator:
         }
 
         # Perform live insertion if connected to live MongoDB
+        inserted_count = 0
+        updated_count = 0
+        skipped_count = 0
+        error_count = 0
         if mongo_db is not None:
             for coll_name, docs in transformed.items():
                 if not docs:
                     continue
                 coll = mongo_db[coll_name]
                 for doc in docs:
-                    coll.replace_one({"_id": doc["_id"]}, doc, upsert=True)
+                    try:
+                        res = coll.replace_one({"_id": doc["_id"]}, doc, upsert=True)
+                        if res.upserted_id is not None:
+                            inserted_count += 1
+                        elif res.matched_count > 0:
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        raise e
             stats["status"] = "LIVE_MIGRATION_COMPLETED"
+            stats["inserted_documents"] = inserted_count
+            stats["updated_documents"] = updated_count
+            stats["skipped_documents"] = skipped_count
+            stats["errors"] = error_count
+            stats["final_mongo_counts"] = {
+                coll_name: mongo_db[coll_name].count_documents({})
+                for coll_name in transformed.keys()
+            }
         else:
             stats["status"] = "DRY_RUN_VALIDATED_OFFLINE"
+            stats["inserted_documents"] = 0
+            stats["updated_documents"] = 0
+            stats["skipped_documents"] = 0
+            stats["errors"] = 0
 
         if export_file:
             export_path = Path(export_file)
