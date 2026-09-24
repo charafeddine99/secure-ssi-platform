@@ -413,3 +413,179 @@ export async function quarantineWallet(
   };
 }
 
+// ==========================================
+// OID4VCI (Issuance) & OID4VP (Presentation)
+// ==========================================
+
+export interface Oid4vciOffer {
+  offerId: string;
+  credentialIssuer: string;
+  credentialConfigurationIds: string[];
+  preAuthorizedCode: string;
+  status: string;
+  deepLinkUri: string;
+  qrPayload: string;
+  expiresAt: string;
+  subjectData: Record<string, any>;
+}
+
+export interface NinePointVerificationResult {
+  credentialValid: boolean;
+  issuerTrusted: boolean;
+  signatureValid: boolean;
+  holderBindingValid: boolean;
+  expirationValid: boolean;
+  revocationStatusClear: boolean;
+  challengeValid: boolean;
+  aiRiskLevel: "LOW" | "MEDIUM" | "HIGH";
+  blockchainAnchored: boolean;
+  finalPolicyResult: "ACCEPTED" | "REJECTED";
+  evaluations: Record<string, string>;
+}
+
+export interface Oid4vpSession {
+  sessionId: string;
+  purpose: string;
+  requestedCredentialTypes: string[];
+  requestedFields: string[];
+  nonce: string;
+  status: "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED";
+  deepLinkUri: string;
+  qrPayload: string;
+  expiresAt: string;
+  verificationResult?: NinePointVerificationResult;
+  disclosedClaims?: Record<string, any>;
+  aiRiskScore?: number;
+}
+
+/**
+ * Issuer creates standard OID4VCI Credential Offer with QR code
+ */
+export async function createOid4vciOffer(payload: {
+  credentialConfigurationIds: string[];
+  subjectData: Record<string, any>;
+  ttlSeconds?: number;
+  userPin?: string;
+  token?: string;
+}): Promise<Oid4vciOffer> {
+  const token = payload.token || localStorage.getItem("ssi_access_token") || "";
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/offers`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({
+      credentialConfigurationIds: payload.credentialConfigurationIds,
+      subjectData: payload.subjectData,
+      ttlSeconds: payload.ttlSeconds || 1800,
+      userPin: payload.userPin
+    })
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to create OID4VCI offer: ${res.status} ${errorText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder inspects OID4VCI offer details by offerId
+ */
+export async function getOid4vciOffer(offerId: string): Promise<Oid4vciOffer> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/offers/${offerId}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch OID4VCI offer: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder claims offer using preAuthorizedCode and receives signed W3C VC
+ */
+export async function claimOid4vciOffer(payload: {
+  preAuthorizedCode: string;
+  holderDid: string;
+  walletId?: string;
+  userPin?: string;
+}): Promise<{ credential: any; credentialId: string; status: string }> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/credential`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to claim credential: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Verifier initiates standard OID4VP Verification Session with QR code
+ */
+export async function createOid4vpSession(payload: {
+  purpose: string;
+  requestedCredentialTypes: string[];
+  requestedFields: string[];
+  ttlSeconds?: number;
+  token?: string;
+}): Promise<Oid4vpSession> {
+  const token = payload.token || localStorage.getItem("ssi_access_token") || "";
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({
+      purpose: payload.purpose,
+      requestedCredentialTypes: payload.requestedCredentialTypes,
+      requestedFields: payload.requestedFields,
+      ttlSeconds: payload.ttlSeconds || 600
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to create OID4VP session: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Verifier polls OID4VP session to check live presentation verification status
+ */
+export async function getOid4vpSession(sessionId: string): Promise<Oid4vpSession> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${sessionId}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch OID4VP session: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder wallet submits Verifiable Presentation with selective disclosure via Direct Post
+ */
+export async function submitOid4vpDirectPost(payload: {
+  sessionId: string;
+  vpToken: any;
+  disclosedClaims: Record<string, any>;
+  aiRiskScore?: number;
+}): Promise<{ status: string; result: NinePointVerificationResult }> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/response`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Direct post failed: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+

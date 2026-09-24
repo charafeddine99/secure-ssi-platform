@@ -146,6 +146,19 @@ async def proxy_identity(path: str, request: Request):
             return fallback_resp
     return resp
 
+# 1.1 Direct OID4VCI & OID4VP Proxies
+@router.api_route("/oid4vci/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_oid4vci(path: str, request: Request):
+    normalized = path.lstrip("/")
+    target = f"{IDENTITY_SERVICE_URL}/api/v1/oid4vci/{normalized}"
+    return await forward_request(target, request)
+
+@router.api_route("/oid4vp/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_oid4vp(path: str, request: Request):
+    normalized = path.lstrip("/")
+    target = f"{IDENTITY_SERVICE_URL}/api/v1/oid4vp/{normalized}"
+    return await forward_request(target, request)
+
 # 2. Fraud Service Proxy
 @router.api_route("/fraud/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_fraud(path: str, request: Request):

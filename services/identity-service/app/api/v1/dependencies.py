@@ -132,7 +132,15 @@ from app.infrastructure.persistence.indexes import (
     HOLDER_WALLETS_COLLECTION,
     PRESENTATION_CHALLENGES_COLLECTION,
     MANAGED_KEYS_COLLECTION,
+    CREDENTIAL_OFFERS_COLLECTION,
+    VERIFICATION_SESSIONS_COLLECTION,
 )
+from app.application.ports.oid4vci_repository import CredentialOfferRepository
+from app.application.ports.oid4vp_repository import VerificationSessionRepository
+from app.infrastructure.persistence.oid4vci_repository import MongoCredentialOfferRepository
+from app.infrastructure.persistence.oid4vp_repository import MongoVerificationSessionRepository
+from app.application.services.oid4vci_service import Oid4vciService
+from app.application.services.oid4vp_service import Oid4vpService
 from app.infrastructure.persistence.mongo_user_provider import (
     MongoUserProvider,
 )
@@ -1059,3 +1067,51 @@ def _build_key_providers(
 
 
 _KEY_PROVIDERS = _build_key_providers(_KEY_MANAGEMENT_SETTINGS)
+
+
+def get_credential_offer_repository(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    settings: MongoSettings = Depends(get_mongo_settings),
+) -> CredentialOfferRepository:
+    return MongoCredentialOfferRepository(
+        manager.database[CREDENTIAL_OFFERS_COLLECTION]
+    )
+
+
+def get_verification_session_repository(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    settings: MongoSettings = Depends(get_mongo_settings),
+) -> VerificationSessionRepository:
+    return MongoVerificationSessionRepository(
+        manager.database[VERIFICATION_SESSIONS_COLLECTION]
+    )
+
+
+def get_oid4vci_service(
+    offer_repo: CredentialOfferRepository = Depends(get_credential_offer_repository),
+    credential_repo: CredentialRepository = Depends(get_credential_repository),
+    audit_repo: MongoAuditEventRepository = Depends(get_audit_event_repository),
+    status_list_service: StatusListService = Depends(get_status_list_service),
+    credential_issuance_service: CredentialApiService = Depends(get_credential_issuance_api_service),
+) -> Oid4vciService:
+    return Oid4vciService(
+        offer_repository=offer_repo,
+        credential_repository=credential_repo,
+        audit_repository=audit_repo,
+        status_list_service=status_list_service,
+        credential_issuance_service=credential_issuance_service,
+    )
+
+
+def get_oid4vp_service(
+    session_repo: VerificationSessionRepository = Depends(get_verification_session_repository),
+    credential_repo: CredentialRepository = Depends(get_credential_repository),
+    audit_repo: MongoAuditEventRepository = Depends(get_audit_event_repository),
+    verifier_service: VerifierPresentationService = Depends(get_verifier_presentation_service),
+) -> Oid4vpService:
+    return Oid4vpService(
+        session_repository=session_repo,
+        credential_repository=credential_repo,
+        audit_repository=audit_repo,
+        verifier_presentation_service=verifier_service,
+    )
