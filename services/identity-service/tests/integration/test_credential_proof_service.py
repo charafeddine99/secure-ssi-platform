@@ -278,7 +278,7 @@ def test_non_ed25519_did_verification_method_is_rejected(
 
 
 def test_only_bounded_credential_http_routes_are_exposed() -> None:
-    paths = {route.path for route in app.routes}
+    paths = set(app.openapi()["paths"].keys())
 
     assert "/health" in paths
     assert {

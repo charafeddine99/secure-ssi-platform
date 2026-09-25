@@ -9,19 +9,18 @@
 
 ## Proje Durumu: %100 Tamamlandı (All 202 Requirements Verified)
 
-Bu platform; merkeziyetsiz kimlik (Self-Sovereign Identity - SSI), W3C Verifiable Credentials v2.0, yapay zekâ tabanlı dolandırıcılık tespiti (XGBoost + Autoencoder), Ethereum/EIP-4337 tabanlı akıllı sözleşmeler, 3/5 Guardian Shamir Secret Sharing acil kurtarma ve ESP32 IoT güvenli kapı entegrasyonunu tek çatı altında birleştiren uçtan uca bir sistemdir.
+Bu platform; merkeziyetsiz kimlik (Self-Sovereign Identity - SSI), W3C Verifiable Credentials v2.0, yapay zekâ tabanlı dolandırıcılık tespiti (XGBoost + Autoencoder), Ethereum/EIP-4337 tabanlı akıllı sözleşmeler ve 3/5 Guardian Shamir Secret Sharing acil kurtarma mekanizmasını tek çatı altında birleştiren uçtan uca bir sistemdir.
 
 ## 4 Katmanlı Mimari ve Servisler
 
 | Katman / Bileşen | Fonksiyon | Teknoloji | Yerel Adres | Durum |
 | --- | --- | --- | --- | :---: |
 | **Web UI** | Web3 & SSI Yönetim Portalı (Senaryo 171 Diploma, Canlı AI, 3/5 Kurtarma) | React 18, TypeScript, Vite | `http://localhost:5173` | **%100 AKTİF** |
-| **API Gateway** | Merkezi Reverse-Proxy, CORS, IoT Kapı Köprüsü | FastAPI, Uvicorn, HTTPX | `http://localhost:8000` | **%100 AKTİF** |
+| **API Gateway** | Merkezi Reverse-Proxy, CORS, Güvenlik Başlıkları | FastAPI, Uvicorn, HTTPX | `http://localhost:8000` | **%100 AKTİF** |
 | **Identity Service** | W3C VC 2.0, DID (did:web/key), Bitstring Status List, JWT/RBAC | FastAPI, MongoDB, JCS | `http://localhost:8001` | **%100 AKTİF** |
 | **Fraud Service** | AI Anomali Tespiti, İmkansız Seyahat, Otomatik Karantina | XGBoost, Autoencoder, FastAPI | `http://localhost:8002` | **%100 AKTİF** |
 | **Recovery Service** | 3/5 Guardian Quorum, Shamir Secret Sharing, Time-Lock, Anahtar Rotasyonu | Python, AES-256-GCM, Mongo | `http://localhost:8003` | **%100 AKTİF** |
 | **Blockchain** | DIDRegistry, RevocationRegistry, EmergencyRecovery, AuditLogger | Solidity 0.8.28, Hardhat | Hardhat Network | **%100 AKTİF** |
-| **IoT Bridge** | ESP32 Güvenli Kapı Doğrulama ve Röle Açma Köprüsü | REST, SHA-256, C++ | `http://localhost:8000/api/v1/iot/door/access` | **%100 AKTİF** |
 | **ZKP & Privacy** | Seçici Açıklama (Selective Disclosure) ve GPA >= 3.0 Range Proof | SHA-256 Commitments | `packages/shared/zkp` | **%100 AKTİF** |
 | **DIDComm v2** | Güvenli Ajan Mesajlaşması ve Authcrypt Zarfı | AES-256-GCM | `packages/shared/didcomm` | **%100 AKTİF** |
 
@@ -43,6 +42,17 @@ scripts/
 - Docker Desktop with Docker Compose
 - For host development: Node.js 20+, npm 10+, Python 3.11+
 - Optional: GNU Make
+
+## Persistent Storage & Database Migration
+
+- **Authoritative Target Database:** MongoDB Enterprise (`secure_identity` & `secure_recovery`)
+  - Collections: `users`, `credentials`, `holder_wallets`, `audit_events`, `audit_outbox`, `status_lists`, `managed_keys`
+  - Managed by typed repository pattern: `MongoUserRepository`, `MongoCredentialRepository`, `MongoHolderWalletRepository`, `MongoAuditEventRepository`
+- **SQLite -> MongoDB Migration Engine:**
+  - Automated, deterministic, idempotent migration engine: `services/identity-service/app/infrastructure/persistence/sqlite_migrator.py`
+  - CLI runner: `python scripts/migrate_sqlite_to_mongodb.py [--dry-run] [--export-json <path>]`
+  - Strict security invariants: Plain text seed phrases, private keys, and unencrypted secrets are completely excluded from migration.
+  - Backup: `services/identity-service/secure_ssi_database.db.backup` preserved for deterministic verification.
 
 ## Local development
 
@@ -112,7 +122,7 @@ python scripts/demo_runner.py
    pytest tests/ -v
    ```
 
-4. **API Gateway & IoT Kapı Köprüsü Testleri:**
+4. **API Gateway Testleri:**
    ```powershell
    cd services/api-gateway
    pytest tests/ -v

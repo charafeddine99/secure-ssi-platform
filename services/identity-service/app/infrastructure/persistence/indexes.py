@@ -17,6 +17,8 @@ PRESENTATIONS_COLLECTION = "presentations"
 HOLDER_WALLETS_COLLECTION = "holder_wallets"
 PRESENTATION_CHALLENGES_COLLECTION = "presentation_challenges"
 MANAGED_KEYS_COLLECTION = "managed_keys"
+CREDENTIAL_OFFERS_COLLECTION = "credential_offers"
+VERIFICATION_SESSIONS_COLLECTION = "verification_sessions"
 
 USER_INDEXES = (
     IndexModel(
@@ -304,6 +306,54 @@ MANAGED_KEY_INDEXES = (
     ),
 )
 
+CREDENTIAL_OFFER_INDEXES = (
+    IndexModel(
+        [("offerId", ASCENDING)],
+        unique=True,
+        name="uq_credential_offers_offer_id",
+    ),
+    IndexModel(
+        [("issuerDid", ASCENDING)],
+        name="ix_credential_offers_issuer_did",
+    ),
+    IndexModel(
+        [("preAuthorizedCode", ASCENDING)],
+        name="ix_credential_offers_pre_auth_code",
+    ),
+    IndexModel(
+        [("status", ASCENDING)],
+        name="ix_credential_offers_status",
+    ),
+    IndexModel(
+        [("createdAt", DESCENDING)],
+        name="ix_credential_offers_created_at",
+    ),
+)
+
+VERIFICATION_SESSION_INDEXES = (
+    IndexModel(
+        [("sessionId", ASCENDING)],
+        unique=True,
+        name="uq_verification_sessions_session_id",
+    ),
+    IndexModel(
+        [("nonce", ASCENDING)],
+        name="ix_verification_sessions_nonce",
+    ),
+    IndexModel(
+        [("verifierDid", ASCENDING)],
+        name="ix_verification_sessions_verifier_did",
+    ),
+    IndexModel(
+        [("status", ASCENDING)],
+        name="ix_verification_sessions_status",
+    ),
+    IndexModel(
+        [("createdAt", DESCENDING)],
+        name="ix_verification_sessions_created_at",
+    ),
+)
+
 
 def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
     try:
@@ -338,6 +388,12 @@ def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
         )
         database[MANAGED_KEYS_COLLECTION].create_indexes(
             list(MANAGED_KEY_INDEXES)
+        )
+        database[CREDENTIAL_OFFERS_COLLECTION].create_indexes(
+            list(CREDENTIAL_OFFER_INDEXES)
+        )
+        database[VERIFICATION_SESSIONS_COLLECTION].create_indexes(
+            list(VERIFICATION_SESSION_INDEXES)
         )
     except PyMongoError as error:
         raise PersistenceUnavailableError(

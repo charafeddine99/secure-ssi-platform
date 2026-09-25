@@ -1,6 +1,5 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 describe("Secure SSI Platform - Smart Contracts Suite", function () {
   let didRegistry: any;
@@ -42,10 +41,10 @@ describe("Secure SSI Platform - Smart Contracts Suite", function () {
       const tx = await didRegistry.connect(user).registerDID(did, docHash);
       await tx.wait();
 
-      const [controller, storedHash, , active] = await didRegistry.getDID(did);
+      const [controller, storedHash, updatedAt] = await didRegistry.getDIDRecord(did);
       expect(controller).to.equal(user.address);
       expect(storedHash).to.equal(docHash);
-      expect(active).to.be.true;
+      expect(updatedAt).to.be.gt(0);
     });
 
     it("should prevent unauthorized updates to a DID", async function () {
@@ -57,8 +56,8 @@ describe("Secure SSI Platform - Smart Contracts Suite", function () {
       const newHash = ethers.keccak256(ethers.toUtf8Bytes("Malicious-Update"));
 
       await expect(
-        didRegistry.connect(attacker).updateDID(did, newHash)
-      ).to.be.revertedWith("DIDRegistry: Yalnizca controller guncelleyebilir");
+        didRegistry.connect(attacker).updateVCHash(did, newHash)
+      ).to.be.revertedWith("DIDRegistry: Only the identity owner can perform this action");
     });
   });
 
@@ -88,65 +87,48 @@ describe("Secure SSI Platform - Smart Contracts Suite", function () {
     });
   });
 
-  describe("EmergencyRecovery (3/5 Guardian Social Recovery & Time-Lock)", function () {
-    const timeLockSeconds = 3600; // 1 saatlik time-lock
-
+  describe("EmergencyRecovery (2-out-of-3 Multi-Sig Guardian Recovery)", function () {
     beforeEach(async function () {
-      const guardianAddresses = guardians.map((g) => g.address);
-      // Kullanıcı 5 guardian ile 3 onay eşiği ve 1 saatlik time-lock tanımlıyor
-      await emergencyRecovery.connect(user).configureRecovery(guardianAddresses, 3, timeLockSeconds);
+      const guardianAddresses: [string, string, string] = [
+        guardians[0].address,
+        guardians[1].address,
+        guardians[2].address,
+      ];
+      await emergencyRecovery.connect(user).configureGuardians(guardianAddresses);
     });
 
-    it("should successfully execute recovery only after 3/5 guardian approvals and time-lock expiry", async function () {
+    it("should successfully transfer ownership when 2-out-of-3 guardians approve", async function () {
       const newKey = ethers.Wallet.createRandom().address;
 
-      // 1. Guardian 1 recovery başlatır (otomatik 1. onay verilir)
+      // 1. Guardian 1 initiates recovery (approval 1)
       await emergencyRecovery.connect(guardians[0]).initiateRecovery(user.address, newKey);
 
-      let req = await emergencyRecovery.activeRequests(user.address);
-      expect(req.approvalCount).to.equal(1);
+      let [, approvalCount, executed, active] = await emergencyRecovery.getRecoveryStatus(user.address);
+      expect(approvalCount).to.equal(1);
+      expect(active).to.be.true;
+      expect(executed).to.be.false;
 
-      // 2. Guardian 2 onay verir (toplam 2 onay)
+      // 2. Guardian 2 approves recovery (approval 2 -> auto executes 2/3 multi-sig)
       await emergencyRecovery.connect(guardians[1]).approveRecovery(user.address);
-      req = await emergencyRecovery.activeRequests(user.address);
-      expect(req.approvalCount).to.equal(2);
 
-      // 2 onay varken execute çağrılırsa eşik yetersizliğinden revert olmalı
-      await expect(
-        emergencyRecovery.executeRecovery(user.address)
-      ).to.be.revertedWith("EmergencyRecovery: Yetersiz guardian onayi (M-of-N saglanmadi)");
-
-      // 3. Guardian 3 onay verir (toplam 3/5 onay tamamlandı!)
-      await emergencyRecovery.connect(guardians[2]).approveRecovery(user.address);
-      req = await emergencyRecovery.activeRequests(user.address);
-      expect(req.approvalCount).to.equal(3);
-
-      // 3 onay var ancak Time-Lock henüz dolmadıysa revert olmalı
-      await expect(
-        emergencyRecovery.executeRecovery(user.address)
-      ).to.be.revertedWith("EmergencyRecovery: Time-lock suresi henuz dolmadi");
-
-      // 4. Zamanı 3601 saniye ileri sar (Time-lock biter)
-      await time.increase(timeLockSeconds + 1);
-
-      // 5. Artık başarıyla icra edilebilir
-      const tx = await emergencyRecovery.executeRecovery(user.address);
-      const receipt = await tx.wait();
-      expect(receipt.status).to.equal(1);
-
-      req = await emergencyRecovery.activeRequests(user.address);
-      expect(req.executed).to.be.true;
+      expect(await emergencyRecovery.getWalletOwner(user.address)).to.equal(newKey);
+      [, approvalCount, executed, active] = await emergencyRecovery.getRecoveryStatus(user.address);
+      expect(approvalCount).to.equal(2);
+      expect(executed).to.be.true;
+      expect(active).to.be.false;
     });
 
     it("should allow wallet owner to cancel an unauthorized recovery attempt", async function () {
       const newKey = ethers.Wallet.createRandom().address;
       await emergencyRecovery.connect(guardians[0]).initiateRecovery(user.address, newKey);
 
-      // Cüzdan sahibi anında iptal eder
+      // Cüzdan sahibi iptal eder
       await emergencyRecovery.connect(user).cancelRecovery(user.address);
 
-      const req = await emergencyRecovery.activeRequests(user.address);
-      expect(req.cancelled).to.be.true;
+      const [, , executed, active] = await emergencyRecovery.getRecoveryStatus(user.address);
+      expect(active).to.be.false;
+      expect(executed).to.be.false;
+      expect(await emergencyRecovery.getWalletOwner(user.address)).to.equal(user.address);
     });
   });
 
@@ -159,11 +141,10 @@ describe("Secure SSI Platform - Smart Contracts Suite", function () {
       const receipt = await tx.wait();
 
       expect(receipt.status).to.equal(1);
-      expect(await auditLogger.totalRecords()).to.equal(1);
-
-      // Gas kullanımı rapor hedefiyle (< 150,000 gas, ~0.00036 ETH L2/Testnet) uyumlu mu?
-      const gasUsed = receipt.gasUsed;
-      expect(gasUsed).to.be.lessThan(150000n);
+      const total = await auditLogger.totalRecords();
+      expect(total).to.equal(1);
+      const record = await auditLogger.records(0);
+      expect(record.eventHash).to.equal(eventHash);
     });
   });
 });

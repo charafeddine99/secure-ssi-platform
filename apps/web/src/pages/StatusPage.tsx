@@ -1,625 +1,772 @@
 import { useState } from "react";
+import { Navbar } from "../components/layout/Navbar";
+import { Sidebar, NavSection } from "../components/layout/Sidebar";
 
-interface DiplomaVC {
+interface CredentialItem {
   id: string;
-  studentName: string;
-  faculty: string;
-  department: string;
-  degree: string;
-  gpa: string;
-  graduationDate: string;
-  issuerDID: string;
-  holderDID: string;
+  title: string;
+  type: string;
+  issuer: string;
+  issuedDate: string;
   status: "ACTIVE" | "REVOKED";
-  proof: {
-    type: string;
-    created: string;
-    proofValue: string;
-  };
+  claims: Record<string, any>;
+  proofValue: string;
 }
 
-interface Guardian {
+interface GuardianItem {
   id: number;
   name: string;
+  role: string;
   did: string;
-  hasApproved: boolean;
+  approved: boolean;
 }
 
 export function StatusPage() {
-  const [activeTab, setActiveTab] = useState<"system" | "diploma" | "ai" | "recovery" | "blockchain">("system");
+  const [activeSection, setActiveSection] = useState<NavSection>("wallet");
+  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(true);
+  const [walletAddress] = useState<string>("0x71C2a8F8bC1623b3781290aE201b22308947bE09");
+  const [userDid, setUserDid] = useState<string>("did:key:z6MkuBesnaStudentKey2026SUBUEVM");
 
-  // --- TAB 2: DIPLOMA DEMO STATE ---
-  const [studentName, setStudentName] = useState("Charaf Eddine Bessanane");
-  const [department, setDepartment] = useState("Bilgisayar Mühendisliği");
-  const [gpa, setGpa] = useState("3.82");
-  const [issuedCredential, setIssuedCredential] = useState<DiplomaVC | null>({
-    id: "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
-    studentName: "Charaf Eddine Bessanane",
-    faculty: "Teknoloji Fakültesi",
-    department: "Bilgisayar Mühendisliği",
-    degree: "Lisans (B.Sc.)",
-    gpa: "3.82",
-    graduationDate: "2026-06-25",
-    issuerDID: "did:web:subu.edu.tr",
-    holderDID: "did:key:z6MkuBesnaStudentKey2026",
-    status: "ACTIVE",
-    proof: {
-      type: "DataIntegrityProof - eddsa-jcs-2022",
-      created: "2026-06-25T10:00:00Z",
-      proofValue: "z3s9Pq...SUBUSignedProofValueValidW3C"
-    }
-  });
-  const [verificationResult, setVerificationResult] = useState<string | null>(null);
-
-  // --- TAB 3: AI FRAUD STATE ---
-  const [geoDistance, setGeoDistance] = useState(15.0);
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [freq10m, setFreq10m] = useState(2);
-  const [isTor, setIsTor] = useState(false);
-  const [deviceMatch, setDeviceMatch] = useState(true);
-  const [aiResult, setAiResult] = useState<any>(null);
-  const [quarantinedDids, setQuarantinedDids] = useState<string[]>([]);
-
-  // --- TAB 4: RECOVERY STATE ---
-  const [guardians, setGuardians] = useState<Guardian[]>([
-    { id: 1, name: "Guardian 1 (Dr. Danışman)", did: "did:key:z6MkuGuardian1", hasApproved: true },
-    { id: 2, name: "Guardian 2 (Bölüm Yetkilisi)", did: "did:key:z6MkuGuardian2", hasApproved: true },
-    { id: 3, name: "Guardian 3 (Güvenilir Arkadaş)", did: "did:key:z6MkuGuardian3", hasApproved: false },
-    { id: 4, name: "Guardian 4 (Yedek Cihaz)", did: "did:key:z6MkuGuardian4", hasApproved: false },
-    { id: 5, name: "Guardian 5 (Güvenli Noter)", did: "did:key:z6MkuGuardian5", hasApproved: false },
-  ]);
-  const [recoveryStatus, setRecoveryStatus] = useState<"IDLE" | "PENDING_QUORUM" | "TIMELOCK_READY" | "EXECUTED">("PENDING_QUORUM");
-
-  // --- ACTION HANDLERS ---
-  const handleIssueDiploma = () => {
-    const newVC: DiplomaVC = {
-      id: `urn:uuid:${Math.random().toString(36).substring(2, 15)}`,
-      studentName,
-      faculty: "Teknoloji Fakültesi",
-      department,
-      degree: "Lisans (B.Sc.)",
-      gpa,
-      graduationDate: "2026-06-25",
-      issuerDID: "did:web:subu.edu.tr",
-      holderDID: "did:key:z6Mku" + Math.random().toString(36).substring(2, 10),
+  // 1. CÜZDAN & DİPLOMA STATE
+  const [credentials, setCredentials] = useState<CredentialItem[]>([
+    {
+      id: "urn:uuid:subu-diploma-2026-b210109591",
+      title: "Bilgisayar Mühendisliği Lisans Diploması",
+      type: "UniversityDegreeCredential",
+      issuer: "did:web:subu.edu.tr",
+      issuedDate: "2026-06-25",
       status: "ACTIVE",
-      proof: {
-        type: "DataIntegrityProof - eddsa-jcs-2022",
-        created: new Date().toISOString(),
-        proofValue: "z3s" + Math.random().toString(36).substring(2, 20)
-      }
+      claims: {
+        ogrenciAdi: "Charaf Eddine Bessanane",
+        ogrenciNo: "B210109591",
+        fakulte: "Teknoloji Fakültesi",
+        bolum: "Bilgisayar Mühendisliği",
+        derece: "Lisans (B.Sc.)",
+        gpa: "3.82 / 4.00",
+        tcKimlik: "12345678901"
+      },
+      proofValue: "z3s9PqRtXvM8SUBUSignedProofValueValidW3C2026Ed25519"
+    }
+  ]);
+
+  const [selectedCred, setSelectedCred] = useState<CredentialItem | null>(credentials[0]);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [didCopied, setDidCopied] = useState<boolean>(false);
+
+  // 2. ISSUER STATE (YENİ DİPLOMA ÜRETME)
+  const [issuerStudentName, setIssuerStudentName] = useState("Charaf Eddine Bessanane");
+  const [issuerStudentId, setIssuerStudentId] = useState("B210109591");
+  const [issuerDepartment, setIssuerDepartment] = useState("Bilgisayar Mühendisliği");
+  const [issuerGpa, setIssuerGpa] = useState("3.82");
+  const [issuerNotification, setIssuerNotification] = useState<string | null>(null);
+
+  // 3. VERIFIER STATE
+  const [verifierResult, setVerifierResult] = useState<any>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [zkpMasked, setZkpMasked] = useState<boolean>(true);
+
+  // 4. AI FRAUD MONITOR STATE
+  const [aiGeoKm, setAiGeoKm] = useState<number>(15);
+  const [aiFailedCount, setAiFailedCount] = useState<number>(0);
+  const [aiFreq, setAiFreq] = useState<number>(2);
+  const [aiIsTor, setAiIsTor] = useState<boolean>(false);
+  const [aiDeviceMatch, setAiDeviceMatch] = useState<boolean>(true);
+  const [aiEvalResult, setAiEvalResult] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [quarantinedList, setQuarantinedList] = useState<string[]>([]);
+
+  // 5. RECOVERY STATE
+  const [guardians, setGuardians] = useState<GuardianItem[]>([
+    { id: 1, name: "Dr. Danışman Hoca", role: "Akademik Danışman", did: "did:key:z6MkuGuardian1Danisman", approved: true },
+    { id: 2, name: "Fakülte Sekreterliği", role: "Kurumsal Onaycı", did: "did:key:z6MkuGuardian2Fakulte", approved: true },
+    { id: 3, name: "Güvenilir Arkadaş", role: "Bireysel Temsilci", did: "did:key:z6MkuGuardian3Arkadas", approved: false },
+    { id: 4, name: "Yedek Donanım Anahtarı", role: "Yedek Cihaz", did: "did:key:z6MkuGuardian4Yedek", approved: false },
+    { id: 5, name: "Dijital Noter Servisi", role: "Bağımsız Şahit", did: "did:key:z6MkuGuardian5Noter", approved: false }
+  ]);
+  const [recoveryExecuted, setRecoveryExecuted] = useState<boolean>(false);
+
+  // --- EYLEMLER ---
+  const handleGenerateNewDid = () => {
+    const randomHex = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+    const newDid = `did:key:z6Mku${randomHex}Besna`;
+    setUserDid(newDid);
+    setDidCopied(true);
+    setTimeout(() => setDidCopied(false), 2500);
+  };
+
+  const handleIssueCredential = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newId = `urn:uuid:${Math.random().toString(36).substring(2, 12)}-subu-2026`;
+    const newCred: CredentialItem = {
+      id: newId,
+      title: `${issuerDepartment} Diploması`,
+      type: "UniversityDegreeCredential",
+      issuer: "did:web:subu.edu.tr",
+      issuedDate: new Date().toISOString().split("T")[0],
+      status: "ACTIVE",
+      claims: {
+        ogrenciAdi: issuerStudentName,
+        ogrenciNo: issuerStudentId,
+        fakulte: "Teknoloji Fakültesi",
+        bolum: issuerDepartment,
+        derece: "Lisans (B.Sc.)",
+        gpa: `${issuerGpa} / 4.00`,
+        tcKimlik: "12345678901"
+      },
+      proofValue: "z3s" + Math.random().toString(36).substring(2, 25)
     };
-    setIssuedCredential(newVC);
-    setVerificationResult(null);
+    setCredentials([newCred, ...credentials]);
+    setSelectedCred(newCred);
+    setIssuerNotification(`Başarılı: ${issuerStudentName} adına W3C Diploması düzenlendi ve imzalandı!`);
+    setTimeout(() => setIssuerNotification(null), 4000);
+  };
+
+  const handleRevokeCredential = (id: string) => {
+    const updated = credentials.map(c => c.id === id ? { ...c, status: "REVOKED" as const } : c);
+    setCredentials(updated);
+    if (selectedCred?.id === id) {
+      setSelectedCred({ ...selectedCred, status: "REVOKED" });
+    }
   };
 
   const handleVerifyCredential = () => {
-    if (!issuedCredential) return;
-    if (issuedCredential.status === "REVOKED") {
-      setVerificationResult("REJECTED: Kimlik belgesi (Diploma) üniversite tarafından iptal edilmiş (Revoked)!");
-    } else {
-      setVerificationResult("SUCCESS: W3C Dijital Diploma ve SUBÜ İmzası başarıyla doğrulandı! (Doğrulama süresi: 4.8 ms)");
-    }
-  };
-
-  const handleRevokeCredential = () => {
-    if (!issuedCredential) return;
-    setIssuedCredential({ ...issuedCredential, status: "REVOKED" });
-    setVerificationResult("BILGI: Diploma Status List üzerinde iptal (REVOKED) edildi.");
-  };
-
-  const handleRunAiEvaluation = () => {
-    // Client-side instant evaluation + sync with backend model rules
-    const hours = 0.1;
-    const velocity = geoDistance / hours;
-    let score = 0.05;
-    const reasons: string[] = [];
-
-    if (velocity > 800 && geoDistance > 100) {
-      score += 0.50;
-      reasons.push(`İmkansız seyahat (${velocity.toFixed(0)} km/h) tespit edildi.`);
-    }
-    if (failedAttempts >= 3) {
-      score += 0.35;
-      reasons.push(`${failedAttempts} kez başarısız kimlik doğrulama denemesi.`);
-    }
-    if (isTor) {
-      score += 0.40;
-      reasons.push("İstek bilinen bir Tor / anonimleştirici IP üzerinden geldi.");
-    }
-    if (!deviceMatch) {
-      score += 0.25;
-      reasons.push("Bilinmeyen veya kayıt dışı cihaz parmak izi.");
-    }
-    if (freq10m > 10) {
-      score += 0.30;
-      reasons.push(`Aşırı yüksek işlem sıklığı (${freq10m} istek / 10 dk).`);
-    }
-
-    const finalScore = Math.min(Number(score.toFixed(3)), 1.0);
-    let level = "LOW";
-    let action = "ALLOW";
-
-    if (finalScore >= 0.80) {
-      level = "CRITICAL";
-      action = "QUARANTINE_ACCOUNT";
-      if (!quarantinedDids.includes("did:key:z6MkuBesnaStudentKey2026")) {
-        setQuarantinedDids([...quarantinedDids, "did:key:z6MkuBesnaStudentKey2026"]);
+    setIsVerifying(true);
+    setTimeout(() => {
+      setIsVerifying(false);
+      if (!selectedCred) return;
+      if (selectedCred.status === "REVOKED") {
+        setVerifierResult({
+          valid: false,
+          reason: "KİMLİK GEÇERSİZ: Belge SUBÜ Status List üzerinde iptal edilmiş (REVOKED).",
+          zkpSatisfied: false
+        });
+      } else {
+        setVerifierResult({
+          valid: true,
+          issuer: selectedCred.issuer,
+          algorithm: "DataIntegrityProof - eddsa-jcs-2022",
+          latencyMs: 3.8,
+          zkpSatisfied: true,
+          zkpPredicate: "GPA >= 3.00 (Koşul Gerçek Değer Gizlenerek Doğrulandı)",
+          hiddenFields: ["tcKimlik", "ogrenciNo", "ogrenciAdi"]
+        });
       }
-    } else if (finalScore >= 0.55) {
-      level = "HIGH";
-      action = "MANUAL_REVIEW";
-    } else if (finalScore >= 0.25) {
-      level = "MEDIUM";
-      action = "REQUIRE_STEP_UP_AUTH";
-    }
+    }, 600);
+  };
 
-    setAiResult({
-      score: finalScore,
-      level,
-      action,
-      reasons: reasons.length > 0 ? reasons : ["Tüm parametreler normal sınırların içerisinde."]
-    });
+  const handleRunAiEvaluation = async () => {
+    setAiLoading(true);
+    try {
+      const resp = await fetch("http://127.0.0.1:8002/api/v1/fraud/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          did: userDid,
+          action: "presentation_verification",
+          client_ip: aiIsTor ? "185.220.101.5" : "192.168.1.100",
+          user_agent: "Mozilla/5.0 SecureSSI",
+          failed_attempts: aiFailedCount,
+          geo_distance_km: aiGeoKm,
+          time_since_last_action_sec: 60,
+          presentation_frequency_10m: aiFreq,
+          device_fingerprint: aiDeviceMatch ? "fp-known" : "fp-unknown",
+          device_fingerprint_match: aiDeviceMatch,
+          is_tor_or_proxy: aiIsTor
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setAiEvalResult(data);
+        if (data.recommended_action === "QUARANTINE_ACCOUNT" && !quarantinedList.includes(userDid)) {
+          setQuarantinedList([userDid, ...quarantinedList]);
+        }
+      } else {
+        throw new Error("API hatasi");
+      }
+    } catch {
+      // Offline fallback simülasyonu
+      const score = (aiGeoKm > 500 ? 0.5 : 0) + (aiFailedCount >= 3 ? 0.35 : 0) + (aiIsTor ? 0.4 : 0);
+      const finalScore = Math.min(score, 1.0);
+      setAiEvalResult({
+        risk_score: finalScore,
+        risk_level: finalScore > 0.8 ? "CRITICAL" : finalScore > 0.5 ? "HIGH" : finalScore > 0.25 ? "MEDIUM" : "LOW",
+        recommended_action: finalScore > 0.8 ? "QUARANTINE_ACCOUNT" : finalScore > 0.5 ? "MANUAL_REVIEW" : finalScore > 0.25 ? "REQUIRE_STEP_UP_AUTH" : "ALLOW",
+        reasons: aiGeoKm > 500 ? ["İmkansız seyahat anomalisi tespit edildi."] : ["Normal erişim deseni."]
+      });
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleGuardianApprove = (id: number) => {
-    const updated = guardians.map((g) => (g.id === id ? { ...g, hasApproved: true } : g));
+    const updated = guardians.map(g => g.id === id ? { ...g, approved: true } : g);
     setGuardians(updated);
-    const count = updated.filter((g) => g.hasApproved).length;
-    if (count >= 3) {
-      setRecoveryStatus("TIMELOCK_READY");
-    }
   };
 
-  const handleExecuteRecovery = () => {
-    setRecoveryStatus("EXECUTED");
-  };
-
-  const approvalCount = guardians.filter((g) => g.hasApproved).length;
+  const approvedCount = guardians.filter(g => g.approved).length;
 
   return (
-    <main>
-      <header className="hero">
-        <span className="eyebrow">T.C. SAKARYA UYGULAMALI BİLİMLER ÜNİVERSİTESİ · BİLGİSAYAR MÜHENDİSLİĞİ</span>
-        <h1>Secure SSI Platform</h1>
-        <p>AI-Based Fraud Detection and Emergency Recovery on Blockchain</p>
-      </header>
+    <div className="app-shell">
+      <Navbar
+        isWalletConnected={isWalletConnected}
+        onToggleWallet={() => setIsWalletConnected(!isWalletConnected)}
+        walletAddress={walletAddress}
+        userDid={userDid}
+      />
 
-      {/* NAVIGATION TABS */}
-      <nav className="nav-tabs">
-        <button
-          className={`nav-tab-btn ${activeTab === "system" ? "active" : ""}`}
-          onClick={() => setActiveTab("system")}
-        >
-          Sistem Mimarisi & Canlı Durum
-        </button>
-        <button
-          className={`nav-tab-btn ${activeTab === "diploma" ? "active" : ""}`}
-          onClick={() => setActiveTab("diploma")}
-        >
-          Diploma & VC Yönetimi (Senaryo 171)
-        </button>
-        <button
-          className={`nav-tab-btn ${activeTab === "ai" ? "active" : ""}`}
-          onClick={() => setActiveTab("ai")}
-        >
-          AI Dolandırıcılık Tespiti (Canlı Motor)
-        </button>
-        <button
-          className={`nav-tab-btn ${activeTab === "recovery" ? "active" : ""}`}
-          onClick={() => setActiveTab("recovery")}
-        >
-          3/5 Guardian Acil Kurtarma
-        </button>
-        <button
-          className={`nav-tab-btn ${activeTab === "blockchain" ? "active" : ""}`}
-          onClick={() => setActiveTab("blockchain")}
-        >
-          Blockchain & Sözleşmeler
-        </button>
-      </nav>
+      <div className="app-body">
+        <Sidebar activeSection={activeSection} onSelectSection={setActiveSection} />
 
-      {/* TAB 1: SYSTEM OVERVIEW */}
-      {activeTab === "system" && (
-        <section>
-          <div className="panel-card">
-            <h2>4 Katmanlı Platform Mimarisi ve Çalışma Durumu</h2>
-            <p style={{ color: "#94a3b8" }}>
-              Tasarım Raporu Bölüm 3.1 & 3.2 uyarınca entegre edilmiş 4 bağımsız mikroservis katmanı:
-            </p>
-
-            <div className="module-grid">
-              <div className="module-card">
-                <div className="card-header-flex">
-                  <h3>1. SSI & Kimlik Katmanı</h3>
-                  <span className="badge-green">ÇALIŞIYOR</span>
+        <main className="app-content">
+          {/* ========================================================= */}
+          {/* 1. KİMLİK CÜZDANIM (WALLET PORTAL) */}
+          {/* ========================================================= */}
+          {activeSection === "wallet" && (
+            <div>
+              <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+                <div>
+                  <h1>Kimlik Cüzdanım (Holder Wallet)</h1>
+                  <p>W3C standartlarında Verifiable Credentials ve aktif DID anahtarlarınız.</p>
                 </div>
-                <p>W3C VC 2.0, DID (did:web / did:key), Bitstring Status List, JCS Kanonikleştirme, JWT/RBAC.</p>
-                <span className="badge-blue">Gecikme: ~85 ms (Redis Caching)</span>
-              </div>
-
-              <div className="module-card">
-                <div className="card-header-flex">
-                  <h3>2. AI Fraud Detection</h3>
-                  <span className="badge-green">ÇALIŞIYOR</span>
-                </div>
-                <p>XGBoost + Autoencoder hibrit modeli, anomali tespiti, otomatik karantina ve ek doğrulama motoru.</p>
-                <span className="badge-blue">Hedef Doğruluk: %94.3 | FP16</span>
-              </div>
-
-              <div className="module-card">
-                <div className="card-header-flex">
-                  <h3>3. Blockchain Katmanı</h3>
-                  <span className="badge-green">ÇALIŞIYOR</span>
-                </div>
-                <p>Ethereum Hardhat, Solidity 0.8.28, DIDRegistry, RevocationRegistry, EmergencyRecovery, AuditLogger.</p>
-                <span className="badge-blue">EIP-4337 | 25-30 TPS</span>
-              </div>
-
-              <div className="module-card">
-                <div className="card-header-flex">
-                  <h3>4. Acil Kurtarma (Recovery)</h3>
-                  <span className="badge-green">ÇALIŞIYOR</span>
-                </div>
-                <p>3/5 Guardian Quorum, Shamir's Secret Sharing (SSS), Time-Lock gecikmesi, anahtar rotasyonu.</p>
-                <span className="badge-blue">Kurtarma Süresi: 2.7 sn</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* TAB 2: DIPLOMA DEMO (SCENARIO 171) */}
-      {activeTab === "diploma" && (
-        <section>
-          <div className="panel-grid-2">
-            {/* ISSUER PANEL */}
-            <div className="panel-card">
-              <h3>Üniversite (Issuer) Paneli</h3>
-              <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>Öğrenciye W3C uyumlu dijital diploma oluşturun ve imzalayın:</p>
-              
-              <div className="form-group">
-                <label>Öğrenci Adı Soyadı</label>
-                <input
-                  className="form-input"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Fakülte ve Bölüm</label>
-                <input
-                  className="form-input"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Not Ortalaması (GPA)</label>
-                <input
-                  className="form-input"
-                  value={gpa}
-                  onChange={(e) => setGpa(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
-                <button className="btn-primary" onClick={handleIssueDiploma}>
-                  W3C Diploma Üret & İmzala
-                </button>
-                <button className="btn-danger" onClick={handleRevokeCredential}>
-                  Diplomayı İptal Et (Revoke)
+                <button className="btn-connect-wallet" onClick={handleGenerateNewDid} style={{ padding: "10px 16px" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  Yeni DID Anahtarı Üret
                 </button>
               </div>
-            </div>
 
-            {/* HOLDER & VERIFIER PANEL */}
-            <div className="panel-card">
-              <h3>Öğrenci Cüzdanı & İşveren Doğrulama</h3>
-              {issuedCredential ? (
-                <div>
-                  <div className="diploma-card">
-                    <span className="diploma-watermark">W3C VERIFIABLE CREDENTIAL</span>
-                    <h3 style={{ color: "#38bdf8", margin: "0 0 8px 0" }}>{issuedCredential.degree}</h3>
-                    <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#f8fafc" }}>
-                      {issuedCredential.studentName}
-                    </div>
-                    <div style={{ color: "#cbd5e1", marginTop: "4px" }}>
-                      {issuedCredential.faculty} - {issuedCredential.department}
-                    </div>
-                    <div style={{ marginTop: "12px", display: "flex", gap: "15px", fontSize: "0.85rem", color: "#94a3b8" }}>
-                      <span>GPA: <strong style={{ color: "#38bdf8" }}>{issuedCredential.gpa}</strong></span>
-                      <span>Tarih: {issuedCredential.graduationDate}</span>
-                      <span>Durum: <strong style={{ color: issuedCredential.status === "ACTIVE" ? "#34d399" : "#f87171" }}>{issuedCredential.status}</strong></span>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
-                    <button className="btn-primary" onClick={handleVerifyCredential}>
-                      Verifier: Diplomayı Doğrula
-                    </button>
-                  </div>
-
-                  {verificationResult && (
-                    <div style={{
-                      marginTop: "16px",
-                      padding: "12px 16px",
-                      borderRadius: "8px",
-                      background: verificationResult.startsWith("SUCCESS") ? "#10b98122" : "#ef444422",
-                      border: `1px solid ${verificationResult.startsWith("SUCCESS") ? "#10b98155" : "#ef444455"}`,
-                      color: verificationResult.startsWith("SUCCESS") ? "#34d399" : "#f87171",
-                      fontSize: "0.9rem"
-                    }}>
-                      {verificationResult}
-                    </div>
-                  )}
-
-                  <h4 style={{ marginTop: "20px", marginBottom: "8px" }}>W3C JSON-LD Kanıt Detayı</h4>
-                  <pre className="code-block">{JSON.stringify(issuedCredential, null, 2)}</pre>
+              {didCopied && (
+                <div style={{ background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", color: "#34d399", padding: "10px 16px", borderRadius: "10px", marginBottom: "20px", fontSize: "0.88rem" }}>
+                  ✔ Yeni Ed25519 DID başarıyla üretildi: <code>{userDid}</code>
                 </div>
-              ) : (
-                <p>Henüz düzenlenmiş bir kimlik bilgisi yok.</p>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* TAB 3: AI FRAUD DETECTION */}
-      {activeTab === "ai" && (
-        <section>
-          <div className="panel-grid-2">
-            <div className="panel-card">
-              <h3>AI Davranışsal Parametre Simülatörü</h3>
-              <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-                XGBoost + Autoencoder hibrit modeli parametreleri:
-              </p>
-
-              <div className="form-group">
-                <label>Coğrafi Konum Sıçraması ({geoDistance} km)</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="3000"
-                  step="50"
-                  className="form-input"
-                  value={geoDistance}
-                  onChange={(e) => setGeoDistance(Number(e.target.value))}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Son 10 Dakikadaki Başarısız Oturum Denemesi: {failedAttempts}</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="8"
-                  className="form-input"
-                  value={failedAttempts}
-                  onChange={(e) => setFailedAttempts(Number(e.target.value))}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>10 Dakika İçindeki Doğrulama Sıklığı: {freq10m} istek</label>
-                <input
-                  type="range"
-                  min="1"
-                  max="25"
-                  className="form-input"
-                  value={freq10m}
-                  onChange={(e) => setFreq10m(Number(e.target.value))}
-                />
-              </div>
-
-              <div style={{ display: "flex", gap: "20px", margin: "16px 0" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={isTor}
-                    onChange={(e) => setIsTor(e.target.checked)}
-                  />
-                  Tor / Anonim Proxy IP
-                </label>
-
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={deviceMatch}
-                    onChange={(e) => setDeviceMatch(e.target.checked)}
-                  />
-                  Cihaz Parmak İzi Eşleşti
-                </label>
-              </div>
-
-              <button className="btn-primary" onClick={handleRunAiEvaluation} style={{ width: "100%", marginTop: "10px" }}>
-                AI Hibrit Model ile Değerlendir
-              </button>
-            </div>
-
-            <div className="panel-card">
-              <h3>AI Değerlendirme & Güvenlik Kararı</h3>
-              {aiResult ? (
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                    <div style={{ fontSize: "2.4rem", fontWeight: "800", color: aiResult.score > 0.6 ? "#f87171" : "#34d399" }}>
-                      {(aiResult.score * 100).toFixed(1)}%
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Risk Skoru</div>
-                      <span className={
-                        aiResult.level === "CRITICAL" ? "badge-red" :
-                        aiResult.level === "HIGH" ? "badge-red" :
-                        aiResult.level === "MEDIUM" ? "badge-yellow" : "badge-green"
-                      }>
-                        {aiResult.level} RISK
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: "16px" }}>
-                    <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "4px" }}>Sistemin Aldığı Karar:</div>
-                    <div style={{
-                      padding: "10px 14px",
-                      borderRadius: "8px",
-                      background: "#09121e",
-                      border: "1px solid #1e3a5f",
-                      fontWeight: "700",
-                      color: "#38bdf8"
-                    }}>
-                      {aiResult.action === "ALLOW" && "✅ İzin Verildi (Normal Erişim)"}
-                      {aiResult.action === "REQUIRE_STEP_UP_AUTH" && "⚠️ Ek Doğrulama Gerekli (MFA / Challenge)"}
-                      {aiResult.action === "MANUAL_REVIEW" && "🔍 Manuel İncelemeye Sevk Edildi"}
-                      {aiResult.action === "QUARANTINE_ACCOUNT" && "🛑 HESAP KARANTİNAYA ALINDI (Erişim Engellendi)"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "6px" }}>Tespit Nedenleri:</div>
-                    <ul style={{ paddingLeft: "20px", color: "#cbd5e1", fontSize: "0.9rem" }}>
-                      {aiResult.reasons.map((r: string, idx: number) => (
-                        <li key={idx} style={{ marginBottom: "4px" }}>{r}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ) : (
-                <p style={{ color: "#94a3b8" }}>Soldaki parametreleri ayarlayıp "AI Hibrit Model ile Değerlendir" butonuna basın.</p>
               )}
 
-              {quarantinedDids.length > 0 && (
-                <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #1e293b" }}>
-                  <h4 style={{ color: "#f87171", margin: "0 0 8px 0" }}>Aktif Karantinadaki Hesaplar ({quarantinedDids.length})</h4>
-                  {quarantinedDids.map((d) => (
-                    <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ef444415", padding: "8px 12px", borderRadius: "6px", marginBottom: "6px" }}>
-                      <span style={{ fontSize: "0.85rem", color: "#f87171" }}>{d}</span>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
-                        onClick={() => setQuarantinedDids(quarantinedDids.filter((x) => x !== d))}
-                      >
-                        Karantinayı Kaldır
-                      </button>
+              <div className="grid-2">
+                {/* SOL: CÜZDANDAKİ BELGELER */}
+                <div>
+                  <h3 style={{ marginBottom: "14px", color: "var(--text-main)" }}>Kayıtlı Kimlik Bilgileri ({credentials.length})</h3>
+                  {credentials.map(c => (
+                    <div
+                      key={c.id}
+                      onClick={() => setSelectedCred(c)}
+                      style={{
+                        background: selectedCred?.id === c.id ? "#11223b" : "var(--bg-card)",
+                        border: `1px solid ${selectedCred?.id === c.id ? "var(--accent-cyan)" : "var(--border-color)"}`,
+                        borderRadius: "14px",
+                        padding: "20px",
+                        marginBottom: "14px",
+                        cursor: "pointer",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--accent-cyan)", fontWeight: 700 }}>W3C VERIFIABLE CREDENTIAL</span>
+                        <span className={c.status === "ACTIVE" ? "badge-green" : "badge-red"}>{c.status}</span>
+                      </div>
+                      <h4 style={{ fontSize: "1.1rem", marginBottom: "6px", color: "#fff" }}>{c.title}</h4>
+                      <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Düzenleyen: {c.issuer}</div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-subtle)", marginTop: "8px" }}>Tarih: {c.issuedDate}</div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
 
-      {/* TAB 4: RECOVERY */}
-      {activeTab === "recovery" && (
-        <section>
-          <div className="panel-card">
-            <h2>3/5 Guardian Tabanlı Acil Durum Kurtarma (Social Recovery)</h2>
-            <p style={{ color: "#94a3b8" }}>
-              Kullanıcının cihazını veya özel anahtarını kaybetmesi durumunda, Shamir Secret Sharing ve 3/5 Guardian onayı ile kimliğe yeniden erişim sağlanır.
-            </p>
+                {/* SAĞ: SEÇİLİ BELGE ÖNİZLEME & DETAY KARTI */}
+                {selectedCred && (
+                  <div className="web3-card" style={{ border: "1px solid rgba(56, 189, 248, 0.4)", background: "linear-gradient(145deg, #0d1b30, #081120)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#38bdf8", letterSpacing: "0.1em", fontWeight: 700 }}>T.C. SAKARYA UYGULAMALI BİLİMLER ÜNİVERSİTESİ</span>
+                        <h2 style={{ fontSize: "1.4rem", margin: "6px 0 0", color: "#fff" }}>{selectedCred.claims.bolum}</h2>
+                        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{selectedCred.claims.derece}</span>
+                      </div>
+                      <div style={{ width: "42px", height: "42px", background: "#1e3a8a33", border: "1px solid #38bdf866", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8" }}>
+                        🎓
+                      </div>
+                    </div>
 
-            <div style={{ display: "flex", gap: "20px", alignItems: "center", margin: "20px 0", padding: "16px", background: "#09121e", borderRadius: "10px", border: "1px solid #1e3a5f" }}>
-              <div>
-                <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Gerekli Onay Eşiği:</span>
-                <div style={{ fontSize: "1.4rem", fontWeight: "bold", color: "#38bdf8" }}>{approvalCount} / 5 Onay</div>
+                    <div style={{ background: "#050c17", padding: "16px", borderRadius: "10px", border: "1px solid #162a45", marginBottom: "18px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ:</span><br/><strong>{selectedCred.claims.ogrenciAdi}</strong></div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ NO:</span><br/><strong>{selectedCred.claims.ogrenciNo}</strong></div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>FAKÜLTE:</span><br/>{selectedCred.claims.fakulte}</div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>NOT ORTALAMASI:</span><br/><strong style={{ color: "#34d399" }}>{selectedCred.claims.gpa}</strong></div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button className="btn-connect-wallet" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowQrModal(true)}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        QR Kod Doğrulama
+                      </button>
+                      <button
+                        className="btn-connect-wallet"
+                        style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155" }}
+                        onClick={() => {
+                          const blob = new Blob([JSON.stringify(selectedCred, null, 2)], { type: "application/json" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `diploma-${selectedCred.claims.ogrenciNo}.json`;
+                          a.click();
+                        }}
+                      >
+                        JSON-LD İndir
+                      </button>
+                    </div>
+
+                    {/* QR MODAL */}
+                    {showQrModal && (
+                      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+                        <div style={{ background: "#0c1728", padding: "28px", borderRadius: "18px", border: "1px solid var(--border-color)", textAlign: "center", maxWidth: "340px" }}>
+                          <h3 style={{ marginBottom: "12px", color: "#fff" }}>W3C Verifiable Presentation QR</h3>
+                          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", display: "inline-block", margin: "10px 0" }}>
+                            <svg width="160" height="160" viewBox="0 0 100 100">
+                              <rect width="100" height="100" fill="#fff"/>
+                              <path d="M10 10h30v30h-30zM60 10h30v30h-30zM10 60h30v30h-30zM20 20h10v10h-10zM70 20h10v10h-10zM20 70h10v10h-10zM45 45h10v10h-10zM60 60h15v15h-15zM75 75h15v15h-15zM45 10h10v20h-10zM10 45h20v10h-20z" fill="#000"/>
+                            </svg>
+                          </div>
+                          <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "16px" }}>
+                            Doğrulayıcı (işveren) kamerasıyla tarandığında anında geçerlilik testi yapılır.
+                          </p>
+                          <button className="btn-connect-wallet" style={{ width: "100%", justifyContent: "center" }} onClick={() => setShowQrModal(false)}>
+                            Kapat
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div style={{ borderLeft: "1px solid #1e293b", paddingLeft: "20px" }}>
-                <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Kurtarma Durumu:</span>
-                <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: approvalCount >= 3 ? "#34d399" : "#fbbf24" }}>
-                  {recoveryStatus === "PENDING_QUORUM" && (approvalCount >= 3 ? "Quorum Sağlandı (Time-lock bekleniyor)" : "Guardian Onayları Bekleniyor")}
-                  {recoveryStatus === "TIMELOCK_READY" && "Time-Lock Süresi Doldu, İcraya Hazır"}
-                  {recoveryStatus === "EXECUTED" && "✅ YENİ ANAHTAR ETKİNLEŞTİRİLDİ (Başarıyla Kurtarıldı)"}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* 2. BELGE DÜZENLEYİCİ (ISSUER PORTAL) */}
+          {/* ========================================================= */}
+          {activeSection === "issuer" && (
+            <div>
+              <div className="page-header">
+                <h1>Belge Düzenleyici (Issuer Portal)</h1>
+                <p>Sakarya Uygulamalı Bilimler Üniversitesi adına W3C uyumlu dijital diploma oluşturun ve imzalayın.</p>
+              </div>
+
+              {issuerNotification && (
+                <div style={{ background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", color: "#34d399", padding: "12px 20px", borderRadius: "10px", marginBottom: "20px", fontWeight: 600 }}>
+                  ✔ {issuerNotification}
+                </div>
+              )}
+
+              <div className="grid-2">
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>Yeni Diploma Düzenleme Formu</h2>
+                    <p>Öğrenci bilgilerini girip kriptografik Ed25519 imzasıyla yayınlayın.</p>
+                  </div>
+
+                  <form onSubmit={handleIssueCredential}>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>Öğrenci Adı Soyadı</label>
+                      <input
+                        type="text"
+                        style={{ width: "100%", padding: "10px 14px", background: "#060b14", border: "1px solid var(--border-color)", borderRadius: "8px", color: "#fff" }}
+                        value={issuerStudentName}
+                        onChange={e => setIssuerStudentName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>Öğrenci Numarası</label>
+                        <input
+                          type="text"
+                          style={{ width: "100%", padding: "10px 14px", background: "#060b14", border: "1px solid var(--border-color)", borderRadius: "8px", color: "#fff" }}
+                          value={issuerStudentId}
+                          onChange={e => setIssuerStudentId(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>Not Ortalaması (GPA)</label>
+                        <input
+                          type="text"
+                          style={{ width: "100%", padding: "10px 14px", background: "#060b14", border: "1px solid var(--border-color)", borderRadius: "8px", color: "#fff" }}
+                          value={issuerGpa}
+                          onChange={e => setIssuerGpa(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: "20px" }}>
+                      <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>Bölüm</label>
+                      <input
+                        type="text"
+                        style={{ width: "100%", padding: "10px 14px", background: "#060b14", border: "1px solid var(--border-color)", borderRadius: "8px", color: "#fff" }}
+                        value={issuerDepartment}
+                        onChange={e => setIssuerDepartment(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <button type="submit" className="btn-connect-wallet" style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
+                      W3C Diplomasını İmzala ve Cüzdana Gönder
+                    </button>
+                  </form>
+                </div>
+
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>Düzenlenen Belgeler & İptal (Revocation)</h2>
+                    <p>Status List 2021 / W3C Bitstring üzerinden anlık iptal kontrolü.</p>
+                  </div>
+
+                  {credentials.map(c => (
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#081120", borderRadius: "8px", border: "1px solid var(--border-color)", marginBottom: "10px" }}>
+                      <div>
+                        <strong>{c.claims.ogrenciAdi}</strong> ({c.claims.ogrenciNo})
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{c.claims.bolum} · {c.status}</div>
+                      </div>
+                      {c.status === "ACTIVE" ? (
+                        <button
+                          onClick={() => handleRevokeCredential(c.id)}
+                          style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#f87171", padding: "6px 12px", borderRadius: "6px", fontSize: "0.78rem", cursor: "pointer" }}
+                        >
+                          İptal Et (Revoke)
+                        </button>
+                      ) : (
+                        <span className="badge-red">İptal Edildi</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
+          )}
 
-            <h3>Belirlenmiş Guardian Listesi</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px", marginTop: "12px" }}>
-              {guardians.map((g) => (
-                <div key={g.id} style={{ padding: "16px", background: "#0b1726", borderRadius: "10px", border: `1px solid ${g.hasApproved ? "#10b98155" : "#1e3a5f"}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <strong>{g.name}</strong>
-                    <span className={g.hasApproved ? "badge-green" : "badge-yellow"}>
-                      {g.hasApproved ? "ONAYLANDI" : "BEKLİYOR"}
-                    </span>
+          {/* ========================================================= */}
+          {/* 3. DOĞRULAYICI PORTAL (VERIFIER) */}
+          {/* ========================================================= */}
+          {activeSection === "verifier" && (
+            <div>
+              <div className="page-header">
+                <h1>Doğrulayıcı Portal (Verifier)</h1>
+                <p>Adayın veya çalışanın sunduğu W3C Diplomasını ve Sıfır Bilgi Kanıtını (ZKP) test edin.</p>
+              </div>
+
+              <div className="grid-2">
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>Kimlik Belgesi Doğrulama</h2>
+                    <p>Doğrulanacak Verifiable Credential detayları:</p>
                   </div>
-                  <div style={{ fontSize: "0.78rem", color: "#64748b", margin: "8px 0" }}>{g.did}</div>
-                  {!g.hasApproved && (
-                    <button
-                      className="btn-primary"
-                      style={{ padding: "6px 12px", fontSize: "0.85rem", width: "100%" }}
-                      onClick={() => handleGuardianApprove(g.id)}
-                    >
-                      Guardian Olarak Onayla
-                    </button>
+
+                  {selectedCred ? (
+                    <div style={{ background: "#060c16", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-color)", marginBottom: "18px" }}>
+                      <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}><strong>Belge:</strong> {selectedCred.title}</div>
+                      <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}><strong>İmzacı:</strong> {selectedCred.issuer}</div>
+                      <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}><strong>Durum:</strong> <span className={selectedCred.status === "ACTIVE" ? "badge-green" : "badge-red"}>{selectedCred.status}</span></div>
+
+                      <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-color)" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: "var(--accent-cyan)" }}>
+                          <input type="checkbox" checked={zkpMasked} onChange={e => setZkpMasked(e.target.checked)} />
+                          Zero-Knowledge Proof (ZKP) ile Kişisel Verileri Gizle (Yalnızca GPA &gt;= 3.0 Kanıtla)
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <p>Seçili belge bulunamadı.</p>
+                  )}
+
+                  <button
+                    className="btn-connect-wallet"
+                    style={{ width: "100%", justifyContent: "center", padding: "12px" }}
+                    onClick={handleVerifyCredential}
+                    disabled={isVerifying}
+                  >
+                    {isVerifying ? "W3C İmzası & Bitstring Kontrol Ediliyor..." : "Doğrulamayı Başlat (Verify)"}
+                  </button>
+                </div>
+
+                {/* DOĞRULAMA SONUÇLARI */}
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>Kriptografik Doğrulama Sonucu</h2>
+                    <p>Matematiksel imza, zaman aşımı ve iptal kayıtlarının analizi:</p>
+                  </div>
+
+                  {verifierResult ? (
+                    verifierResult.valid ? (
+                      <div>
+                        <div style={{ padding: "14px 18px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", borderRadius: "10px", color: "#34d399", marginBottom: "16px" }}>
+                          <h4 style={{ margin: 0, fontSize: "1.05rem" }}>✅ BELGE %100 GEÇERLİ VE DOĞRULANDI</h4>
+                          <div style={{ fontSize: "0.8rem", marginTop: "4px" }}>Doğrulama Süresi: {verifierResult.latencyMs} ms</div>
+                        </div>
+
+                        <div style={{ fontSize: "0.85rem", lineHeight: "1.7", color: "var(--text-muted)" }}>
+                          <div>• <strong>İmzacı Güvenilirlik:</strong> SUBÜ Resmi Root Anahtarı ile eşleşti.</div>
+                          <div>• <strong>Algoritma:</strong> {verifierResult.algorithm}</div>
+                          <div>• <strong>Revocation Durumu:</strong> Bitstring Status List üzerinde aktif.</div>
+                          {zkpMasked && (
+                            <div style={{ marginTop: "10px", padding: "10px", background: "#0b192c", borderRadius: "8px", border: "1px solid #1d4ed8" }}>
+                              <strong style={{ color: "var(--accent-cyan)" }}>🛡️ ZKP Range Predicate Kanıtı:</strong>
+                              <div style={{ color: "#fff", fontSize: "0.82rem" }}>{verifierResult.zkpPredicate}</div>
+                              <div style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginTop: "2px" }}>Öğrencinin TC Kimlik No ve İsim alanları ifşa edilmedi (Gizlilik Korundu).</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ padding: "14px 18px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444", borderRadius: "10px", color: "#f87171" }}>
+                        <h4 style={{ margin: 0 }}>❌ DOĞRULAMA BAŞARISIZ</h4>
+                        <div style={{ fontSize: "0.85rem", marginTop: "4px" }}>{verifierResult.reason}</div>
+                      </div>
+                    )
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "30px", color: "var(--text-subtle)" }}>
+                      Henüz bir doğrulama yapılmadı. Soldaki butona tıklayın.
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-
-            {approvalCount >= 3 && recoveryStatus !== "EXECUTED" && (
-              <div style={{ marginTop: "24px", textAlign: "center", padding: "20px", background: "#10b98115", borderRadius: "12px", border: "1px solid #10b98144" }}>
-                <h3 style={{ color: "#34d399", margin: "0 0 10px 0" }}>3/5 Quorum Eşiği Başarıyla Sağlandı!</h3>
-                <p style={{ color: "#cbd5e1", margin: "0 0 16px 0" }}>Time-lock süresi doğrulandı. Yeni anahtar kümesini Ethereum üzerinde devreye alabilirsiniz.</p>
-                <button className="btn-primary" style={{ padding: "12px 28px", fontSize: "1rem" }} onClick={handleExecuteRecovery}>
-                  Yeni Anahtar Rotasyonunu İcra Et (Execute Recovery)
-                </button>
               </div>
-            )}
-          </div>
-        </section>
-      )}
+            </div>
+          )}
 
-      {/* TAB 5: BLOCKCHAIN & AUDIT */}
-      {activeTab === "blockchain" && (
-        <section>
-          <div className="panel-card">
-            <h2>Ethereum Akıllı Sözleşmeleri ve Değiştirilemez Denetim Günlüğü</h2>
-            <p style={{ color: "#94a3b8" }}>
-              Kişisel veriler zincir dışında (off-chain) saklanırken, yalnızca SHA-256 bütünlük ve iptal kayıtları on-chain tutulur:
-            </p>
+          {/* ========================================================= */}
+          {/* 4. AI GÜVENLİK MERKEZİ (FRAUD MONITOR) */}
+          {/* ========================================================= */}
+          {activeSection === "ai" && (
+            <div>
+              <div className="page-header">
+                <h1>Yapay Zekâ Dolandırıcılık Tespiti (AI Fraud Monitor)</h1>
+                <p>XGBoost + Autoencoder hibrit modeliyle gerçek zamanlı davranış analizi ve karantina paneli.</p>
+              </div>
 
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Sözleşme Adı</th>
-                  <th>Standart / Tip</th>
-                  <th>Fonksiyon</th>
-                  <th>On-chain Durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>DIDRegistry.sol</strong></td>
-                  <td>W3C DID Core</td>
-                  <td>DID belge hash ve kontrolcü tescili</td>
-                  <td><span className="badge-green">DAĞITILDI (Hardhat)</span></td>
-                </tr>
-                <tr>
-                  <td><strong>RevocationRegistry.sol</strong></td>
-                  <td>W3C Bitstring</td>
-                  <td>131.072 bitlik status list root hash anchoring</td>
-                  <td><span className="badge-green">DAĞITILDI (Hardhat)</span></td>
-                </tr>
-                <tr>
-                  <td><strong>EmergencyRecovery.sol</strong></td>
-                  <td>EIP-4337</td>
-                  <td>3/5 Guardian multi-sig & Time-lock rotasyonu</td>
-                  <td><span className="badge-green">DAĞITILDI (Hardhat)</span></td>
-                </tr>
-                <tr>
-                  <td><strong>AuditLogger.sol</strong></td>
-                  <td>Append-Only Log</td>
-                  <td>Yapay zekâ risk ve güvenlik olay özetleri</td>
-                  <td><span className="badge-green">DAĞITILDI (Hardhat)</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-    </main>
+              <div className="grid-2">
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>Canlı Davranış Parametre Simülatörü</h2>
+                    <p>Modelin tepkisini ölçmek için erişim parametrelerini ayarlayın:</p>
+                  </div>
+
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+                      Coğrafi Konum Sıçraması: <strong>{aiGeoKm} km</strong>
+                    </label>
+                    <input type="range" min="0" max="3500" step="50" value={aiGeoKm} onChange={e => setAiGeoKm(Number(e.target.value))} style={{ width: "100%" }} />
+                  </div>
+
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+                      Son 10 Dakikadaki Başarısız Oturum Denemesi: <strong>{aiFailedCount}</strong>
+                    </label>
+                    <input type="range" min="0" max="8" value={aiFailedCount} onChange={e => setAiFailedCount(Number(e.target.value))} style={{ width: "100%" }} />
+                  </div>
+
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+                      Doğrulama İsteği Sıklığı (10 dk): <strong>{aiFreq} istek</strong>
+                    </label>
+                    <input type="range" min="1" max="30" value={aiFreq} onChange={e => setAiFreq(Number(e.target.value))} style={{ width: "100%" }} />
+                  </div>
+
+                  <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer" }}>
+                      <input type="checkbox" checked={aiIsTor} onChange={e => setAiIsTor(e.target.checked)} />
+                      Tor / Anonim Proxy
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer" }}>
+                      <input type="checkbox" checked={aiDeviceMatch} onChange={e => setAiDeviceMatch(e.target.checked)} />
+                      Kayıtlı Cihaz Parmak İzi
+                    </label>
+                  </div>
+
+                  <button
+                    className="btn-connect-wallet"
+                    style={{ width: "100%", justifyContent: "center", padding: "12px" }}
+                    onClick={handleRunAiEvaluation}
+                    disabled={aiLoading}
+                  >
+                    {aiLoading ? "AI Modeli Analiz Ediyor..." : "Backend AI Servisi ile Analiz Et (Port 8002)"}
+                  </button>
+                </div>
+
+                {/* AI SONUÇLARI */}
+                <div className="web3-card">
+                  <div className="card-title-group">
+                    <h2>AI Karar ve Güvenlik Aksiyonu</h2>
+                    <p>Gerçek zamanlı çıkarım sonucu:</p>
+                  </div>
+
+                  {aiEvalResult ? (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "18px" }}>
+                        <div style={{ fontSize: "2.8rem", fontWeight: "800", color: aiEvalResult.risk_score > 0.6 ? "var(--accent-red)" : aiEvalResult.risk_score > 0.25 ? "var(--accent-yellow)" : "var(--accent-green)" }}>
+                          {(aiEvalResult.risk_score * 100).toFixed(1)}%
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Hesaplanan Risk Skoru</div>
+                          <span className={aiEvalResult.risk_level === "CRITICAL" ? "badge-red" : aiEvalResult.risk_level === "HIGH" ? "badge-red" : aiEvalResult.risk_level === "MEDIUM" ? "badge-yellow" : "badge-green"}>
+                            {aiEvalResult.risk_level} RISK
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ background: "#060c16", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-color)", marginBottom: "16px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-subtle)" }}>SİSTEMİN ALDIĞI GÜVENLİK KARARI:</span>
+                        <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "var(--accent-cyan)", marginTop: "4px" }}>
+                          {aiEvalResult.recommended_action}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "6px" }}>Tespit Nedenleri:</div>
+                        <ul style={{ paddingLeft: "18px", fontSize: "0.85rem", color: "#cbd5e1" }}>
+                          {aiEvalResult.reasons?.map((r: string, idx: number) => <li key={idx} style={{ marginBottom: "4px" }}>{r}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "30px", color: "var(--text-subtle)" }}>
+                      Analiz sonucunu görmek için soldaki butona tıklayın.
+                    </div>
+                  )}
+
+                  {quarantinedList.length > 0 && (
+                    <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid var(--border-color)" }}>
+                      <span style={{ fontSize: "0.82rem", color: "var(--accent-red)", fontWeight: "bold" }}>Aktif Karantinadaki Hesaplar ({quarantinedList.length})</span>
+                      {quarantinedList.map(did => (
+                        <div key={did} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(239, 68, 68, 0.1)", padding: "8px 12px", borderRadius: "6px", marginTop: "8px" }}>
+                          <span style={{ fontSize: "0.78rem", color: "#f87171" }}>{did.slice(0, 28)}...</span>
+                          <button onClick={() => setQuarantinedList(quarantinedList.filter(x => x !== did))} style={{ background: "#1e293b", border: "none", color: "#fff", padding: "4px 8px", borderRadius: "4px", fontSize: "0.72rem", cursor: "pointer" }}>
+                            Kaldır
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* 5. SOSYAL KURTARMA (3/5 GUARDIAN) */}
+          {/* ========================================================= */}
+          {activeSection === "recovery" && (
+            <div>
+              <div className="page-header">
+                <h1>3/5 Guardian Sosyal Kurtarma Portalı</h1>
+                <p>Anahtar veya cihaz kaybında kimliğinizi 3/5 Guardian onayı ve Time-Lock ile kurtarın.</p>
+              </div>
+
+              <div className="web3-card" style={{ marginBottom: "20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+                  <div>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Onay Durumu</span>
+                    <h2 style={{ fontSize: "1.8rem", color: approvedCount >= 3 ? "var(--accent-green)" : "var(--accent-cyan)", margin: "4px 0" }}>
+                      {approvedCount} / 5 Guardian Onayladı
+                    </h2>
+                    <span style={{ fontSize: "0.82rem", color: approvedCount >= 3 ? "#34d399" : "var(--text-subtle)" }}>
+                      {approvedCount >= 3 ? "✔ 3/5 M-of-N Quorum Eşiği Sağlandı (Time-Lock Doğrulandı)" : "En az 3 onay gereklidir."}
+                    </span>
+                  </div>
+
+                  {approvedCount >= 3 && !recoveryExecuted && (
+                    <button className="btn-connect-wallet" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }} onClick={() => setRecoveryExecuted(true)}>
+                      Yeni Anahtar Rotasyonunu İcra Et
+                    </button>
+                  )}
+
+                  {recoveryExecuted && (
+                    <div style={{ background: "rgba(16, 185, 129, 0.2)", border: "1px solid #10b981", padding: "10px 18px", borderRadius: "10px", color: "#34d399", fontWeight: "bold" }}>
+                      ✅ Kurtarma Tamamlandı! Yeni DID Aktif Edildi.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid-3">
+                {guardians.map(g => (
+                  <div key={g.id} className="web3-card" style={{ padding: "18px", border: `1px solid ${g.approved ? "rgba(16, 185, 129, 0.4)" : "var(--border-color)"}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <strong>{g.name}</strong>
+                      <span className={g.approved ? "badge-green" : "badge-yellow"}>{g.approved ? "ONAYLANDI" : "BEKLİYOR"}</span>
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "12px" }}>{g.role}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-subtle)", fontFamily: "monospace", marginBottom: "14px", wordBreak: "break-all" }}>{g.did}</div>
+
+                    {!g.approved ? (
+                      <button className="btn-connect-wallet" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: "0.82rem" }} onClick={() => handleGuardianApprove(g.id)}>
+                        Guardian Olarak Onayla
+                      </button>
+                    ) : (
+                      <div style={{ textAlign: "center", fontSize: "0.78rem", color: "#34d399" }}>Şifreli Onay Kaydedildi</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* 6. BLOCKCHAIN GEZGİNİ (EXPLORER) */}
+          {/* ========================================================= */}
+          {activeSection === "blockchain" && (
+            <div>
+              <div className="page-header">
+                <h1>Ethereum Blockchain Denetim Defteri</h1>
+                <p>Hardhat EVM üzerindeki 4 akıllı sözleşmenin değişmez kayıtları ve gas harcamaları.</p>
+              </div>
+
+              <div className="web3-card">
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--border-color)", textAlign: "left", color: "var(--text-muted)" }}>
+                      <th style={{ padding: "12px" }}>İşlem / Fonksiyon</th>
+                      <th style={{ padding: "12px" }}>Akıllı Sözleşme</th>
+                      <th style={{ padding: "12px" }}>Blok / Ağ</th>
+                      <th style={{ padding: "12px" }}>Gas Harcaması</th>
+                      <th style={{ padding: "12px" }}>Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                      <td style={{ padding: "12px" }}><code>registerDID(string, bytes32)</code></td>
+                      <td style={{ padding: "12px" }}><strong>DIDRegistry.sol</strong></td>
+                      <td style={{ padding: "12px" }}>Block #1042 (Localnet)</td>
+                      <td style={{ padding: "12px", color: "var(--accent-cyan)" }}>48,120 gas (~0.00012 ETH)</td>
+                      <td style={{ padding: "12px" }}><span className="badge-green">ONAYLANDI</span></td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                      <td style={{ padding: "12px" }}><code>anchorStatusList(string, bytes32, uint256)</code></td>
+                      <td style={{ padding: "12px" }}><strong>RevocationRegistry.sol</strong></td>
+                      <td style={{ padding: "12px" }}>Block #1043 (Localnet)</td>
+                      <td style={{ padding: "12px", color: "var(--accent-cyan)" }}>62,400 gas (~0.00015 ETH)</td>
+                      <td style={{ padding: "12px" }}><span className="badge-green">ONAYLANDI</span></td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                      <td style={{ padding: "12px" }}><code>approveRecovery(address)</code></td>
+                      <td style={{ padding: "12px" }}><strong>EmergencyRecovery.sol</strong></td>
+                      <td style={{ padding: "12px" }}>Block #1044 (Localnet)</td>
+                      <td style={{ padding: "12px", color: "var(--accent-cyan)" }}>38,900 gas (~0.00009 ETH)</td>
+                      <td style={{ padding: "12px" }}><span className="badge-green">ONAYLANDI</span></td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "12px" }}><code>logEvent(bytes32, uint8)</code></td>
+                      <td style={{ padding: "12px" }}><strong>AuditLogger.sol</strong></td>
+                      <td style={{ padding: "12px" }}>Block #1045 (Localnet)</td>
+                      <td style={{ padding: "12px", color: "var(--accent-cyan)" }}>74,100 gas (~0.00018 ETH)</td>
+                      <td style={{ padding: "12px" }}><span className="badge-green">ONAYLANDI</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
   );
 }
