@@ -146,3 +146,47 @@ class MongoCredentialOfferRepository(CredentialOfferRepository):
             return tuple(CredentialOfferDocumentMapper.from_document(d) for d in cursor)
         except PyMongoError as e:
             raise PersistenceUnavailableError("Failed to list credential offers.") from e
+
+    def list_pending(
+        self,
+        *,
+        holder_dids: tuple[str, ...] | list[str] | None = None,
+        owner_user_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        now = datetime.now(timezone.utc)
+        query: dict[str, Any] = {
+            "status": OfferStatus.PENDING.value,
+            "expiresAt": {"$gt": now},
+        }
+        if holder_dids or owner_user_id:
+            dids = list(holder_dids) if holder_dids else []
+            match_clauses: list[dict[str, Any]] = [
+                {
+                    "subjectData.holder_did": {"$exists": False},
+                    "subjectData.holderDid": {"$exists": False},
+                    "subjectData.recipient_did": {"$exists": False},
+                    "subjectData.recipientDid": {"$exists": False},
+                    "subjectData.userId": {"$exists": False},
+                    "subjectData.user_id": {"$exists": False},
+                }
+            ]
+            if dids:
+                match_clauses.extend([
+                    {"subjectData.holder_did": {"$in": dids}},
+                    {"subjectData.holderDid": {"$in": dids}},
+                    {"subjectData.recipient_did": {"$in": dids}},
+                    {"subjectData.recipientDid": {"$in": dids}},
+                ])
+            if owner_user_id:
+                match_clauses.extend([
+                    {"subjectData.userId": owner_user_id},
+                    {"subjectData.user_id": owner_user_id},
+                ])
+            query["$or"] = match_clauses
+
+        try:
+            cursor = self._collection.find(query).sort("createdAt", DESCENDING).limit(limit)
+            return tuple(CredentialOfferDocumentMapper.from_document(d) for d in cursor)
+        except PyMongoError as e:
+            raise PersistenceUnavailableError("Failed to list pending credential offers.") from e

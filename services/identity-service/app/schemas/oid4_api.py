@@ -23,6 +23,7 @@ class CreateOfferRequest(Oid4ApiModel):
     subject_data: dict[str, Any] = Field(default_factory=dict)
     ttl_seconds: int = 1800
     user_pin: str | None = None
+    recipient_did: str | None = None
 
 class CredentialOfferResponse(Oid4ApiModel):
     offer_id: str
@@ -40,6 +41,7 @@ class ClaimOfferRequest(Oid4ApiModel):
     holder_did: str
     wallet_id: str = "wallet_holder_default"
     user_pin: str | None = None
+    owner_user_id: str | None = None
 
 class ClaimOfferResponse(Oid4ApiModel):
     credential: dict[str, Any]

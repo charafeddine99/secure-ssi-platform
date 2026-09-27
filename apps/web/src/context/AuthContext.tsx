@@ -38,6 +38,41 @@ interface AuthContextType {
   quickDemoLogin: () => void;
 }
 
+const DEMO_CREDENTIALS: Record<string, { username: string; pass: string }> = {
+  ADMIN: { username: "admin@example.test", pass: "Admin-Prototype-2026!" },
+  ISSUER: { username: "issuer@example.test", pass: "Issuer-Prototype-2026!" },
+  VERIFIER: { username: "verifier@example.test", pass: "Verifier-Prototype-2026!" },
+  HOLDER: { username: "holder@example.test", pass: "Holder-Prototype-2026!" },
+  GUARDIAN: { username: "admin@example.test", pass: "Admin-Prototype-2026!" }
+};
+
+async function exchangeBackendToken(username: string, pass: string): Promise<string | null> {
+  const endpoints = [
+    "http://localhost:8000/api/v1/identity/auth/token",
+    "http://localhost:8001/api/v1/auth/token"
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password: pass })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.accessToken) {
+          localStorage.setItem("ssi_access_token", data.accessToken);
+          localStorage.setItem("secure_ssi_token", data.accessToken);
+          return data.accessToken;
+        }
+      }
+    } catch {
+      // Downstream endpoint unreachable, continue
+    }
+  }
+  return null;
+}
+
 const DEFAULT_DEMO_USER: UserProfile = {
   name: "Charaf Eddine Bessanane",
   nationalId: "ACAD-SSI-829104",
@@ -53,7 +88,9 @@ const DEFAULT_DEMO_USER: UserProfile = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("secure_ssi_token"));
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token")
+  );
   const [isDemoEvaluationMode, setDemoEvaluationMode] = useState<boolean>(true);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem("secure_ssi_user");
@@ -77,7 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return DEFAULT_DEMO_USER;
   });
 
-  const switchDemoRole = (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => {
+  const switchDemoRole = async (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => {
     const roleDids: Record<string, string> = {
       HOLDER: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
       ISSUER: "did:ssi:platform:governance-authority",
@@ -103,6 +140,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         organization: roleOrgs[role] || base.organization
       };
     });
+
+    const cred = DEMO_CREDENTIALS[role];
+    if (cred) {
+      const liveToken = await exchangeBackendToken(cred.username, cred.pass);
+      if (liveToken) {
+        setToken(liveToken);
+      }
+    }
   };
 
   useEffect(() => {
@@ -113,7 +158,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [user]);
 
-  const login = (email: string, _pass: string): boolean => {
+  // Initial attempt to bind live access token on mount
+  useEffect(() => {
+    if (!token && user?.role) {
+      const cred = DEMO_CREDENTIALS[user.role];
+      if (cred) {
+        exchangeBackendToken(cred.username, cred.pass).then((t) => {
+          if (t) setToken(t);
+        });
+      }
+    }
+  }, []);
+
+  const login = (email: string, pass: string): boolean => {
     const saved = localStorage.getItem("secure_ssi_user");
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -124,14 +181,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     if (email.toLowerCase() === DEFAULT_DEMO_USER.email.toLowerCase() || email === "admin" || email === "demo") {
       setUser(DEFAULT_DEMO_USER);
+      exchangeBackendToken("holder@example.test", "Holder-Prototype-2026!").then((t) => {
+        if (t) setToken(t);
+      });
       return true;
     }
+
     const fallbackUser: UserProfile = {
       ...DEFAULT_DEMO_USER,
       email: email,
       name: email.split("@")[0]
     };
     setUser(fallbackUser);
+
+    if (pass) {
+      exchangeBackendToken(email, pass).then((t) => {
+        if (t) setToken(t);
+      });
+    }
     return true;
   };
 
@@ -218,11 +285,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    localStorage.removeItem("ssi_access_token");
+    localStorage.removeItem("secure_ssi_token");
+    localStorage.removeItem("secure_ssi_user");
+    setToken(null);
     setUser(null);
   };
 
   const quickDemoLogin = () => {
     setUser(DEFAULT_DEMO_USER);
+    exchangeBackendToken("holder@example.test", "Holder-Prototype-2026!").then((t) => {
+      if (t) setToken(t);
+    });
   };
 
   return (

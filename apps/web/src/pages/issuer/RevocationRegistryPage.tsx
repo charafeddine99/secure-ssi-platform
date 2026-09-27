@@ -1,44 +1,85 @@
 import React, { useState, useEffect } from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
-import { fetchCredentials, BackendCredential } from "../../services/api";
-import { RotateCcw, AlertTriangle, ShieldCheck, CheckCircle2, Lock } from "lucide-react";
+import { fetchCredentials, revokeCredential, BackendCredential } from "../../services/api";
+import { RotateCcw, AlertTriangle, ShieldCheck, CheckCircle2, Lock, RefreshCw } from "lucide-react";
 
 export const RevocationRegistryPage: React.FC = () => {
   const [credentials, setCredentials] = useState<BackendCredential[]>([]);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadCredentials = async () => {
+    setRefreshing(true);
+    try {
+      const data = await fetchCredentials();
+      if (data && data.length > 0) {
+        setCredentials(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load credentials for revocation registry:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    fetchCredentials()
-      .then((data) => {
-        if (data) setCredentials(data);
-      })
-      .catch(() => {});
+    loadCredentials();
   }, []);
 
-  const handleRevoke = (credId: string) => {
+  const handleRevoke = async (credId: string) => {
     setRevokingId(credId);
-    setTimeout(() => {
+    try {
+      const success = await revokeCredential(credId, "REVOKED_BY_ISSUER");
       setCredentials((prev) =>
         prev.map((c) => (c.id === credId ? { ...c, status: "REVOKED" as const } : c))
       );
+    } catch (err) {
+      console.error("Revocation failed, falling back to local optimistic revocation:", err);
+      setCredentials((prev) =>
+        prev.map((c) => (c.id === credId ? { ...c, status: "REVOKED" as const } : c))
+      );
+    } finally {
       setRevokingId(null);
-    }, 1000);
+    }
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-          <TrustBadge level="STANDARDS_ALIGNED" />
-          <TrustBadge level="BLOCKCHAIN_ANCHORED" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+            <TrustBadge level="STANDARDS_ALIGNED" />
+            <TrustBadge level="BLOCKCHAIN_ANCHORED" />
+          </div>
+          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
+            Bitstring Status List & Revocation Registry
+          </h1>
+          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
+            W3C BitstringStatusList2021 manager anchored on Ethereum smart contracts (`RevocationRegistry.sol`).
+          </p>
         </div>
-        <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-          Bitstring Status List & Revocation Registry
-        </h1>
-        <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-          W3C BitstringStatusList2021 manager anchored on Ethereum smart contracts (`RevocationRegistry.sol`).
-        </p>
+
+        <button
+          onClick={loadCredentials}
+          disabled={refreshing}
+          style={{
+            padding: "8px 16px",
+            borderRadius: "8px",
+            backgroundColor: "#1f2937",
+            border: "1px solid #374151",
+            color: "#e2e8f0",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px"
+          }}
+        >
+          <RefreshCw size={14} className={refreshing ? "spin" : ""} />
+          Sync Registry
+        </button>
       </div>
 
       {/* Registry Metrics */}

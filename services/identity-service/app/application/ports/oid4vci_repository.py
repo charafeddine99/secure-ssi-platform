@@ -29,3 +29,12 @@ class CredentialOfferRepository(Protocol):
         limit: int = 50,
     ) -> tuple[CredentialOffer, ...]:
         ...
+
+    def list_pending(
+        self,
+        *,
+        holder_dids: tuple[str, ...] | list[str] | None = None,
+        owner_user_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        ...

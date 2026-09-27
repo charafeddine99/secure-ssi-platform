@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Mapping
 from bson import ObjectId
 
+from app.application.ports.holder_wallet import HolderWalletRepository
 from app.application.ports.oid4vci_repository import CredentialOfferRepository
 from app.application.ports.repositories import CredentialRepository
 from app.application.services.credential_api_service import CredentialApiService
@@ -35,6 +36,7 @@ class Oid4vciService:
         audit_repository: MongoAuditEventRepository,
         status_list_service: StatusListService,
         credential_issuance_service: CredentialApiService,
+        wallet_repository: HolderWalletRepository | None = None,
         base_issuer_url: str = "http://localhost:8001",
     ) -> None:
         self._offers = offer_repository
@@ -42,6 +44,7 @@ class Oid4vciService:
         self._audits = audit_repository
         self._status_list = status_list_service
         self._issuance = credential_issuance_service
+        self._wallets = wallet_repository
         self._base_issuer_url = base_issuer_url.rstrip("/")
 
     def get_issuer_metadata(self) -> dict[str, Any]:
@@ -134,6 +137,39 @@ class Oid4vciService:
             raise OfferNotFoundError(f"Credential offer {offer_id} has expired.")
         return offer
 
+    def list_pending_offers(
+        self,
+        *,
+        holder_did: str | None = None,
+        owner_user_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        holder_dids: list[str] = []
+        if holder_did:
+            holder_dids.append(holder_did)
+        if self._wallets is not None and owner_user_id:
+            try:
+                owned_wallets = self._wallets.list_by_owner(owner_user_id, limit=limit)
+                for w in owned_wallets:
+                    if w.holder_did and w.holder_did not in holder_dids:
+                        holder_dids.append(w.holder_did)
+            except Exception:
+                pass
+        return self._offers.list_pending(
+            holder_dids=holder_dids if holder_dids else None,
+            owner_user_id=owner_user_id,
+            limit=limit,
+        )
+
+    def list_offers_by_issuer(
+        self,
+        issuer_did: str = DEFAULT_ISSUER_DID,
+        *,
+        status: OfferStatus | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        return self._offers.list_by_issuer(issuer_did, status=status, limit=limit)
+
     def claim_offer_and_issue(
         self,
         *,
@@ -141,6 +177,7 @@ class Oid4vciService:
         holder_did: str,
         wallet_id: str = "wallet_holder_default",
         user_pin: str | None = None,
+        owner_user_id: str | None = None,
     ) -> PersistedCredential:
         offer = self._offers.get_by_pre_authorized_code(pre_authorized_code)
         if offer is None:
@@ -153,6 +190,25 @@ class Oid4vciService:
             raise OfferAlreadyClaimedError("Credential offer was already claimed.")
         if offer.user_pin and offer.user_pin != user_pin:
             raise ValueError("Invalid user PIN provided for credential offer.")
+
+        resolved_wallet_id: str | None = wallet_id if wallet_id and wallet_id != "wallet_holder_default" else None
+        resolved_owner_id: str | None = owner_user_id
+        if self._wallets is not None:
+            wallet = None
+            if resolved_wallet_id:
+                try:
+                    wallet = self._wallets.get(resolved_wallet_id)
+                except Exception:
+                    wallet = None
+            if wallet is None:
+                try:
+                    wallet = self._wallets.get_by_holder_did(holder_did)
+                except Exception:
+                    wallet = None
+            if wallet is not None:
+                resolved_wallet_id = wallet.wallet_id
+                if not resolved_owner_id:
+                    resolved_owner_id = wallet.owner_user_id
 
         cred_type = offer.credential_configuration_ids[0] if offer.credential_configuration_ids else "UniversityAffiliationCredential"
         cred_uuid = f"urn:uuid:{secrets.token_hex(4)}-{secrets.token_hex(2)}-4{secrets.token_hex(2)[1:]}-a{secrets.token_hex(2)[1:]}-{secrets.token_hex(6)}"
@@ -183,7 +239,7 @@ class Oid4vciService:
         # 2. Sign credential via issuance service
         signed_vc = self._issuance.sign_credential(unsigned_vc)
 
-        # 3. Retrieve or construct persisted credential
+        # 3. Retrieve or construct and persist credential (Gap A fix)
         persisted = self._credentials.get_by_credential_id(cred_uuid)
         if persisted is None:
             import hashlib
@@ -201,10 +257,13 @@ class Oid4vciService:
                 ).hexdigest(),
                 status=CredentialStatus.ACTIVE,
                 raw_credential=signed_vc,
+                wallet_id=resolved_wallet_id,
+                owner_user_id=resolved_owner_id,
                 created_at=now,
                 updated_at=now,
                 version=1
             )
+            persisted = self._credentials.add(persisted)
 
         # 4. Mark offer as claimed in MongoDB
         self._offers.mark_claimed(

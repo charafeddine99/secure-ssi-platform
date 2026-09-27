@@ -1093,6 +1093,7 @@ def get_oid4vci_service(
     audit_repo: MongoAuditEventRepository = Depends(get_audit_event_repository),
     status_list_service: StatusListService = Depends(get_status_list_service),
     credential_issuance_service: CredentialApiService = Depends(get_credential_issuance_api_service),
+    wallet_repo: HolderWalletRepository = Depends(get_holder_wallet_repository),
 ) -> Oid4vciService:
     return Oid4vciService(
         offer_repository=offer_repo,
@@ -1100,6 +1101,7 @@ def get_oid4vci_service(
         audit_repository=audit_repo,
         status_list_service=status_list_service,
         credential_issuance_service=credential_issuance_service,
+        wallet_repository=wallet_repo,
     )
 
 
