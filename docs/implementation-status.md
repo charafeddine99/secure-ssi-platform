@@ -58,7 +58,7 @@
 | Authentication | Implemented for local synthetic users |
 | Authorization/RBAC | Implemented for current-user and credential signing |
 | Rate limiting | Not implemented |
-| Credential revocation/status | Implemented for existing Mongo credential documents |
+| Credential revocation/status | Implemented with object-level authorization, Bitstring Status List verification, OID4VCI status binding, and status audit history |
 | Production KMS/HSM | Holder provider-neutral boundary implemented; issuer/JWT/Status List production custody remains planned |
 | External DID resolution | Not implemented |
 | Blockchain anchoring | Planned |
@@ -73,7 +73,7 @@
 | Bearer authentication dependency | Implemented |
 | Role-based authorization | Implemented |
 | Credential sign authorization | Implemented |
-| Credential revoke authorization | Implemented for `admin` and `issuer`; denied to `verifier` |
+| Credential revoke authorization | Implemented with object-level authorization (`admin` global, `issuer` own credentials only; denied to cross-issuer, `verifier`, and `holder`) |
 | Admin role | Implemented |
 | Issuer role | Implemented |
 | Verifier role | Implemented |

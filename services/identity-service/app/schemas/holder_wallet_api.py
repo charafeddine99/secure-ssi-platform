@@ -45,6 +45,8 @@ class WalletCredentialResponse(ApiModel):
     status: str
     issuance_date: datetime
     expiration_date: datetime | None
+    status_list_id: str | None = None
+    status_list_index: int | None = None
 
     @classmethod
     def from_domain(
@@ -57,6 +59,8 @@ class WalletCredentialResponse(ApiModel):
             status=credential.status.value,
             issuance_date=credential.issuance_date,
             expiration_date=credential.expiration_date,
+            status_list_id=credential.status_list_id,
+            status_list_index=credential.status_list_index,
         )
 
 

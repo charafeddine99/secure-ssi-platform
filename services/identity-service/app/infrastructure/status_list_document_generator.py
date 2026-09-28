@@ -107,6 +107,20 @@ def encode_status_list(
     return "u" + encoded.decode("ascii")
 
 
+def decode_status_list_bit(encoded_list: str, index: int) -> bool:
+    if index < 0:
+        raise ValueError("Status list index must be non-negative.")
+    raw = encoded_list[1:] if encoded_list.startswith("u") else encoded_list
+    padded = raw + "=" * (-len(raw) % 4)
+    compressed = base64.urlsafe_b64decode(padded.encode("ascii"))
+    bitstring = gzip.decompress(compressed)
+    byte_index = index // 8
+    bit_index = 7 - (index % 8)
+    if byte_index >= len(bitstring):
+        return False
+    return bool(bitstring[byte_index] & (1 << bit_index))
+
+
 def _format_timestamp(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("Status list publication time must be aware.")

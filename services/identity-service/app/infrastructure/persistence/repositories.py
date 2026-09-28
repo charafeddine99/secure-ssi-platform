@@ -392,6 +392,25 @@ class MongoAuditEventRepository:
         except PyMongoError as error:
             raise _unavailable("audit event listing") from error
 
+    def list_by_subject(
+        self,
+        subject_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[AuditEvent, ...]:
+        try:
+            cursor = (
+                self._collection.find({"subjectId": subject_id})
+                .sort("createdAt", ASCENDING)
+                .limit(_bounded_limit(limit))
+            )
+            return tuple(
+                AuditEventDocumentMapper.from_document(document)
+                for document in cursor
+            )
+        except PyMongoError as error:
+            raise _unavailable("audit event listing by subject") from error
+
 
 class MongoRevocationRepository:
     def __init__(

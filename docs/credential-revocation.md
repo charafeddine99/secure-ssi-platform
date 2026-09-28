@@ -9,17 +9,20 @@ adapters. It provides:
 - the closed `ACTIVE`, `REVOKED`, `SUSPENDED`, and `EXPIRED` domain vocabulary;
 - a one-time, irreversible revocation transition;
 - a public local status lookup;
-- `admin`/`issuer` revocation authorization;
+- object-level `issuer` authorization (`credential.issuer_did == caller_issuer_did`) and `admin` revocation authorization;
+- credential status audit history endpoint (`GET /api/v1/credentials/{credential_id}/history`);
+- Bitstring Status List integration and OID4VP status verification;
+- OID4VCI status metadata binding (`status_list_id`, `status_list_index`);
 - permanent revocation metadata in the credential document;
 - durable, idempotently delivered `CREDENTIAL_REVOKED` and `STATUS_CHECKED`
   audit events;
 - stable Bitstring Status List assignment and shared revocation publication;
 - optimistic concurrency and legacy BSON compatibility.
 
-Signing now persists and status-binds the credential automatically. This
-lifecycle does not add suspend/resume endpoints,
-presentation exchange, blockchain, Redis behavior, rate limiting, refresh
-tokens, or frontend behavior.
+This implementation is an academic SSI platform / reference implementation / prototype.
+Signing persists and status-binds the credential automatically.
+OID4VP verification verifies status against the Bitstring Status List and strictly
+enforces revocation over AI risk scores.
 
 ## Standards boundary
 

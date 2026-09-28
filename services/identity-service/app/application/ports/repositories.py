@@ -128,3 +128,10 @@ class AuditEventRepository(Protocol):
         event_type: AuditEventType | None = None,
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]: ...
+
+    def list_by_subject(
+        self,
+        subject_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[AuditEvent, ...]: ...

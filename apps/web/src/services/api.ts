@@ -27,6 +27,8 @@ export interface BackendCredential {
   ai_risk_score: number;
   zkp_predicate?: string;
   created_at: string;
+  status_list_id?: string;
+  status_list_index?: number;
 }
 
 export interface BackendGuardian {
@@ -100,7 +102,9 @@ export async function fetchCredentials(userDid?: string, walletAddress?: string)
           claims: c.claims || (c.rawCredential?.credentialSubject) || {},
           proof_value: c.proofValue || (c.rawCredential?.proof?.proofValue) || "",
           ai_risk_score: c.aiRiskScore || 5,
-          created_at: c.createdAt || new Date().toISOString()
+          created_at: c.createdAt || new Date().toISOString(),
+          status_list_id: c.status_list_id || c.statusListId,
+          status_list_index: c.status_list_index ?? c.statusListIndex
         }));
       }
     }
@@ -229,8 +233,15 @@ export async function revokeCredential(credentialId: string, reason: string = "U
       body: JSON.stringify({ reason })
     });
     if (res.ok) return true;
-  } catch {
-    // Continue to next fallback
+    const data = await res.json().catch(() => ({}));
+    const message = data.detail || `Revocation failed (HTTP ${res.status})`;
+    if (res.status === 403 || res.status === 409 || res.status === 400 || res.status === 404) {
+      throw new Error(message);
+    }
+  } catch (err: any) {
+    if (err.message && (err.message.includes("Revocation failed") || err.message.includes("403") || err.message.includes("409") || err.message.includes("PERMISSION_DENIED"))) {
+      throw err;
+    }
   }
 
   // 2. Try direct Identity Service v1 route
@@ -241,20 +252,10 @@ export async function revokeCredential(credentialId: string, reason: string = "U
       body: JSON.stringify({ reason })
     });
     if (res.ok) return true;
-  } catch {
-    // Continue to legacy fallback
-  }
-
-  // 3. Legacy prototype route
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/credentials/${encodeURIComponent(credentialId)}/revoke`, {
-      method: "POST",
-      headers
-    });
-    return res.ok;
-  } catch (err) {
-    console.error("revokeCredential error:", err);
-    return false;
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Revocation failed (HTTP ${res.status})`);
+  } catch (err: any) {
+    throw err;
   }
 }
 

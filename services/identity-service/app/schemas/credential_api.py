@@ -118,6 +118,22 @@ class CredentialStatusResponse(ApiModel):
         )
 
 
+class CredentialStatusEventResponse(ApiModel):
+    event_id: str
+    event_type: str
+    subject_id: str
+    actor_id: str | None
+    correlation_id: str | None
+    created_at: datetime
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class CredentialStatusHistoryResponse(ApiModel):
+    credential_id: str
+    current_status: CredentialStatus
+    events: list[CredentialStatusEventResponse]
+
+
 class CredentialVerificationChecksResponse(ApiModel):
     profile_valid: bool
     issuer_resolved: bool

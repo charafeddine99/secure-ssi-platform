@@ -342,3 +342,121 @@ def test_golden_path_crypto_failure_hierarchy():
         assert dp_result["aiRiskLevel"] == "LOW"
         assert dp_result["issuerTrusted"] is False or dp_result["signatureValid"] is False
         assert dp_result["finalPolicyResult"] == "REJECTED"
+
+
+def test_golden_path_revoked_credential_rejection():
+    """
+    Sprint 10 — Revoked Golden Path Regression Test.
+
+    Validates:
+    1. Credential is issued via OID4VCI and stored with status list metadata.
+    2. Issuer revokes the credential via authoritative endpoint.
+    3. Status is verified against the Bitstring Status List.
+    4. revocationStatusClear becomes False.
+    5. Final policy result is strictly REJECTED, even with zero/low AI risk score.
+    """
+    with TestClient(app) as client:
+        issuer_hdrs = _get_headers(client, "issuer")
+        holder_hdrs = _get_headers(client, "holder")
+        verifier_hdrs = _get_headers(client, "verifier")
+
+        # 1. Issuer creates offer
+        offer_payload = {
+            "credentialConfigurationIds": ["QualifiedElectronicAttestationCredential"],
+            "subjectData": {
+                "Sertifika Sahibi": "Charaf Eddine Bessanane",
+                "Unvan": "Senior Distributed Systems & SSI Security Architect",
+                "holder_did": HOLDER_DID,
+            },
+            "ttlSeconds": 1800,
+        }
+        res_offer = client.post("/api/v1/oid4vci/offers", json=offer_payload, headers=issuer_hdrs)
+        assert res_offer.status_code == 201
+        pre_auth_code = res_offer.json()["preAuthorizedCode"]
+
+        # 2. Holder claims credential
+        claim_payload = {
+            "preAuthorizedCode": pre_auth_code,
+            "holderDid": HOLDER_DID,
+            "walletId": "wallet_holder_primary",
+        }
+        res_claim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
+        assert res_claim.status_code == 201
+        claim_data = res_claim.json()
+        cred_uuid = claim_data["credentialId"]
+        signed_vc = claim_data["credential"]
+        assert claim_data["status"] == "ACTIVE"
+
+        # Confirm credentialStatus is embedded
+        assert "credentialStatus" in signed_vc, "Credential must include credentialStatus definition"
+        status_info = signed_vc["credentialStatus"]
+        assert status_info["type"] == "BitstringStatusListEntry"
+        assert "statusListIndex" in status_info
+        assert "statusListCredential" in status_info
+
+        # 3. Verifier creates request session
+        req_payload = {
+            "purpose": "Verify engineering credential before revocation test",
+            "requestedCredentialTypes": ["QualifiedElectronicAttestationCredential"],
+            "requestedFields": ["Sertifika Sahibi", "Unvan"],
+            "ttlSeconds": 600,
+        }
+        res_session = client.post("/api/v1/oid4vp/requests", json=req_payload, headers=verifier_hdrs)
+        assert res_session.status_code == 201
+        session_id = res_session.json()["sessionId"]
+        nonce = res_session.json()["nonce"]
+
+        # 4. Holder builds presentation bound to nonce
+        verifiable_presentation = {
+            "@context": ["https://www.w3.org/ns/credentials/v2"],
+            "id": f"urn:uuid:revoked-path-vp-{session_id}",
+            "type": ["VerifiablePresentation"],
+            "verifiableCredential": [signed_vc],
+            "proof": {
+                "type": "Ed25519Signature2020",
+                "nonce": nonce,
+                "proofValue": "zMockHolderProofBoundToNonceRevokedPath",
+            },
+        }
+
+        # 5. Authoritative Revocation: Issuer revokes the credential
+        res_revoke = client.post(
+            f"/api/v1/credentials/{cred_uuid}/revoke",
+            json={"reason": "Affiliation Expired and Revoked"},
+            headers=issuer_hdrs,
+        )
+        assert res_revoke.status_code == 200, f"Revocation must succeed: {res_revoke.text}"
+        revoke_data = res_revoke.json()
+        assert revoke_data["status"] == "REVOKED"
+        assert revoke_data["revoked"] is True
+
+        # 6. Verifier receives presentation via Direct Post
+        # Even with AI risk score = 0 (perfect safety score), the revoked credential MUST be REJECTED!
+        direct_post_payload = {
+            "sessionId": session_id,
+            "vpToken": verifiable_presentation,
+            "disclosedClaims": {
+                "Sertifika Sahibi": "Charaf Eddine Bessanane",
+                "Unvan": "Senior Distributed Systems & SSI Security Architect",
+            },
+            "aiRiskScore": 0,  # Zero fraud risk detected by AI!
+        }
+        res_dp = client.post("/api/v1/oid4vp/response", json=direct_post_payload)
+        assert res_dp.status_code == 200, f"Direct post request should be processed: {res_dp.text}"
+        dp_result = res_dp.json()["result"]
+
+        # 7. Assert 9-point matrix results
+        assert dp_result["signatureValid"] is True, "Signature itself is still cryptographically intact"
+        assert dp_result["revocationStatusClear"] is False, "Status list check must detect revocation"
+        assert dp_result["aiRiskLevel"] == "LOW", "AI risk level was lowest possible"
+        assert dp_result["finalPolicyResult"] == "REJECTED", (
+            "Cryptographic and status invariants strictly override AI score: policy MUST be REJECTED"
+        )
+
+        # 8. Check verification session state
+        res_session_check = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        assert res_session_check.status_code == 200
+        session_body = res_session_check.json()
+        assert session_body["status"] == "REJECTED"
+        assert session_body["verificationResult"]["finalPolicyResult"] == "REJECTED"
+        assert session_body["verificationResult"]["revocationStatusClear"] is False

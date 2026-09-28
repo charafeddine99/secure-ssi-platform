@@ -726,12 +726,16 @@ def get_credential_revocation_service(
     audit_delivery_service: AuditOutboxDeliveryService = Depends(
         get_audit_outbox_delivery_service
     ),
+    audit_event_repository: AuditEventRepository = Depends(
+        get_audit_event_repository
+    ),
     clock: Clock = Depends(get_clock),
 ) -> CredentialRevocationService:
     return CredentialRevocationService(
         revocation_repository=revocation_repository,
         status_list_service=status_list_service,
         audit_delivery_service=audit_delivery_service,
+        audit_repository=audit_event_repository,
         clock=clock,
         event_id_generator=new_object_id,
     )
@@ -1110,10 +1114,12 @@ def get_oid4vp_service(
     credential_repo: CredentialRepository = Depends(get_credential_repository),
     audit_repo: MongoAuditEventRepository = Depends(get_audit_event_repository),
     verifier_service: VerifierPresentationService = Depends(get_verifier_presentation_service),
+    status_list_service: StatusListService = Depends(get_status_list_service),
 ) -> Oid4vpService:
     return Oid4vpService(
         session_repository=session_repo,
         credential_repository=credential_repo,
         audit_repository=audit_repo,
         verifier_presentation_service=verifier_service,
+        status_list_service=status_list_service,
     )

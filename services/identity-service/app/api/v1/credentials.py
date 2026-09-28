@@ -21,6 +21,8 @@ from app.schemas.credential_api import (
     CredentialOperationsResponse,
     CredentialRevocationRequest,
     CredentialSignResponse,
+    CredentialStatusEventResponse,
+    CredentialStatusHistoryResponse,
     CredentialStatusResponse,
     CredentialValidationResponse,
     CredentialVerificationResponse,
@@ -178,11 +180,18 @@ def revoke_credential(
         get_credential_revocation_service
     ),
 ) -> CredentialStatusResponse:
+    caller_issuer_did = (
+        principal.id if principal.id.startswith("did:")
+        else "did:web:issuer.example.test" if principal.id == "usr_local_issuer"
+        else None
+    )
     result = service.revoke(
         credential_id,
         reason=payload.reason,
         revoked_by=principal.id,
         correlation_id=request.state.request_id,
+        caller_roles=principal.roles,
+        caller_issuer_did=caller_issuer_did,
     )
     return CredentialStatusResponse.from_domain(result)
 
@@ -228,6 +237,82 @@ def credential_status(
         correlation_id=request.state.request_id,
     )
     return CredentialStatusResponse.from_domain(result)
+
+
+@router.get(
+    "/{credential_id}/history",
+    response_model=CredentialStatusHistoryResponse,
+    summary="Read credential lifecycle status and audit history",
+    description=(
+        "Returns the chronological append-only audit events and lifecycle "
+        "history for one credential. Access is authorized only for the "
+        "issuing authority or administrator."
+    ),
+    responses={
+        401: {
+            "model": ApiErrorResponse,
+            "description": "Bearer authentication is missing or invalid.",
+        },
+        403: {
+            "model": ApiErrorResponse,
+            "description": "The current user is not authorized to audit this credential.",
+        },
+        404: {
+            "model": ApiErrorResponse,
+            "description": "The active stored credential does not exist.",
+        },
+        500: ERROR_RESPONSES[500],
+        503: {
+            "model": ApiErrorResponse,
+            "description": "MongoDB persistence is unavailable.",
+        },
+    },
+)
+def credential_history(
+    credential_id: Annotated[
+        str,
+        Path(min_length=1, max_length=2_048),
+    ],
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.CREDENTIALS_REVOKE)
+    ),
+    service: CredentialRevocationService = Depends(
+        get_credential_revocation_service
+    ),
+) -> CredentialStatusHistoryResponse:
+    caller_issuer_did = (
+        principal.id if principal.id.startswith("did:")
+        else "did:web:issuer.example.test" if principal.id == "usr_local_issuer"
+        else None
+    )
+    events = service.get_history(
+        credential_id,
+        actor_id=principal.id,
+        caller_roles=principal.roles,
+        caller_issuer_did=caller_issuer_did,
+    )
+    status_snapshot = service.get_status(
+        credential_id,
+        correlation_id=request.state.request_id,
+        actor_id=principal.id,
+    )
+    return CredentialStatusHistoryResponse(
+        credential_id=credential_id,
+        current_status=status_snapshot.status,
+        events=[
+            CredentialStatusEventResponse(
+                event_id=ev.id,
+                event_type=ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type),
+                subject_id=ev.subject_id,
+                actor_id=ev.actor_id,
+                correlation_id=ev.correlation_id,
+                created_at=ev.created_at,
+                metadata=dict(ev.metadata or {}),
+            )
+            for ev in events
+        ],
+    )
 
 
 @router.get(

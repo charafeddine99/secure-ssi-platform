@@ -116,6 +116,7 @@ class RevocationRuntime:
             audit_delivery_service=delivery,
             clock=lambda: NOW,
             event_id_generator=self.next_event_id,
+            audit_repository=self.audit_repository,
         )
         self.credential_repository.add(
             PersistedCredential(
@@ -134,6 +135,25 @@ class RevocationRuntime:
                 raw_credential={"id": CREDENTIAL_ID},
                 created_at=NOW - timedelta(days=1),
                 updated_at=NOW - timedelta(days=1),
+            )
+        )
+        self.credential_repository.add(
+            PersistedCredential(
+                id="64b64c0f0123456789abcdeg",
+                credential_id="urn:uuid:other-issuer-cred-999",
+                issuer_did="did:web:foreign-issuer.example",
+                holder_did="did:key:zholder2",
+                credential_type=(
+                    "VerifiableCredential",
+                    "DegreeCredential",
+                ),
+                issuance_date=NOW - timedelta(days=2),
+                expiration_date=NOW + timedelta(days=365),
+                credential_hash="b" * 64,
+                status=CredentialStatus.ACTIVE,
+                raw_credential={"id": "urn:uuid:other-issuer-cred-999"},
+                created_at=NOW - timedelta(days=2),
+                updated_at=NOW - timedelta(days=2),
             )
         )
 
@@ -479,3 +499,95 @@ def test_status_list_openapi_contract_is_public(
     assert {"200", "404", "409", "500", "503"} <= set(
         metadata["responses"]
     )
+
+
+def test_cross_issuer_revocation_forbidden_and_admin_allowed(
+    revocation_client: tuple[TestClient, RevocationRuntime],
+) -> None:
+    """
+    Sprint 10 — Gap 1: Object-Level Revocation Authorization.
+
+    Issuer A must NOT be able to revoke a credential issued by Issuer B.
+    Admin MUST be allowed to revoke according to RBAC policy.
+    """
+    client, _ = revocation_client
+    other_cred_id = "urn:uuid:other-issuer-cred-999"
+
+    # 1. Issuer attempts to revoke foreign credential -> 403 PERMISSION_DENIED
+    res_issuer_cross = client.post(
+        f"/api/v1/credentials/{other_cred_id}/revoke",
+        json={"reason": "Unauthorized cross-issuer revocation attempt"},
+        headers=auth_headers(client, "issuer"),
+    )
+    assert res_issuer_cross.status_code == 403
+    assert res_issuer_cross.json()["error"]["code"] == "PERMISSION_DENIED"
+
+    # 2. Admin attempts to revoke foreign credential -> 200 ALLOWED
+    res_admin = client.post(
+        f"/api/v1/credentials/{other_cred_id}/revoke",
+        json={"reason": "Administrative revocation"},
+        headers=auth_headers(client, "admin"),
+    )
+    assert res_admin.status_code == 200
+    assert res_admin.json()["status"] == "REVOKED"
+
+
+def test_credential_history_endpoint_and_authorization(
+    revocation_client: tuple[TestClient, RevocationRuntime],
+) -> None:
+    """
+    Sprint 10 — Gap 2: Credential Status History.
+
+    Tests GET /api/v1/credentials/{credential_id}/history:
+    - Issuing authority allowed
+    - Admin allowed
+    - Cross-issuer rejected (403 PERMISSION_DENIED)
+    - Unauthenticated rejected (401)
+    - Chronological order of events
+    """
+    client, runtime = revocation_client
+    other_cred_id = "urn:uuid:other-issuer-cred-999"
+
+    # Trigger a status check and a revocation on own credential
+    client.get(f"/api/v1/credentials/{CREDENTIAL_ID}/status")
+    client.post(
+        f"/api/v1/credentials/{CREDENTIAL_ID}/revoke",
+        json={"reason": "Affiliation ended"},
+        headers=auth_headers(client, "issuer"),
+    )
+
+    # 1. Own issuer fetches history -> 200 ALLOWED
+    res_own = client.get(
+        f"/api/v1/credentials/{CREDENTIAL_ID}/history",
+        headers=auth_headers(client, "issuer"),
+    )
+    assert res_own.status_code == 200
+    history_data = res_own.json()
+    assert history_data["credentialId"] == CREDENTIAL_ID
+    assert history_data["totalEvents"] >= 2
+    events = history_data["events"]
+    assert len(events) >= 2
+    # Chronological ordering check
+    event_types = [e["eventType"] for e in events]
+    assert "STATUS_CHECKED" in event_types
+    assert "CREDENTIAL_REVOKED" in event_types
+
+    # 2. Unauthenticated request -> 401
+    res_anon = client.get(f"/api/v1/credentials/{CREDENTIAL_ID}/history")
+    assert res_anon.status_code == 401
+
+    # 3. Cross-issuer attempt on foreign credential -> 403 PERMISSION_DENIED
+    res_cross = client.get(
+        f"/api/v1/credentials/{other_cred_id}/history",
+        headers=auth_headers(client, "issuer"),
+    )
+    assert res_cross.status_code == 403
+    assert res_cross.json()["error"]["code"] == "PERMISSION_DENIED"
+
+    # 4. Admin attempt on foreign credential -> 200 ALLOWED
+    res_admin = client.get(
+        f"/api/v1/credentials/{other_cred_id}/history",
+        headers=auth_headers(client, "admin"),
+    )
+    assert res_admin.status_code == 200
+    assert res_admin.json()["credentialId"] == other_cred_id

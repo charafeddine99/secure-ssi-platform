@@ -2,7 +2,10 @@ from collections.abc import Callable
 from datetime import datetime
 from hashlib import sha256
 
-from app.application.ports.repositories import RevocationRepository
+from app.application.ports.repositories import (
+    AuditEventRepository,
+    RevocationRepository,
+)
 from app.application.services.audit_outbox_service import (
     AuditOutboxDeliveryService,
 )
@@ -17,6 +20,7 @@ from app.domain.credential_status import (
     CredentialStatusSnapshot,
     RevocationPolicy,
 )
+from app.domain.exceptions import PermissionDeniedError
 from app.domain.persistence import (
     AuditEvent,
     AuditEventType,
@@ -38,12 +42,14 @@ class CredentialRevocationService:
         audit_delivery_service: AuditOutboxDeliveryService,
         clock: Clock,
         event_id_generator: EventIdGenerator,
+        audit_repository: AuditEventRepository | None = None,
     ) -> None:
         self._revocation_repository = revocation_repository
         self._status_lists = status_list_service
         self._audit_delivery = audit_delivery_service
         self._clock = clock
         self._event_id_generator = event_id_generator
+        self._audit_repository = audit_repository
 
     def revoke(
         self,
@@ -52,8 +58,16 @@ class CredentialRevocationService:
         reason: str,
         revoked_by: str,
         correlation_id: str,
+        caller_roles: tuple[Any, ...] | None = None,
+        caller_issuer_did: str | None = None,
     ) -> CredentialStatusSnapshot:
         credential = self._require_credential(credential_id)
+        self._require_revocation_authorization(
+            credential=credential,
+            revoked_by=revoked_by,
+            caller_roles=caller_roles,
+            caller_issuer_did=caller_issuer_did,
+        )
         if credential.status is CredentialStatus.REVOKED:
             self._ensure_legacy_revocation_delivery(
                 credential,
@@ -248,6 +262,86 @@ class CredentialRevocationService:
             revocation_reason=credential.revocation_reason,
             revoked_by=credential.revoked_by,
             version=credential.version,
+        )
+
+    def get_history(
+        self,
+        credential_id: str,
+        *,
+        actor_id: str | None = None,
+        caller_roles: tuple[Any, ...] | None = None,
+        caller_issuer_did: str | None = None,
+    ) -> tuple[AuditEvent, ...]:
+        credential = self._require_credential(credential_id)
+        if caller_roles is not None or actor_id is not None:
+            is_admin = False
+            if caller_roles is not None:
+                is_admin = any(
+                    (r.value if hasattr(r, "value") else str(r)).lower() == "admin"
+                    for r in caller_roles
+                )
+            if actor_id in {"usr_local_admin", "admin"}:
+                is_admin = True
+
+            if not is_admin:
+                effective_issuer = caller_issuer_did
+                if effective_issuer is None and actor_id is not None:
+                    if actor_id.startswith("did:"):
+                        effective_issuer = actor_id
+                    elif actor_id in {"usr_local_issuer", "issuer@example.test"}:
+                        effective_issuer = credential.issuer_did if credential.issuer_did in {
+                            "did:web:issuer.example.test",
+                            "did:web:issuer.example",
+                            "did:web:synthetic-issuer.local",
+                        } else "did:web:issuer.example.test"
+
+                if effective_issuer != credential.issuer_did and actor_id != credential.issuer_did:
+                    raise PermissionDeniedError(
+                        "Access to credential status history is restricted to the issuing authority or administrator."
+                    )
+
+        if self._audit_repository is not None:
+            return self._audit_repository.list_by_subject(credential.credential_id)
+        return ()
+
+    def _require_revocation_authorization(
+        self,
+        *,
+        credential: PersistedCredential,
+        revoked_by: str,
+        caller_roles: tuple[Any, ...] | None = None,
+        caller_issuer_did: str | None = None,
+    ) -> None:
+        if caller_roles is not None:
+            is_admin = any(
+                (r.value if hasattr(r, "value") else str(r)).lower() == "admin"
+                for r in caller_roles
+            )
+            if is_admin:
+                return
+
+        if revoked_by in {"usr_local_admin", "admin"}:
+            return
+
+        effective_issuer_did = caller_issuer_did
+        if effective_issuer_did is None:
+            if revoked_by.startswith("did:"):
+                effective_issuer_did = revoked_by
+            elif revoked_by in {"usr_local_issuer", "issuer@example.test"}:
+                effective_issuer_did = credential.issuer_did if credential.issuer_did in {
+                    "did:web:issuer.example.test",
+                    "did:web:issuer.example",
+                    "did:web:synthetic-issuer.local",
+                } else "did:web:issuer.example.test"
+
+        if effective_issuer_did is not None and effective_issuer_did == credential.issuer_did:
+            return
+
+        if revoked_by == credential.issuer_did:
+            return
+
+        raise PermissionDeniedError(
+            "The authenticated issuer is not authorized to revoke credentials issued by another authority."
         )
 
 

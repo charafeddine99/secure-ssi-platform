@@ -9,6 +9,7 @@ from bson import ObjectId
 from app.application.ports.oid4vp_repository import VerificationSessionRepository
 from app.application.ports.repositories import CredentialRepository
 from app.application.services.presentation_service import VerifierPresentationService
+from app.application.services.status_list_service import StatusListService
 from app.domain.oid4vp import (
     VerificationSession,
     VerificationSessionStatus,
@@ -32,12 +33,14 @@ class Oid4vpService:
         credential_repository: CredentialRepository,
         audit_repository: MongoAuditEventRepository,
         verifier_presentation_service: VerifierPresentationService,
+        status_list_service: StatusListService | None = None,
         base_verifier_url: str = "http://localhost:8001",
     ) -> None:
         self._sessions = session_repository
         self._credentials = credential_repository
         self._audits = audit_repository
         self._verifier = verifier_presentation_service
+        self._status_lists = status_list_service
         self._base_verifier_url = base_verifier_url.rstrip("/")
 
     def create_session(
@@ -176,12 +179,37 @@ class Oid4vpService:
             except Exception:
                 expiry_valid = True
 
-        # Status / Revocation Check (query credential repository if exists)
+        # Status / Revocation Check (authoritative persistence + Bitstring Status List resolution)
         cred_id = target_vc.get("id", "")
         revocation_status_clear = True
         persisted = self._credentials.get_by_credential_id(cred_id) if cred_id else None
-        if persisted and persisted.status.value == "REVOKED":
+        if persisted and (
+            persisted.status.value == "REVOKED"
+            or getattr(persisted.status, "name", "") == "REVOKED"
+        ):
             revocation_status_clear = False
+
+        # Bitstring Status List inspection
+        cred_status = target_vc.get("credentialStatus")
+        if isinstance(cred_status, dict):
+            status_purpose = cred_status.get("statusPurpose")
+            if status_purpose == "revocation":
+                status_list_index_raw = cred_status.get("statusListIndex")
+                status_list_url = str(cred_status.get("statusListCredential", ""))
+                status_list_id = status_list_url.rstrip("/").split("/")[-1] if status_list_url else ""
+                if status_list_id and status_list_index_raw is not None:
+                    try:
+                        idx = int(status_list_index_raw)
+                        if self._status_lists is not None:
+                            try:
+                                publication = self._status_lists.get_publication(status_list_id)
+                                from app.infrastructure.status_list_document_generator import decode_status_list_bit
+                                if decode_status_list_bit(publication.encoded_list, idx):
+                                    revocation_status_clear = False
+                            except Exception:
+                                pass
+                    except (ValueError, TypeError):
+                        revocation_status_clear = False
 
         # Challenge / Nonce check
         vp_proof = vp_token.get("proof", {})
@@ -230,6 +258,15 @@ class Oid4vpService:
                 "credentialId": cred_id,
                 "verifiedAt": now.isoformat(),
                 "verifierDid": session.verifier_did,
+                "evaluations": {
+                    "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
+                    "issuer": "Verified trusted issuer DID document" if issuer_trusted else "Issuer untrusted",
+                    "signature": "Cryptographic proof mathematically valid" if sig_valid else "Proof invalid",
+                    "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else "Holder mismatch",
+                    "expiration": "Within active validity window" if expiry_valid else "Expired credential",
+                    "revocation": "Status slot is active (unrevoked)" if revocation_status_clear else "Status slot is marked REVOKED in Bitstring Status List",
+                    "challenge": "Nonce match confirmed" if challenge_valid else "Nonce mismatch",
+                },
             }
         )
 

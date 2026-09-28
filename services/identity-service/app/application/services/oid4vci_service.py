@@ -244,6 +244,21 @@ class Oid4vciService:
         if persisted is None:
             import hashlib
             import json
+
+            status_list_id: str | None = None
+            status_list_index: int | None = None
+            cred_status = signed_vc.get("credentialStatus")
+            if isinstance(cred_status, dict):
+                status_list_url = str(cred_status.get("statusListCredential", ""))
+                if status_list_url:
+                    status_list_id = status_list_url.rstrip("/").split("/")[-1]
+                idx_raw = cred_status.get("statusListIndex")
+                if idx_raw is not None:
+                    try:
+                        status_list_index = int(idx_raw)
+                    except (ValueError, TypeError):
+                        status_list_index = None
+
             persisted = PersistedCredential(
                 id=new_object_id(),
                 credential_id=cred_uuid,
@@ -257,6 +272,8 @@ class Oid4vciService:
                 ).hexdigest(),
                 status=CredentialStatus.ACTIVE,
                 raw_credential=signed_vc,
+                status_list_id=status_list_id,
+                status_list_index=status_list_index,
                 wallet_id=resolved_wallet_id,
                 owner_user_id=resolved_owner_id,
                 created_at=now,
