@@ -88,6 +88,9 @@ class VerificationSession:
     presentation_id: str | None = None
     verification_result: NinePointVerificationResult | None = None
     disclosed_claims: Mapping[str, Any] | None = None
+    consent_status: str = "PENDING"
+    rejection_reason: str | None = None
+    requested_fields: tuple[str, ...] = field(default_factory=tuple)
     version: int = 1
 
     def __post_init__(self) -> None:

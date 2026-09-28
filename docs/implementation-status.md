@@ -309,7 +309,29 @@
 | Performance budget | In-memory 25-run workflow mean 2.335 ms, p95 2.711 ms; component means documented; production SLA unproven |
 | Redis, blockchain, AI, DIDComm, frontend, VP/selective disclosure | Not implemented in this sprint |
 
-Requirement-level implemented/partial/not-implemented mapping is maintained in
-[account-recovery.md](account-recovery.md). The recommended next feature sprint
-is explainable advisory AI fraud detection; it must not receive autonomous
-credential, key, or recovery authority.
+## Sprint 10 — Status List, Credential Revocation, and Audit Integrity sprint status
+
+| Capability | Status |
+| --- | --- |
+| Bitstring Status List v1.0 engine (`W3C BitstringStatusListEntry`) | Implemented |
+| Gzip/Base64URL compressed bitstring encoding & decoding | Implemented |
+| Dedicated status index allocation on issuance | Implemented |
+| Revocation cryptographic precedence over AI advisory score | Implemented |
+| Cryptographic Revocation Registry verification | Implemented |
+| Status list audit history & outbox delivery | Implemented |
+| 9-point verification matrix integration with status list checks | Implemented |
+
+## Sprint 11 — Holder Consent, Privacy, Selective Disclosure, and Request Rejection sprint status
+
+| Capability | Status |
+| --- | --- |
+| Holder Consent Sheet (Verifier identity/DID, purpose, claims, TTL duration) | Implemented |
+| Selective disclosure toggling & attribute minimization | Implemented |
+| Data minimization ratio & selective disclosure metrics in verification details | Implemented |
+| Explicit consent granting (`consent_status = "GRANTED"`) on Direct Post | Implemented |
+| Explicit consent denial / request rejection (`POST /api/v1/oid4vp/requests/{session_id}/reject`) | Implemented |
+| Rejection transition to terminal `status = "REJECTED"`, `consent_status = "REJECTED"` | Implemented |
+| Double submission / post-rejection Direct Post conflict prevention (`409 Conflict`) | Implemented |
+| Verifier request preview modal in `CreateRequestPage` | Implemented |
+| Verifier live status reaction to holder rejection (`STATUS: REJECTED` card & audit notice) | Implemented |
+| Cryptographic Audit Trail integration (`CONSENT_GRANTED` and `CONSENT_REJECTED`) | Implemented |

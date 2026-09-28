@@ -105,6 +105,7 @@ class Oid4vpService:
             status=VerificationSessionStatus.PENDING,
             created_at=now,
             expires_at=expires_at,
+            requested_fields=requested_fields,
             version=1
         )
         return self._sessions.add(session)
@@ -117,6 +118,47 @@ class Oid4vpService:
         if session.status == VerificationSessionStatus.PENDING and session.is_expired(now):
             raise SessionExpiredError(f"Verification session {session_id} has expired.")
         return session
+
+    def reject_session(
+        self,
+        session_id: str,
+        *,
+        reason: str = "Consent rejected by user",
+        actor_id: str | None = None,
+    ) -> VerificationSession:
+        session = self.get_session(session_id)
+        if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
+            raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated or rejected.")
+        now = datetime.now(timezone.utc)
+        if session.is_expired(now):
+            raise SessionExpiredError(f"Session {session_id} has expired.")
+
+        updated = self._sessions.reject_session(
+            session.session_id,
+            reason=reason,
+            expected_version=session.version,
+        )
+
+        # Append CONSENT_REJECTED audit event
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.CONSENT_REJECTED,
+                subject_id=session.session_id,
+                actor_id=actor_id or "did:key:holder_anonymous",
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "reason": reason,
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+        )
+        return updated
 
     def process_direct_post(
         self,
@@ -241,6 +283,13 @@ class Oid4vpService:
         )
         final_policy = "ACCEPTED" if policy_accepted else "REJECTED"
 
+        # Data minimization / selective disclosure breakdown
+        disclosed_dict = dict(disclosed_claims or target_vc.get("credentialSubject", {}))
+        disclosed_keys = [k for k in disclosed_dict.keys() if k != "id"]
+        req_keys = list(session.requested_fields)
+        hidden_keys = [k for k in req_keys if k not in disclosed_keys]
+        disclosure_ratio = f"{len(disclosed_keys)}/{len(req_keys)}" if req_keys else "N/A"
+
         result = NinePointVerificationResult(
             credential_valid=cred_valid,
             issuer_trusted=issuer_trusted,
@@ -258,6 +307,13 @@ class Oid4vpService:
                 "credentialId": cred_id,
                 "verifiedAt": now.isoformat(),
                 "verifierDid": session.verifier_did,
+                "dataMinimization": {
+                    "requestedFields": req_keys,
+                    "disclosedFields": disclosed_keys,
+                    "hiddenFields": hidden_keys,
+                    "selectiveDisclosureActive": len(hidden_keys) > 0,
+                    "disclosureRatio": disclosure_ratio,
+                },
                 "evaluations": {
                     "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
                     "issuer": "Verified trusted issuer DID document" if issuer_trusted else "Issuer untrusted",
@@ -283,7 +339,30 @@ class Oid4vpService:
             expected_version=session.version
         )
 
-        # Append audit event
+        # Append CONSENT_GRANTED audit event
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.CONSENT_GRANTED,
+                subject_id=session.session_id,
+                actor_id=subject_id or "did:key:holder_anonymous",
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "disclosed_claims_count": str(len(disclosed_keys)),
+                    "disclosed_fields": ",".join(disclosed_keys),
+                    "hidden_fields_count": str(len(hidden_keys)),
+                    "purpose": session.purpose,
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+        )
+
+        # Append VC_VERIFIED audit event
         self._audits.append(
             AuditEvent(
                 id=new_object_id(),

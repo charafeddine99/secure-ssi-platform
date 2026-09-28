@@ -182,6 +182,16 @@ DID signature, so the API must not be described as cryptographic
 multisignature. Full state, security, and response-boundary details are in
 [account-recovery.md](account-recovery.md).
 
+## Implemented OID4VP & Holder Consent API
+
+| Method and path | Policy | Responsibility | Result |
+| --- | --- | --- | --- |
+| `POST /api/v1/oid4vp/requests` | `verifier` role | Verifier initializes presentation session with purpose, requested types & claims | `201` session metadata, challenge nonce, and `openid4vp://` URI |
+| `GET /api/v1/oid4vp/requests/{sessionId}` | Public / Holder / Verifier | Inspect session status, purpose, requested fields, consent state | `200` session projection |
+| `POST /api/v1/oid4vp/requests/{sessionId}/reject` | Public / Holder | Explicitly decline consent / reject presentation request | `200` terminal `REJECTED` session with reason, emits `CONSENT_REJECTED` audit event |
+| `POST /api/v1/oid4vp/response` | Direct Post / Holder | Submit VP token, disclosed claims (selective disclosure), and AI risk score | `200` 9-point verification matrix with `dataMinimization` details, sets `consentStatus = GRANTED`, emits `CONSENT_GRANTED` audit event |
+
+
 ## Blockchain boundary
 
 Blockchain access will be isolated behind an adapter rather than called from the browser. The only currently reserved input is `anchor-request.schema.json`, which permits a digest and metadata category but no DID, credential, claim, or guardian data.

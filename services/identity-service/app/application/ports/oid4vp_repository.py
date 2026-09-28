@@ -23,6 +23,15 @@ class VerificationSessionRepository(Protocol):
     ) -> VerificationSession:
         ...
 
+    def reject_session(
+        self,
+        session_id: str,
+        *,
+        reason: str,
+        expected_version: int,
+    ) -> VerificationSession:
+        ...
+
     def list_by_verifier(
         self,
         verifier_did: str,

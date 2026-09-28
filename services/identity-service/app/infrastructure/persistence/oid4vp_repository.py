@@ -41,6 +41,9 @@ class VerificationSessionDocumentMapper:
             "presentationId": session.presentation_id,
             "verificationResult": result_dict,
             "disclosedClaims": deepcopy(dict(session.disclosed_claims)) if session.disclosed_claims else None,
+            "consentStatus": session.consent_status,
+            "rejectionReason": session.rejection_reason,
+            "requestedFields": list(session.requested_fields),
             "version": session.version,
         }
 
@@ -79,6 +82,9 @@ class VerificationSessionDocumentMapper:
             presentation_id=doc.get("presentationId"),
             verification_result=v_result,
             disclosed_claims=deepcopy(doc.get("disclosedClaims")),
+            consent_status=doc.get("consentStatus", "PENDING"),
+            rejection_reason=doc.get("rejectionReason"),
+            requested_fields=tuple(doc.get("requestedFields", ())),
             version=doc.get("version", 1),
         )
 
@@ -132,6 +138,7 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
                         "presentationId": presentation_id,
                         "verificationResult": verification_result.to_dict(),
                         "disclosedClaims": deepcopy(dict(disclosed_claims)) if disclosed_claims else None,
+                        "consentStatus": "GRANTED",
                     },
                     "$inc": {"version": 1},
                 },
@@ -145,6 +152,44 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
                 raise SessionNotFoundError(f"Session {session_id} not found.")
             if current.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
                 raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated.")
+            raise OptimisticLockError(f"Session {session_id} was modified concurrently.")
+
+        updated = self.get_by_session_id(session_id)
+        assert updated is not None
+        return updated
+
+    def reject_session(
+        self,
+        session_id: str,
+        *,
+        reason: str,
+        expected_version: int,
+    ) -> VerificationSession:
+        try:
+            res = self._collection.update_one(
+                {
+                    "sessionId": session_id,
+                    "version": expected_version,
+                    "status": VerificationSessionStatus.PENDING.value,
+                },
+                {
+                    "$set": {
+                        "status": VerificationSessionStatus.REJECTED.value,
+                        "consentStatus": "REJECTED",
+                        "rejectionReason": reason,
+                    },
+                    "$inc": {"version": 1},
+                },
+            )
+        except PyMongoError as e:
+            raise PersistenceUnavailableError(f"Failed to reject verification session {session_id}.") from e
+
+        if res.matched_count == 0:
+            current = self.get_by_session_id(session_id)
+            if current is None:
+                raise SessionNotFoundError(f"Session {session_id} not found.")
+            if current.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
+                raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated or rejected.")
             raise OptimisticLockError(f"Session {session_id} was modified concurrently.")
 
         updated = self.get_by_session_id(session_id)

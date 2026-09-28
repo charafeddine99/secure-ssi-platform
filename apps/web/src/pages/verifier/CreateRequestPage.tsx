@@ -20,6 +20,11 @@ import {
   Sparkles,
   Layers,
   RefreshCw,
+  XCircle,
+  ShieldAlert,
+  Eye,
+  X,
+  Lock,
 } from "lucide-react";
 
 export const CreateRequestPage: React.FC = () => {
@@ -30,6 +35,7 @@ export const CreateRequestPage: React.FC = () => {
   const [predicate, setPredicate] = useState("age >= 18");
   const [claims, setClaims] = useState(["affiliation", "degree", "programCode"]);
   const [ttlSeconds, setTtlSeconds] = useState(600);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [creatingSession, setCreatingSession] = useState(false);
   const [session, setSession] = useState<Oid4vpSession | null>(null);
@@ -161,21 +167,38 @@ export const CreateRequestPage: React.FC = () => {
                     backgroundColor:
                       session.status === "VERIFIED"
                         ? "rgba(16, 185, 129, 0.2)"
+                        : session.status === "REJECTED"
+                        ? "rgba(239, 68, 68, 0.2)"
                         : "rgba(59, 130, 246, 0.2)",
-                    color: session.status === "VERIFIED" ? "#34d399" : "#60a5fa",
+                    color:
+                      session.status === "VERIFIED"
+                        ? "#34d399"
+                        : session.status === "REJECTED"
+                        ? "#f87171"
+                        : "#60a5fa",
                   }}
                 >
-                  {session.status === "VERIFIED" ? <CheckCircle2 size={24} /> : <QrCode size={24} />}
+                  {session.status === "VERIFIED" ? (
+                    <CheckCircle2 size={24} />
+                  ) : session.status === "REJECTED" ? (
+                    <XCircle size={24} />
+                  ) : (
+                    <QrCode size={24} />
+                  )}
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#ffffff" }}>
                     {session.status === "VERIFIED"
                       ? "Verifiable Presentation Verified!"
+                      : session.status === "REJECTED"
+                      ? "Presentation Request Rejected"
                       : "OID4VP Verification Session Active"}
                   </h3>
                   <p style={{ margin: "2px 0 0 0", fontSize: "0.8rem", color: "#94a3b8" }}>
                     {session.status === "VERIFIED"
                       ? "Direct Post presentation accepted and evaluated through 9-point security checklist."
+                      : session.status === "REJECTED"
+                      ? "Holder reviewed the consent request and explicitly declined to share credentials."
                       : "Scan QR code with Holder Wallet to submit Verifiable Presentation via Direct Post."}
                   </p>
                 </div>
@@ -194,15 +217,82 @@ export const CreateRequestPage: React.FC = () => {
                   backgroundColor:
                     session.status === "VERIFIED"
                       ? "rgba(16, 185, 129, 0.2)"
+                      : session.status === "REJECTED"
+                      ? "rgba(239, 68, 68, 0.2)"
                       : "rgba(59, 130, 246, 0.2)",
-                  color: session.status === "VERIFIED" ? "#34d399" : "#60a5fa",
-                  border: `1px solid ${session.status === "VERIFIED" ? "rgba(16, 185, 129, 0.4)" : "rgba(59, 130, 246, 0.4)"}`,
+                  color:
+                    session.status === "VERIFIED"
+                      ? "#34d399"
+                      : session.status === "REJECTED"
+                      ? "#f87171"
+                      : "#60a5fa",
+                  border: `1px solid ${
+                    session.status === "VERIFIED"
+                      ? "rgba(16, 185, 129, 0.4)"
+                      : session.status === "REJECTED"
+                      ? "rgba(239, 68, 68, 0.4)"
+                      : "rgba(59, 130, 246, 0.4)"
+                  }`,
                 }}
               >
                 {session.status === "PENDING" && <RefreshCw size={12} className="animate-spin" />}
                 STATUS: {session.status}
               </div>
             </div>
+
+            {/* If REJECTED: Show Consent Denial & Audit Notice */}
+            {session.status === "REJECTED" && (
+              <div
+                style={{
+                  backgroundColor: "rgba(239, 68, 68, 0.08)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: "12px",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <ShieldAlert size={22} color="#f87171" />
+                  <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#f87171" }}>
+                    Consent Denied by Holder
+                  </span>
+                </div>
+
+                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", lineHeight: "1.5" }}>
+                  <strong>Reason recorded:</strong>{" "}
+                  <span style={{ color: "#fca5a5" }}>
+                    {session.rejectionReason || "Holder chose not to share requested attributes."}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    fontSize: "0.78rem",
+                    color: "#94a3b8",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
+                  <div>
+                    <strong>Audit Integrity:</strong> A cryptographic audit record of type{" "}
+                    <code style={{ color: "#38bdf8" }}>CONSENT_REJECTED</code> has been committed to
+                    the immutable system audit log.
+                  </div>
+                  <div>
+                    <strong>Session Nonce:</strong>{" "}
+                    <span style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>
+                      {session.nonce}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* If still PENDING: Show QR Code & Live Polling Instructions */}
             {session.status === "PENDING" && (
@@ -453,35 +543,217 @@ export const CreateRequestPage: React.FC = () => {
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={creatingSession}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: "10px",
-              backgroundColor: "#059669",
-              color: "#ffffff",
-              fontWeight: 700,
-              fontSize: "0.95rem",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              marginTop: "8px",
-            }}
-          >
-            {creatingSession ? (
-              <span>Generating OID4VP Session & Challenge Nonce...</span>
-            ) : (
-              <>
-                <QrCode size={18} />
-                Generate OID4VP Request & Live QR
-              </>
-            )}
-          </button>
+          <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setShowPreview(true)}
+              style={{
+                padding: "12px 18px",
+                borderRadius: "10px",
+                backgroundColor: "#1e293b",
+                color: "#94a3b8",
+                fontWeight: 600,
+                fontSize: "0.88rem",
+                border: "1px solid #334155",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Eye size={16} />
+              Preview Holder Consent Sheet
+            </button>
+
+            <button
+              type="submit"
+              disabled={creatingSession}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: "10px",
+                backgroundColor: "#059669",
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: "0.95rem",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+              }}
+            >
+              {creatingSession ? (
+                <span>Generating OID4VP Session & Challenge Nonce...</span>
+              ) : (
+                <>
+                  <QrCode size={18} />
+                  Generate OID4VP Request & Live QR
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Holder Consent Sheet Preview Modal */}
+          {showPreview && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                backdropFilter: "blur(4px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "20px",
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#111827",
+                  borderRadius: "16px",
+                  border: "1px solid #374151",
+                  maxWidth: "520px",
+                  width: "100%",
+                  padding: "24px",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#60a5fa" }}>
+                    <Eye size={20} />
+                    <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#ffffff" }}>
+                      Holder Consent Sheet Preview
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPreview(false)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      padding: "4px",
+                    }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "rgba(59, 130, 246, 0.1)",
+                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    fontSize: "0.8rem",
+                    color: "#93c5fd",
+                  }}
+                >
+                  This is exactly what the wallet holder will review before choosing to disclose attributes or decline verification.
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "#0d131f",
+                    borderRadius: "12px",
+                    border: "1px solid #1f2937",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
+                      Requesting Verifier
+                    </span>
+                    <div style={{ fontSize: "0.85rem", color: "#ffffff", fontWeight: 600 }}>
+                      Secure SSI Platform Verifier Service
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
+                      Verification Purpose
+                    </span>
+                    <div style={{ fontSize: "0.85rem", color: "#e2e8f0" }}>{purpose}</div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
+                      Session Duration (TTL)
+                    </span>
+                    <div style={{ fontSize: "0.85rem", color: "#e2e8f0" }}>
+                      {Math.round(ttlSeconds / 60)} minutes
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
+                      Requested Attributes ({claims.length})
+                    </span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                      {claims.map((c) => (
+                        <span
+                          key={c}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            backgroundColor: "rgba(37, 99, 235, 0.15)",
+                            color: "#93c5fd",
+                            fontSize: "0.75rem",
+                            border: "1px solid rgba(37, 99, 235, 0.3)",
+                          }}
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderTop: "1px solid #1f2937",
+                      paddingTop: "10px",
+                      fontSize: "0.75rem",
+                      color: "#94a3b8",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <Lock size={14} color="#34d399" />
+                    Holder may selectively disclose or redact each attribute before signing.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(false)}
+                  style={{
+                    padding: "10px",
+                    borderRadius: "8px",
+                    backgroundColor: "#2563eb",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close Preview
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       )}
     </div>

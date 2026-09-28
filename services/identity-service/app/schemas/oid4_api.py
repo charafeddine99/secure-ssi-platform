@@ -71,6 +71,10 @@ class VerificationSessionResponse(Oid4ApiModel):
     deep_link_uri: str
     qr_payload: str
     expires_at: datetime
+    purpose: str = "Verification of digital identity and qualifications"
+    consent_status: str = "PENDING"
+    rejection_reason: str | None = None
+    requested_fields: list[str] = Field(default_factory=list)
     verification_result: dict[str, Any] | None = None
     disclosed_claims: dict[str, Any] | None = None
 
@@ -83,3 +87,12 @@ class DirectPostRequest(Oid4ApiModel):
 class DirectPostResponse(Oid4ApiModel):
     status: str
     result: dict[str, Any]
+
+class RejectVerificationSessionRequest(Oid4ApiModel):
+    reason: str = Field(default="Consent rejected by user")
+    holder_did: str | None = None
+
+class RejectVerificationSessionResponse(Oid4ApiModel):
+    session_id: str
+    status: str
+    reason: str

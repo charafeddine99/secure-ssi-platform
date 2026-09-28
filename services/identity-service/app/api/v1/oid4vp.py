@@ -20,6 +20,8 @@ from app.schemas.oid4_api import (
     VerificationSessionResponse,
     DirectPostRequest,
     DirectPostResponse,
+    RejectVerificationSessionRequest,
+    RejectVerificationSessionResponse,
 )
 
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
@@ -60,6 +62,10 @@ def create_verification_session(
         deep_link_uri=auth_uri,
         qr_payload=auth_uri,
         expires_at=session.expires_at,
+        purpose=session.purpose,
+        consent_status=session.consent_status,
+        rejection_reason=session.rejection_reason,
+        requested_fields=list(session.requested_fields),
         verification_result=session.verification_result.to_dict() if session.verification_result else None,
         disclosed_claims=dict(session.disclosed_claims) if session.disclosed_claims else None,
     )
@@ -93,8 +99,43 @@ def get_verification_session(
         deep_link_uri=auth_uri,
         qr_payload=auth_uri,
         expires_at=session.expires_at,
+        purpose=session.purpose,
+        consent_status=session.consent_status,
+        rejection_reason=session.rejection_reason,
+        requested_fields=list(session.requested_fields),
         verification_result=session.verification_result.to_dict() if session.verification_result else None,
         disclosed_claims=dict(session.disclosed_claims) if session.disclosed_claims else None,
+    )
+
+@router.post(
+    "/requests/{session_id}/reject",
+    response_model=RejectVerificationSessionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reject OID4VP Verification Session (Holder Consent Denial)",
+    description="Holder explicitly declines to provide consent for verification, closing the session with an audit trail."
+)
+def reject_verification_session(
+    session_id: str,
+    payload: RejectVerificationSessionRequest,
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> RejectVerificationSessionResponse:
+    try:
+        session = service.reject_session(
+            session_id=session_id,
+            reason=payload.reason,
+            actor_id=payload.holder_did,
+        )
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except SessionExpiredError as e:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
+    except SessionAlreadyConsumedError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+
+    return RejectVerificationSessionResponse(
+        session_id=session.session_id,
+        status=session.status.value,
+        reason=payload.reason,
     )
 
 @router.post(

@@ -702,6 +702,9 @@ export interface Oid4vpSession {
   requestedFields: string[];
   nonce: string;
   status: "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED";
+  consentStatus?: "PENDING" | "GRANTED" | "REJECTED";
+  rejectionReason?: string;
+  verifierDid?: string;
   deepLinkUri: string;
   qrPayload: string;
   expiresAt: string;
@@ -902,6 +905,30 @@ export async function submitOid4vpDirectPost(payload: {
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Direct post failed: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder explicitly rejects OID4VP presentation consent request
+ */
+export async function rejectOid4vpSession(payload: {
+  sessionId: string;
+  reason?: string;
+  holderDid?: string;
+}): Promise<{ sessionId: string; status: string; reason: string }> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(payload.sessionId)}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reason: payload.reason || "Consent rejected by user",
+      holderDid: payload.holderDid,
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to reject OID4VP session: ${res.status} ${err}`);
   }
   return res.json();
 }
