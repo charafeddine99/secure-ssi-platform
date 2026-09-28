@@ -51,13 +51,15 @@ class DummyStatusListService:
 
 
 def _create_sample_session(
-    session_id: str = "sess_consent_001",
+    session_id: str = "session_consent_000000000001",
     status: VerificationSessionStatus = VerificationSessionStatus.PENDING,
     consent_status: str = "PENDING",
+    rejection_reason: str | None = None,
     requested_fields: tuple[str, ...] = ("name", "degree", "programCode"),
 ) -> VerificationSession:
     now = datetime.now(UTC)
     return VerificationSession(
+        id="507f1f77bcf86cd799439011",
         session_id=session_id,
         verifier_did="did:web:verifier.example.com",
         client_id="https://verifier.example.com/callback",
@@ -69,6 +71,7 @@ def _create_sample_session(
         created_at=now,
         expires_at=now + timedelta(minutes=10),
         consent_status=consent_status,
+        rejection_reason=rejection_reason,
         requested_fields=requested_fields,
     )
 
@@ -89,10 +92,11 @@ def test_mapper_preserves_consent_and_selective_disclosure_fields():
 
 
 def test_mapper_preserves_rejected_consent_state():
-    session = _create_sample_session()
-    session.status = VerificationSessionStatus.REJECTED
-    session.consent_status = "REJECTED"
-    session.rejection_reason = "Holder declined to disclose GPA"
+    session = _create_sample_session(
+        status=VerificationSessionStatus.REJECTED,
+        consent_status="REJECTED",
+        rejection_reason="Holder declined to disclose GPA",
+    )
 
     doc = VerificationSessionDocumentMapper.to_document(session)
     assert doc["status"] == "REJECTED"
@@ -109,16 +113,16 @@ def test_repository_reject_session_updates_atomically():
     collection = FakeCollection(unique_fields=("sessionId",))
     repo = MongoVerificationSessionRepository(collection)
 
-    session = _create_sample_session("sess_to_reject")
-    repo.save(session)
+    session = _create_sample_session("session_to_reject_0000000001")
+    repo.add(session)
 
-    rejected = repo.reject_session("sess_to_reject", "Holder rejected verification")
+    rejected = repo.reject_session("session_to_reject_0000000001", reason="Holder rejected verification", expected_version=1)
     assert rejected.status == VerificationSessionStatus.REJECTED
     assert rejected.consent_status == "REJECTED"
     assert rejected.rejection_reason == "Holder rejected verification"
 
     # Reload from repo
-    loaded = repo.get_by_session_id("sess_to_reject")
+    loaded = repo.get_by_session_id("session_to_reject_0000000001")
     assert loaded is not None
     assert loaded.status == VerificationSessionStatus.REJECTED
     assert loaded.consent_status == "REJECTED"
@@ -130,20 +134,20 @@ def test_repository_reject_session_fails_if_not_found():
     repo = MongoVerificationSessionRepository(collection)
 
     with pytest.raises(SessionNotFoundError):
-        repo.reject_session("non_existent_sess", "Some reason")
+        repo.reject_session("session_non_existent_000000001", reason="Some reason", expected_version=1)
 
 
 def test_repository_reject_session_fails_if_already_consumed():
     collection = FakeCollection(unique_fields=("sessionId",))
     repo = MongoVerificationSessionRepository(collection)
 
-    session = _create_sample_session("sess_consumed")
-    repo.save(session)
+    session = _create_sample_session("session_consumed_00000000001")
+    repo.add(session)
 
-    repo.reject_session("sess_consumed", "First rejection")
+    repo.reject_session("session_consumed_00000000001", reason="First rejection", expected_version=1)
 
     with pytest.raises(SessionAlreadyConsumedError):
-        repo.reject_session("sess_consumed", "Duplicate rejection")
+        repo.reject_session("session_consumed_00000000001", reason="Duplicate rejection", expected_version=2)
 
 
 def test_oid4vp_service_reject_session_records_audit_event():
@@ -159,13 +163,13 @@ def test_oid4vp_service_reject_session_records_audit_event():
         status_list_service=DummyStatusListService(),  # type: ignore[arg-type]
     )
 
-    session = _create_sample_session("sess_service_reject")
-    session_repo.save(session)
+    session = _create_sample_session("session_service_reject_00001")
+    session_repo.add(session)
 
     rejected = service.reject_session(
-        session_id="sess_service_reject",
-        rejection_reason="Holder opted out of selective disclosure",
-        holder_did="did:key:z6MkuHolder123",
+        session_id="session_service_reject_00001",
+        reason="Holder opted out of selective disclosure",
+        actor_id="did:key:z6MkuHolder123",
     )
 
     assert rejected.status == VerificationSessionStatus.REJECTED
@@ -176,9 +180,9 @@ def test_oid4vp_service_reject_session_records_audit_event():
     assert len(audit_repo.events) == 1
     event = audit_repo.events[0]
     assert event.event_type is AuditEventType.CONSENT_REJECTED
-    assert event.details["sessionId"] == "sess_service_reject"
-    assert event.details["rejectionReason"] == "Holder opted out of selective disclosure"
-    assert event.details["holderDid"] == "did:key:z6MkuHolder123"
+    assert event.metadata["session_id"] == "session_service_reject_00001"
+    assert event.metadata["reason"] == "Holder opted out of selective disclosure"
+    assert event.actor_id == "did:key:z6MkuHolder123"
 
 
 def test_oid4vp_service_direct_post_calculates_data_minimization():
@@ -195,10 +199,10 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     )
 
     session = _create_sample_session(
-        session_id="sess_dp_minimization",
+        session_id="session_dp_minimization_0001",
         requested_fields=("affiliation", "degree", "programCode", "graduationYear"),
     )
-    session_repo.save(session)
+    session_repo.add(session)
 
     # Disclose only 2 of the 4 requested fields
     disclosed_claims = {
@@ -207,8 +211,16 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     }
 
     result = service.process_direct_post(
-        session_id="sess_dp_minimization",
-        vp_token={"type": ["VerifiablePresentation"], "verifiableCredential": []},
+        session_id="session_dp_minimization_0001",
+        vp_token={
+            "type": ["VerifiablePresentation"],
+            "verifiableCredential": [{
+                "id": "urn:uuid:test-cred-001",
+                "issuer": "did:web:issuer.example.com",
+                "credentialSubject": {"id": "did:key:z6MkuHolder123"},
+                "proof": {"type": "DataIntegrityProof", "proofValue": "mock_proof_val"},
+            }]
+        },
         disclosed_claims=disclosed_claims,
         ai_risk_score=10,
     )
@@ -222,7 +234,7 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     assert data_min["disclosureRatio"] == 0.5
 
     # Check session updated to GRANTED
-    updated_session = session_repo.get_by_session_id("sess_dp_minimization")
+    updated_session = session_repo.get_by_session_id("session_dp_minimization_0001")
     assert updated_session is not None
     assert updated_session.status == VerificationSessionStatus.VERIFIED
     assert updated_session.consent_status == "GRANTED"
@@ -230,5 +242,6 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     # Check CONSENT_GRANTED audit event
     consent_events = [e for e in audit_repo.events if e.event_type is AuditEventType.CONSENT_GRANTED]
     assert len(consent_events) == 1
-    assert consent_events[0].details["sessionId"] == "sess_dp_minimization"
-    assert consent_events[0].details["dataMinimization"]["disclosureRatio"] == 0.5
+    assert consent_events[0].metadata["session_id"] == "session_dp_minimization_0001"
+    assert consent_events[0].metadata["disclosed_claims_count"] == "2"
+    assert consent_events[0].metadata["hidden_fields_count"] == "2"

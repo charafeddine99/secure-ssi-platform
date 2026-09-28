@@ -139,7 +139,7 @@ class RevocationRuntime:
         )
         self.credential_repository.add(
             PersistedCredential(
-                id="64b64c0f0123456789abcdeg",
+                id="64b64c0f0123456789abcde0",
                 credential_id="urn:uuid:other-issuer-cred-999",
                 issuer_did="did:web:foreign-issuer.example",
                 holder_did="did:key:zholder2",

@@ -181,9 +181,7 @@ def revoke_credential(
     ),
 ) -> CredentialStatusResponse:
     caller_issuer_did = (
-        principal.id if principal.id.startswith("did:")
-        else "did:web:issuer.example.test" if principal.id == "usr_local_issuer"
-        else None
+        principal.id if principal.id.startswith("did:") else None
     )
     result = service.revoke(
         credential_id,
@@ -282,9 +280,7 @@ def credential_history(
     ),
 ) -> CredentialStatusHistoryResponse:
     caller_issuer_did = (
-        principal.id if principal.id.startswith("did:")
-        else "did:web:issuer.example.test" if principal.id == "usr_local_issuer"
-        else None
+        principal.id if principal.id.startswith("did:") else None
     )
     events = service.get_history(
         credential_id,
@@ -312,6 +308,7 @@ def credential_history(
             )
             for ev in events
         ],
+        total_events=len(events),
     )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 def _to_camel(value: str) -> str:
     head, *tail = value.split("_")
@@ -89,10 +89,18 @@ class DirectPostResponse(Oid4ApiModel):
     result: dict[str, Any]
 
 class RejectVerificationSessionRequest(Oid4ApiModel):
-    reason: str = Field(default="Consent rejected by user")
-    holder_did: str | None = None
+    reason: str = Field(
+        default="Consent rejected by user",
+        validation_alias=AliasChoices("reason", "rejectionReason", "rejection_reason"),
+    )
+    holder_did: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("holder_did", "holderDid"),
+    )
 
 class RejectVerificationSessionResponse(Oid4ApiModel):
     session_id: str
     status: str
+    consent_status: str = "REJECTED"
     reason: str
+    rejection_reason: str | None = None

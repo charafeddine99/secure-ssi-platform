@@ -1,0 +1,14 @@
+{
+  "pythonPlatform": "Windows",
+  "pythonVersion": "3.11",
+  "pythonPath": ".venv/Scripts/python.exe",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "./.venv/Lib/site-packages",
+    "./services/identity-service",
+    "./services/recovery-service",
+    "./services/api-gateway",
+    "./services/fraud-service"
+  ]
+}

@@ -163,9 +163,9 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
         json={"guardianId": guardian_ids[0], "challenge": challenge},
     )
     assert app1.status_code == 200, app1.text
-    app1_data = app1.json()
-    assert app1_data["state"] == "PENDING_APPROVALS"
-    assert app1_data["approvalsCount"] == 1
+    state1 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()
+    assert state1["state"] == "PENDING_APPROVALS"
+    assert state1["approvalCount"] == 1
 
     # Guardian 2 approves
     app2 = client.post(
@@ -174,9 +174,9 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
         json={"guardianId": guardian_ids[1], "challenge": challenge},
     )
     assert app2.status_code == 200, app2.text
-    app2_data = app2.json()
-    assert app2_data["state"] == "PENDING_APPROVALS"
-    assert app2_data["approvalsCount"] == 2
+    state2 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()
+    assert state2["state"] == "PENDING_APPROVALS"
+    assert state2["approvalCount"] == 2
 
     # Guardian 3 approves -> 3-of-5 Quorum reached! Reconstructs Shamir secret
     app3 = client.post(
@@ -185,10 +185,10 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
         json={"guardianId": guardian_ids[2], "challenge": challenge},
     )
     assert app3.status_code == 200, app3.text
-    app3_data = app3.json()
-    assert app3_data["state"] == "WAITING_TIMELOCK"
-    assert app3_data["approvalsCount"] == 3
-    assert app3_data["timelockExpiresAt"] is not None
+    state3 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()
+    assert state3["state"] == "WAITING_TIMELOCK"
+    assert state3["approvalCount"] == 3
+    assert state3["executableAfter"] is not None
 
     # -------------------------------------------------------------------------
     # STEP 5: Time-Lock Enforcement (Premature Execution Rejected)

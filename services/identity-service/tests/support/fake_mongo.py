@@ -190,6 +190,8 @@ class FakeDatabase:
         }
 
     def __getitem__(self, name: str) -> FakeCollection:
+        if name not in self.collections:
+            self.collections[name] = FakeCollection()
         return self.collections[name]
 
 

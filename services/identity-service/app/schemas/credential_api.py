@@ -132,6 +132,7 @@ class CredentialStatusHistoryResponse(ApiModel):
     credential_id: str
     current_status: CredentialStatus
     events: list[CredentialStatusEventResponse]
+    total_events: int = 0
 
 
 class CredentialVerificationChecksResponse(ApiModel):

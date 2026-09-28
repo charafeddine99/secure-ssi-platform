@@ -3,7 +3,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from pymongo import DESCENDING
+from pymongo import ASCENDING, DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import DuplicateKeyError, PyMongoError
 

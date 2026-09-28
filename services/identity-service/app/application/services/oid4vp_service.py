@@ -224,7 +224,7 @@ class Oid4vpService:
         # Status / Revocation Check (authoritative persistence + Bitstring Status List resolution)
         cred_id = target_vc.get("id", "")
         revocation_status_clear = True
-        persisted = self._credentials.get_by_credential_id(cred_id) if cred_id else None
+        persisted = self._credentials.get_by_credential_id(cred_id) if (self._credentials and cred_id) else None
         if persisted and (
             persisted.status.value == "REVOKED"
             or getattr(persisted.status, "name", "") == "REVOKED"
@@ -288,7 +288,8 @@ class Oid4vpService:
         disclosed_keys = [k for k in disclosed_dict.keys() if k != "id"]
         req_keys = list(session.requested_fields)
         hidden_keys = [k for k in req_keys if k not in disclosed_keys]
-        disclosure_ratio = f"{len(disclosed_keys)}/{len(req_keys)}" if req_keys else "N/A"
+        disclosure_ratio = round(len(disclosed_keys) / len(req_keys), 2) if req_keys else 1.0
+        status_minimization = "SELECTIVE_DISCLOSURE_APPLIED" if hidden_keys else "FULL_DISCLOSURE"
 
         result = NinePointVerificationResult(
             credential_valid=cred_valid,
@@ -308,6 +309,7 @@ class Oid4vpService:
                 "verifiedAt": now.isoformat(),
                 "verifierDid": session.verifier_did,
                 "dataMinimization": {
+                    "status": status_minimization,
                     "requestedFields": req_keys,
                     "disclosedFields": disclosed_keys,
                     "hiddenFields": hidden_keys,

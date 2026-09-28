@@ -135,7 +135,9 @@ def reject_verification_session(
     return RejectVerificationSessionResponse(
         session_id=session.session_id,
         status=session.status.value,
+        consent_status=session.consent_status or "REJECTED",
         reason=payload.reason,
+        rejection_reason=payload.reason,
     )
 
 @router.post(

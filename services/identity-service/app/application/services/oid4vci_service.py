@@ -214,22 +214,31 @@ class Oid4vciService:
         cred_uuid = f"urn:uuid:{secrets.token_hex(4)}-{secrets.token_hex(2)}-4{secrets.token_hex(2)[1:]}-a{secrets.token_hex(2)[1:]}-{secrets.token_hex(6)}"
 
         raw_subj = dict(offer.subject_data)
-        subject = {
+        subject: dict[str, Any] = {
             "id": holder_did,
-            "affiliation": raw_subj.get("affiliation", "student"),
-            "programCode": raw_subj.get("programCode", "SYN-CS-2026"),
-            "degree": raw_subj.get("degree", "Bachelor of Science"),
-            "graduationYear": int(raw_subj.get("graduationYear", 2026)),
+            **{k: v for k, v in raw_subj.items() if k not in ("id", "holder_did")},
         }
+        if "affiliation" not in subject:
+            subject["affiliation"] = "student"
+        if "programCode" not in subject:
+            subject["programCode"] = "SYN-CS-2026"
+        if "degree" not in subject:
+            subject["degree"] = "Bachelor of Science"
+        if "graduationYear" not in subject:
+            subject["graduationYear"] = 2026
 
         # 1. Build unsigned W3C VC payload adhering strictly to W3C VC 2.0 profile
+        vc_types = ["VerifiableCredential"]
+        if cred_type and cred_type != "VerifiableCredential":
+            vc_types.append(cred_type)
+
         unsigned_vc = {
             "@context": [
                 "https://www.w3.org/ns/credentials/v2",
                 "https://secure-ssi.example/contexts/university-affiliation/v1"
             ],
             "id": cred_uuid,
-            "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
+            "type": vc_types,
             "issuer": offer.issuer_did if offer.issuer_did.startswith("did:web:") else "did:web:synthetic-issuer.local",
             "validFrom": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "validUntil": (now + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ"),

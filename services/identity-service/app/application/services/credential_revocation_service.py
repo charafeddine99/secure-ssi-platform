@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import datetime
 from hashlib import sha256
+from typing import Any
 
 from app.application.ports.repositories import (
     AuditEventRepository,
