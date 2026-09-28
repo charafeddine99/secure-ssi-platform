@@ -24,6 +24,7 @@ from app.domain.persistence import (
 )
 from app.infrastructure.persistence.repositories import MongoAuditEventRepository
 from app.infrastructure.persistence.mappers import new_object_id
+from app.infrastructure.clients.fraud_client import fraud_client
 
 class Oid4vpService:
     def __init__(
@@ -166,7 +167,16 @@ class Oid4vpService:
         session_id: str,
         vp_token: dict[str, Any],
         disclosed_claims: dict[str, Any] | None = None,
-        ai_risk_score: int = 15,
+        ai_risk_score: int | None = 15,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+        device_fingerprint: str | None = None,
+        device_fingerprint_match: bool = True,
+        is_tor_or_proxy: bool = False,
+        failed_attempts: int = 0,
+        geo_distance_km: float = 0.0,
+        time_since_last_action_sec: float = 0.0,
+        presentation_frequency_10m: int = 1,
     ) -> NinePointVerificationResult:
         session = self.get_session(session_id)
         if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
@@ -258,8 +268,46 @@ class Oid4vpService:
         challenge_nonce = vp_proof.get("nonce") or vp_proof.get("challenge") or session.nonce
         challenge_valid = (challenge_nonce == session.nonce)
 
-        # AI Risk
-        ai_risk_level = "LOW" if ai_risk_score < 70 else "HIGH"
+        # Dynamic AI Fraud Threat Engine Evaluation (Section 13, 14, 15)
+        ai_reasons: list[str] = []
+        if ai_risk_score is None:
+            eval_res = fraud_client.evaluate_presentation_risk(
+                did=subject_id or session.verifier_did,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                failed_attempts=failed_attempts,
+                geo_distance_km=geo_distance_km,
+                time_since_last_action_sec=time_since_last_action_sec,
+                presentation_frequency_10m=presentation_frequency_10m,
+                device_fingerprint=device_fingerprint,
+                device_fingerprint_match=device_fingerprint_match,
+                is_tor_or_proxy=is_tor_or_proxy,
+            )
+            ai_risk_score = int(eval_res["risk_score"])
+            ai_reasons = eval_res.get("reasons", [])
+
+        # AI Risk Level Mapping
+        # 0-39: LOW (Allow)
+        # 40-69: MEDIUM (Step-Up Authentication Required)
+        # 70-84: HIGH (Manual Review / Rejected)
+        # 85-100: CRITICAL (Auto-Quarantine Triggered)
+        if ai_risk_score >= 85:
+            ai_risk_level = "CRITICAL"
+        elif ai_risk_score >= 70:
+            ai_risk_level = "HIGH"
+        elif ai_risk_score >= 40:
+            ai_risk_level = "MEDIUM"
+        else:
+            ai_risk_level = "LOW"
+
+        # Check existing blockchain anchor quarantine
+        is_already_quarantined = False
+        try:
+            from app.infrastructure.cache_and_anchor import blockchain_anchor
+            if subject_id and hasattr(blockchain_anchor, "is_quarantined"):
+                is_already_quarantined = blockchain_anchor.is_quarantined(subject_id)
+        except Exception:
+            is_already_quarantined = False
 
         # Blockchain Anchor
         blockchain_anchored = True
@@ -270,8 +318,9 @@ class Oid4vpService:
         except Exception:
             blockchain_anchored = True
 
-        # Final Policy Acceptance
-        policy_accepted = (
+        # STRICT INVARIANT: Cryptographic Failure Hierarchy (Section 15)
+        # Under NO circumstance can AI override cryptographic, expiration, or revocation failure.
+        crypto_valid = (
             cred_valid
             and issuer_trusted
             and sig_valid
@@ -279,9 +328,37 @@ class Oid4vpService:
             and expiry_valid
             and revocation_status_clear
             and challenge_valid
-            and ai_risk_level == "LOW"
+            and not is_already_quarantined
         )
-        final_policy = "ACCEPTED" if policy_accepted else "REJECTED"
+
+        quarantine_triggered = False
+        quarantine_reason = None
+
+        if not crypto_valid:
+            # Rejection due to cryptographic or trust failure
+            policy_accepted = False
+            final_policy = "REJECTED"
+        else:
+            # All cryptographic proofs are valid; evaluate adaptive AI policy
+            if ai_risk_level == "LOW":
+                policy_accepted = True
+                final_policy = "ACCEPTED"
+            elif ai_risk_level == "MEDIUM":
+                # Adaptive policy: Step-up authentication required; cannot pass unconditionally
+                policy_accepted = False
+                final_policy = "REJECTED"
+            else:  # HIGH or CRITICAL
+                policy_accepted = False
+                final_policy = "REJECTED"
+                if ai_risk_score >= 85:
+                    quarantine_triggered = True
+                    quarantine_reason = f"Automated AI threat engine quarantine (Risk Score: {ai_risk_score}/100)"
+                    try:
+                        from app.infrastructure.cache_and_anchor import blockchain_anchor
+                        if subject_id and hasattr(blockchain_anchor, "anchor_quarantine"):
+                            blockchain_anchor.anchor_quarantine(subject_id, quarantine_reason)
+                    except Exception:
+                        pass
 
         # Data minimization / selective disclosure breakdown
         disclosed_dict = dict(disclosed_claims or target_vc.get("credentialSubject", {}))
@@ -297,7 +374,7 @@ class Oid4vpService:
             signature_valid=sig_valid,
             holder_binding_valid=holder_binding_valid,
             expiration_valid=expiry_valid,
-            revocation_status_clear=revocation_status_clear,
+            revocation_status_clear=revocation_status_clear and not is_already_quarantined,
             challenge_valid=challenge_valid,
             ai_risk_level=ai_risk_level,
             ai_risk_score=ai_risk_score,
@@ -308,6 +385,7 @@ class Oid4vpService:
                 "credentialId": cred_id,
                 "verifiedAt": now.isoformat(),
                 "verifierDid": session.verifier_did,
+                "quarantineTriggered": quarantine_triggered,
                 "dataMinimization": {
                     "status": status_minimization,
                     "requestedFields": req_keys,
@@ -322,8 +400,10 @@ class Oid4vpService:
                     "signature": "Cryptographic proof mathematically valid" if sig_valid else "Proof invalid",
                     "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else "Holder mismatch",
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
-                    "revocation": "Status slot is active (unrevoked)" if revocation_status_clear else "Status slot is marked REVOKED in Bitstring Status List",
+                    "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
                     "challenge": "Nonce match confirmed" if challenge_valid else "Nonce mismatch",
+                    "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
+                    "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
                 },
             }
         )
@@ -341,34 +421,58 @@ class Oid4vpService:
             expected_version=session.version
         )
 
-        # Append CONSENT_GRANTED audit event
-        self._audits.append(
-            AuditEvent(
-                id=new_object_id(),
-                event_type=AuditEventType.CONSENT_GRANTED,
-                subject_id=session.session_id,
-                actor_id=subject_id or "did:key:holder_anonymous",
-                correlation_id=f"oid4vp:{session.session_id}",
-                metadata={
-                    "session_id": session.session_id,
-                    "verifier_did": session.verifier_did,
-                    "disclosed_claims_count": str(len(disclosed_keys)),
-                    "disclosed_fields": ",".join(disclosed_keys),
-                    "hidden_fields_count": str(len(hidden_keys)),
-                    "purpose": session.purpose,
-                    "protocol": "OID4VP-1.0",
-                },
-                created_at=now,
-                updated_at=now,
-                version=1,
+        # Append CONSENT_GRANTED audit event only if accepted
+        if policy_accepted:
+            self._audits.append(
+                AuditEvent(
+                    id=new_object_id(),
+                    event_type=AuditEventType.CONSENT_GRANTED,
+                    subject_id=session.session_id,
+                    actor_id=subject_id or "did:key:holder_anonymous",
+                    correlation_id=f"oid4vp:{session.session_id}",
+                    metadata={
+                        "session_id": session.session_id,
+                        "verifier_did": session.verifier_did,
+                        "disclosed_claims_count": str(len(disclosed_keys)),
+                        "disclosed_fields": ",".join(disclosed_keys),
+                        "hidden_fields_count": str(len(hidden_keys)),
+                        "purpose": session.purpose,
+                        "protocol": "OID4VP-1.0",
+                    },
+                    created_at=now,
+                    updated_at=now,
+                    version=1,
+                )
             )
-        )
 
-        # Append VC_VERIFIED audit event
+        # Append WALLET_LOCKED audit event if quarantine triggered
+        if quarantine_triggered:
+            self._audits.append(
+                AuditEvent(
+                    id=new_object_id(),
+                    event_type=AuditEventType.WALLET_LOCKED,
+                    subject_id=subject_id or session.session_id,
+                    actor_id=session.verifier_did,
+                    correlation_id=f"oid4vp:{session.session_id}",
+                    metadata={
+                        "session_id": session.session_id,
+                        "reason": quarantine_reason or "AI threat auto-quarantine triggered",
+                        "ai_risk_score": str(ai_risk_score),
+                        "risk_level": ai_risk_level,
+                        "protocol": "OID4VP-1.0",
+                    },
+                    created_at=now,
+                    updated_at=now,
+                    version=1,
+                )
+            )
+
+        # Append VC_VERIFIED / PRESENTATION_REJECTED audit event
+        audit_event_type = AuditEventType.VC_VERIFIED if policy_accepted else AuditEventType.PRESENTATION_REJECTED
         self._audits.append(
             AuditEvent(
                 id=new_object_id(),
-                event_type=AuditEventType.VC_VERIFIED,
+                event_type=audit_event_type,
                 subject_id=cred_id or presentation_id,
                 actor_id=session.verifier_did,
                 correlation_id=f"oid4vp:{session.session_id}",
@@ -376,6 +480,8 @@ class Oid4vpService:
                     "session_id": session.session_id,
                     "policy_result": final_policy,
                     "ai_risk_score": str(ai_risk_score),
+                    "ai_risk_level": ai_risk_level,
+                    "quarantine_triggered": str(quarantine_triggered),
                     "protocol": "OID4VP-1.0"
                 },
                 created_at=now,
@@ -383,5 +489,22 @@ class Oid4vpService:
                 version=1
             )
         )
+
+        # Best-effort event ingestion reporting to Fraud Service
+        try:
+            fraud_client.report_event(
+                event_type="CREDENTIAL_PRESENTED" if policy_accepted else "VERIFICATION_FAILED",
+                did=subject_id or session.verifier_did,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                device_fingerprint=device_fingerprint,
+                metadata={
+                    "session_id": session.session_id,
+                    "policy_result": final_policy,
+                    "ai_risk_score": ai_risk_score,
+                },
+            )
+        except Exception:
+            pass
 
         return result

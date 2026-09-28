@@ -62,6 +62,24 @@ class BlockchainAnchorClient:
         })
         return rev_hash
 
+    def anchor_quarantine(self, target_did: str, reason: str) -> str:
+        raw_rec = f"QUARANTINE:{target_did}:{reason}".encode("utf-8")
+        q_hash = "0x" + hashlib.sha256(raw_rec).hexdigest()
+        self._anchored_events.append({
+            "type": "QUARANTINE_ANCHOR",
+            "target_did": target_did,
+            "q_hash": q_hash,
+            "reason": reason,
+            "timestamp": time.time()
+        })
+        return q_hash
+
+    def is_quarantined(self, target_did: str) -> bool:
+        return any(
+            e.get("type") == "QUARANTINE_ANCHOR" and e.get("target_did") == target_did
+            for e in self._anchored_events
+        )
+
 # Global cache instance
 status_cache = CredentialStatusCache()
 blockchain_anchor = BlockchainAnchorClient()

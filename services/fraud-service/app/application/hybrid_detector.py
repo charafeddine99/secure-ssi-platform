@@ -92,7 +92,7 @@ class HybridFraudDetector:
         """
         Autoencoder: Normal davranış profiline göre rekonstrüksiyon hatası.
         """
-        weights = [0.30, 0.25, 0.15, 0.15, 0.15]
+        weights = [0.25, 0.25, 0.20, 0.15, 0.15]
         recon_error = math.sqrt(sum(w * (f ** 2) for w, f in zip(weights, features)))
         # Sigmoid anomali skoru
         ae_score = 1.0 / (1.0 + math.exp(-8.0 * (recon_error - 0.25)))
@@ -103,13 +103,17 @@ class HybridFraudDetector:
         XGBoost: Karar kuralları ve özellik etkileşim skoru.
         """
         geo, fail, freq, dev, proxy = features
-        raw_score = (0.35 * geo) + (0.30 * fail) + (0.15 * freq) + (0.15 * dev) + (0.25 * proxy)
+        raw_score = (0.35 * geo) + (0.30 * fail) + (0.25 * freq) + (0.15 * dev) + (0.30 * proxy)
 
         # Çoklu risk kombinasyonları çarpanı (Adversarial pattern)
         if geo > 0.8 and dev > 0.5:
             raw_score += 0.30
         if fail > 0.6 and freq > 0.4:
             raw_score += 0.25
+        if freq > 0.7:
+            raw_score += 0.35
+        if proxy > 0.7:
+            raw_score += 0.20
 
         xgb_score = 1.0 - math.exp(-2.5 * raw_score)
         return round(min(max(xgb_score, 0.0), 1.0), 4)

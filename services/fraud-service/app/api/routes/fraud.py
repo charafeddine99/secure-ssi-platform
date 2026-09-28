@@ -1,12 +1,19 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status
 from app.schemas.fraud import (
     FraudEvaluationRequest,
     FraudEvaluationResponse,
     QuarantineRequest,
     QuarantineResponse,
-    ModelStatsResponse
+    ModelStatsResponse,
+    PlatformSecurityEvent,
+    EventIngestionResponse,
+    EventBatchIngestionRequest,
+    EventBatchIngestionResponse,
 )
 from app.application.hybrid_detector import detector
+from app.ml.feature_store import feature_store
+from app.ml.synthetic_dataset import generate_synthetic_ssi_dataset, calculate_evaluation_metrics
 
 router = APIRouter(prefix="/api/v1/fraud", tags=["Fraud Detection & Security"])
 
@@ -85,3 +92,121 @@ async def release_account_quarantine(did: str):
             detail=f"{did} tanımlayıcısına sahip aktif bir karantina kaydı bulunamadı."
         )
     return {"did": did, "status": "RELEASED", "message": "Hesap karantinadan çıkarıldı."}
+
+
+@router.post(
+    "/events",
+    response_model=EventIngestionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Platform güvenlik olayını (Section 14) Feature Store'a kaydeder"
+)
+async def ingest_security_event(event: PlatformSecurityEvent):
+    """
+    Section 14 olaylarını (LOGIN, LOGIN_FAILED, CREDENTIAL_PRESENTED, vb.) Feature Store'a kaydeder
+    ve anlık kayan pencere (sliding-window) davranış özetini döner.
+    """
+    summary = feature_store.ingest_event(
+        event_id=event.event_id,
+        event_type=event.event_type,
+        did=event.did,
+        client_ip=event.client_ip,
+        user_agent=event.user_agent,
+        device_fingerprint=event.device_fingerprint,
+        timestamp=event.timestamp,
+        metadata=event.metadata,
+    )
+
+    # Otomatik karantina kuralı: 10 dakikada 5'ten fazla başarısız deneme
+    if summary.get("failed_attempts", 0) >= 5:
+        detector.quarantine(event.did, f"Kritik sayıda başarısız oturum denemesi ({summary['failed_attempts']} kez)")
+
+    return EventIngestionResponse(
+        status="INGESTED",
+        event_id=event.event_id,
+        did=event.did,
+        event_type=event.event_type,
+        sliding_window_summary=summary,
+        ingested_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.post(
+    "/events/batch",
+    response_model=EventBatchIngestionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Toplu platform güvenlik olaylarını Feature Store'a aktarır"
+)
+async def ingest_batch_security_events(batch: EventBatchIngestionRequest):
+    for event in batch.events:
+        summary = feature_store.ingest_event(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            did=event.did,
+            client_ip=event.client_ip,
+            user_agent=event.user_agent,
+            device_fingerprint=event.device_fingerprint,
+            timestamp=event.timestamp,
+            metadata=event.metadata,
+        )
+        if summary.get("failed_attempts", 0) >= 5:
+            detector.quarantine(event.did, f"Kritik sayıda başarısız deneme ({summary['failed_attempts']} kez)")
+
+    return EventBatchIngestionResponse(
+        status="BATCH_INGESTED",
+        ingested_count=len(batch.events),
+        ingested_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get(
+    "/history/{did}",
+    summary="Bir DID'nin kayan pencere davranışsal metriklerini döner"
+)
+async def get_did_behavioral_history(did: str):
+    features = feature_store.get_features(did)
+    return {
+        "did": did,
+        "features": features,
+        "is_quarantined": detector.is_quarantined(did),
+    }
+
+
+@router.get(
+    "/dataset/metrics",
+    summary="1000 örnekli sentetik veri kümesi üzerinde model başarı metriklerini hesaplar"
+)
+async def evaluate_synthetic_dataset():
+    """
+    Master Implementation Plan Bölüm 14 gereksinimi:
+    Sentetik veri seti (1000 örnek) üzerinde Precision, Recall, F1, ROC-AUC ve Confusion Matrix hesaplar.
+    """
+    df = generate_synthetic_ssi_dataset(n_samples=1000, fraud_ratio=0.30, seed=42)
+    y_true = df["is_fraudulent"].to_numpy()
+
+    y_probs = []
+    y_preds = []
+
+    for idx, row in df.iterrows():
+        req = FraudEvaluationRequest(
+            did=f"did:key:z6MkuSynthetic_{idx}",
+            action="presentation_verification",
+            client_ip="185.220.101.5" if row["is_tor_or_proxy"] else "192.168.1.100",
+            user_agent="SyntheticAgent",
+            failed_attempts=int(row["failed_attempts"]),
+            geo_distance_km=float(row["geo_distance_km"]),
+            time_since_last_action_sec=float(row["time_since_last_action_sec"]),
+            presentation_frequency_10m=int(row["presentation_frequency_10m"]),
+            device_fingerprint_match=bool(row["device_fingerprint_match"]),
+            is_tor_or_proxy=bool(row["is_tor_or_proxy"]),
+        )
+        res = detector.evaluate(req)
+        score = res.risk_score
+        y_probs.append(score)
+        y_preds.append(1 if score >= 0.50 else 0)
+
+    import numpy as np
+    metrics = calculate_evaluation_metrics(y_true, np.array(y_preds), np.array(y_probs))
+    metrics["model_version"] = "hybrid-xgboost-ae-v1.3.0"
+    metrics["dataset_description"] = "1000 samples (700 normal, 300 multi-attack synthetic events)"
+    return metrics
+

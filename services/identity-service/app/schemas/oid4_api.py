@@ -82,7 +82,16 @@ class DirectPostRequest(Oid4ApiModel):
     session_id: str
     vp_token: dict[str, Any]
     disclosed_claims: dict[str, Any] | None = None
-    ai_risk_score: int = 15
+    ai_risk_score: int | None = 15
+    client_ip: str | None = None
+    user_agent: str | None = None
+    device_fingerprint: str | None = None
+    device_fingerprint_match: bool = True
+    is_tor_or_proxy: bool = False
+    failed_attempts: int = 0
+    geo_distance_km: float = 0.0
+    time_since_last_action_sec: float = 0.0
+    presentation_frequency_10m: int = 1
 
 class DirectPostResponse(Oid4ApiModel):
     status: str

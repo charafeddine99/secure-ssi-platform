@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 class FraudEvaluationRequest(BaseModel):
@@ -59,3 +59,37 @@ class ModelStatsResponse(BaseModel):
     latency_ms_avg: float = 4.2
     model_quantization: str = "FP16"
     last_trained: str
+
+
+class PlatformSecurityEvent(BaseModel):
+    event_id: str = Field(..., description="Tekil olay kimliği (UUID)")
+    event_type: str = Field(
+        ...,
+        description="Olay türü: LOGIN, LOGIN_FAILED, WALLET_CREATED, CREDENTIAL_RECEIVED, CREDENTIAL_PRESENTED, VERIFICATION_FAILED, RECOVERY_STARTED, KEY_ROTATED, REVOKED",
+    )
+    did: str = Field(..., description="İlgili Holder veya kullanıcı DID'si")
+    client_ip: str = Field("127.0.0.1", description="Kaynak IP adresi")
+    user_agent: str = Field("Mozilla/5.0", description="İstemci User-Agent")
+    device_fingerprint: str = Field("default-device", description="Cihaz parmak izi")
+    timestamp: Optional[float] = Field(None, description="Unix zaman damgası")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Ek bağlam bilgileri")
+
+
+class EventIngestionResponse(BaseModel):
+    status: str = "INGESTED"
+    event_id: str
+    did: str
+    event_type: str
+    sliding_window_summary: Dict[str, Any]
+    ingested_at: str
+
+
+class EventBatchIngestionRequest(BaseModel):
+    events: List[PlatformSecurityEvent]
+
+
+class EventBatchIngestionResponse(BaseModel):
+    status: str = "BATCH_INGESTED"
+    ingested_count: int
+    ingested_at: str
+

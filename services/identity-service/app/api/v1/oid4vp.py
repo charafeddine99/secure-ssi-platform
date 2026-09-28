@@ -157,6 +157,15 @@ def submit_direct_post(
             vp_token=payload.vp_token,
             disclosed_claims=payload.disclosed_claims,
             ai_risk_score=payload.ai_risk_score,
+            client_ip=payload.client_ip,
+            user_agent=payload.user_agent,
+            device_fingerprint=payload.device_fingerprint,
+            device_fingerprint_match=payload.device_fingerprint_match,
+            is_tor_or_proxy=payload.is_tor_or_proxy,
+            failed_attempts=payload.failed_attempts,
+            geo_distance_km=payload.geo_distance_km,
+            time_since_last_action_sec=payload.time_since_last_action_sec,
+            presentation_frequency_10m=payload.presentation_frequency_10m,
         )
     except SessionNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
