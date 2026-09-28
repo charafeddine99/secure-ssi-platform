@@ -1,12 +1,48 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { KeyRound, Shield, Eye, EyeOff, Users, Copy, Check } from "lucide-react";
+import { StatusChip } from "../../components/common/StatusChip";
+import {
+  fetchRecoveryPolicy,
+  fetchGuardians,
+  fetchRecoveryRequests,
+  initiateRecoveryRequest,
+  cancelRecoveryRequest,
+  RecoveryPolicy,
+  RecoveryRequest,
+  BackendGuardian
+} from "../../services/api";
+import {
+  KeyRound,
+  Shield,
+  Eye,
+  EyeOff,
+  Users,
+  Copy,
+  Check,
+  AlertTriangle,
+  RotateCcw,
+  ShieldAlert,
+  Clock,
+  XCircle,
+  RefreshCw
+} from "lucide-react";
 
 export const SecuritySettingsPage: React.FC = () => {
   const { user } = useAuth();
   const [showSeed, setShowSeed] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Recovery State
+  const [policy, setPolicy] = useState<RecoveryPolicy | null>(null);
+  const [guardiansList, setGuardiansList] = useState<BackendGuardian[]>([]);
+  const [activePetition, setActivePetition] = useState<RecoveryRequest | null>(null);
+  const [loadingRecovery, setLoadingRecovery] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryReason, setRecoveryReason] = useState("ACCOUNT_COMPROMISE");
+  const [customReason, setCustomReason] = useState("");
+  const [submittingRecovery, setSubmittingRecovery] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const seedPhrase = user?.seedPhrase || "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard";
 
@@ -16,11 +52,76 @@ export const SecuritySettingsPage: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const guardians = [
-    { name: "Family Guardian", address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", role: "Primary Trusted Contact" },
-    { name: "Institutional Notary", address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", role: "Accredited Recovery Agent" },
-    { name: "Hardware Security Vault", address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", role: "Offline Cold Signer" }
-  ];
+  const loadRecoveryData = async () => {
+    setLoadingRecovery(true);
+    try {
+      const walletId = "wallet_holder_primary";
+      const [pol, guards, reqs] = await Promise.all([
+        fetchRecoveryPolicy(walletId),
+        fetchGuardians(),
+        fetchRecoveryRequests(10)
+      ]);
+      setPolicy(pol);
+      setGuardiansList(guards);
+
+      const active = reqs.find(
+        (r) => r.status === "PENDING" || r.status === "TIMELOCKED" || r.status === "APPROVED"
+      );
+      setActivePetition(active || null);
+    } catch (err: any) {
+      console.warn("Could not load recovery configuration:", err);
+    } finally {
+      setLoadingRecovery(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRecoveryData();
+  }, []);
+
+  const handleInitiateRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingRecovery(true);
+    setStatusMsg(null);
+    try {
+      const reasonText = customReason.trim() || recoveryReason;
+      const res = await initiateRecoveryRequest({
+        walletId: "wallet_holder_primary",
+        reason: reasonText
+      });
+      setStatusMsg({
+        type: "success",
+        text: `Emergency recovery petition ${res.requestId} successfully created. Guardians notified.`
+      });
+      setShowRecoveryModal(false);
+      await loadRecoveryData();
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err.message || "Failed to initiate recovery petition."
+      });
+    } finally {
+      setSubmittingRecovery(false);
+    }
+  };
+
+  const handleCancelRecovery = async () => {
+    if (!activePetition) return;
+    setStatusMsg(null);
+    try {
+      await cancelRecoveryRequest(activePetition.requestId);
+      setStatusMsg({
+        type: "success",
+        text: `Recovery petition ${activePetition.requestId} cancelled.`
+      });
+      await loadRecoveryData();
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err.message || "Failed to cancel recovery petition."
+      });
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -59,6 +160,82 @@ export const SecuritySettingsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {statusMsg && (
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "8px",
+            backgroundColor: statusMsg.type === "success" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+            border: `1px solid ${statusMsg.type === "success" ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+            color: statusMsg.type === "success" ? "#34d399" : "#f87171",
+            fontSize: "0.85rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}
+        >
+          {statusMsg.type === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}
+          {statusMsg.text}
+        </div>
+      )}
+
+      {/* Active Recovery Petition Warning Banner */}
+      {activePetition && (
+        <div
+          style={{
+            backgroundColor: "#1c1917",
+            borderRadius: "14px",
+            border: "1px solid #d97706",
+            padding: "18px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "14px"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+            <AlertTriangle size={22} color="#f59e0b" style={{ flexShrink: 0, marginTop: "2px" }} />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontWeight: 700, color: "#ffffff", fontSize: "0.95rem" }}>
+                  Active Recovery Petition: {activePetition.requestId}
+                </span>
+                <StatusChip status={activePetition.status} size="sm" />
+              </div>
+              <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "#cbd5e1" }}>
+                Approvals: <strong>{activePetition.approvalsCount} of {activePetition.requiredCount}</strong>
+                {activePetition.timelockExpiresAt && (
+                  <span style={{ color: "#fbbf24", marginLeft: "8px" }}>
+                    • Time-lock active until {new Date(activePetition.timelockExpiresAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleCancelRecovery}
+            style={{
+              padding: "8px 14px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(239, 68, 68, 0.2)",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              color: "#f87171",
+              fontSize: "0.8rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            <XCircle size={14} />
+            Cancel Recovery
+          </button>
+        </div>
+      )}
 
       {/* 12-Word Seed Backup */}
       <div
@@ -185,7 +362,7 @@ export const SecuritySettingsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Configured Social Guardians */}
+      {/* Social Guardian Recovery (Shamir SSS M-of-N Policy) */}
       <div
         style={{
           backgroundColor: "#111827",
@@ -194,42 +371,254 @@ export const SecuritySettingsPage: React.FC = () => {
           padding: "20px"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Users size={18} color="#fbbf24" />
             <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              EIP-4337 Social Guardians (2-of-3 Quorum)
+              Guardian Social Recovery (3-of-5 Shamir Secret Sharing)
             </h3>
           </div>
-          <span style={{ fontSize: "0.7rem", color: "#34d399", fontWeight: 600 }}>
-            Configured on EVM
-          </span>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "0.7rem", color: "#34d399", fontWeight: 600 }}>
+              Threshold: {policy?.minimumApprovals || 3}-of-{policy?.maximumGuardians || 5}
+            </span>
+
+            {!activePetition && (
+              <button
+                onClick={() => setShowRecoveryModal(true)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "#dc2626",
+                  color: "#ffffff",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}
+              >
+                <ShieldAlert size={13} />
+                Initiate Emergency Recovery
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Policy Specs Grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "10px",
+            marginBottom: "16px",
+            fontSize: "0.75rem",
+            backgroundColor: "#0d131f",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid #1f2937"
+          }}
+        >
+          <div>
+            <span style={{ color: "#94a3b8" }}>Quorum Threshold:</span>
+            <div style={{ color: "#60a5fa", fontWeight: 600, marginTop: "2px" }}>
+              {policy?.minimumApprovals || 3} of {policy?.maximumGuardians || 5} Signatures
+            </div>
+          </div>
+          <div>
+            <span style={{ color: "#94a3b8" }}>Time-Lock Delay:</span>
+            <div style={{ color: "#fbbf24", fontWeight: 600, marginTop: "2px" }}>
+              {policy?.timeLockSeconds || 300} seconds (5 min)
+            </div>
+          </div>
+          <div>
+            <span style={{ color: "#94a3b8" }}>Approval Window:</span>
+            <div style={{ color: "#34d399", fontWeight: 600, marginTop: "2px" }}>
+              {(policy?.approvalWindowSeconds || 3600) / 60} minutes
+            </div>
+          </div>
+          <div>
+            <span style={{ color: "#94a3b8" }}>Anti-Compromise:</span>
+            <div style={{ color: "#c084fc", fontWeight: 600, marginTop: "2px" }}>
+              Predecessor Key Invalidated
+            </div>
+          </div>
+        </div>
+
+        {/* Guardians List */}
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {guardians.map((g, i) => (
+          {guardiansList.map((g, i) => (
             <div
               key={i}
               style={{
                 backgroundColor: "#0d131f",
-                padding: "10px 12px",
+                padding: "10px 14px",
                 borderRadius: "8px",
-                border: "1px solid #1f2937"
+                border: "1px solid #1f2937",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "8px"
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
-                  {g.name}
-                </span>
-                <span style={{ fontSize: "0.7rem", color: "#60a5fa" }}>{g.role}</span>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
+                    {g.guardian_name}
+                  </span>
+                  <span style={{ fontSize: "0.7rem", color: "#60a5fa" }}>({g.guardian_role})</span>
+                </div>
+                <div style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#94a3b8", marginTop: "2px" }}>
+                  {g.guardian_address}
+                </div>
               </div>
-              <div style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#94a3b8", marginTop: "2px" }}>
-                {g.address}
-              </div>
+              <span
+                style={{
+                  fontSize: "0.68rem",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "rgba(16, 185, 129, 0.15)",
+                  color: "#34d399",
+                  fontWeight: 600
+                }}
+              >
+                ENROLLED (SHAMIR SHARE ACTIVE)
+              </span>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Emergency Recovery Initiation Modal */}
+      {showRecoveryModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px"
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#111827",
+              borderRadius: "16px",
+              border: "1px solid #dc2626",
+              padding: "24px",
+              maxWidth: "500px",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <ShieldAlert size={24} color="#ef4444" />
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+                Initiate Sovereign Social Recovery
+              </h3>
+            </div>
+
+            <p style={{ fontSize: "0.85rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
+              Triggering recovery will generate a 128-bit authorization secret challenge. Your assigned guardians must contribute their Shamir polynomial shares. Upon reaching <strong>3-of-5 quorum</strong> and completing the <strong>300s time-lock delay</strong>, your active presentation key will be rotated and marked <code>COMPROMISED</code>.
+            </p>
+
+            <form onSubmit={handleInitiateRecovery} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label style={{ fontSize: "0.8rem", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
+                  Incident Classification:
+                </label>
+                <select
+                  value={recoveryReason}
+                  onChange={(e) => setRecoveryReason(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    backgroundColor: "#0d131f",
+                    border: "1px solid #374151",
+                    color: "#f8fafc",
+                    fontSize: "0.85rem"
+                  }}
+                >
+                  <option value="ACCOUNT_COMPROMISE">Private Key Compromise / Extraction</option>
+                  <option value="LOST_ACCESS">Device Hardware Loss / Theft</option>
+                  <option value="SUSPECTED_FRAUD">Suspicious Cryptographic Activity</option>
+                  <option value="ROUTINE_ROTATION">Scheduled Key Lifecycle Rotation</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "0.8rem", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
+                  Additional Incident Details (Optional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Device lost while traveling abroad"
+                  value={customReason}
+                  onChange={(e) => setCustomReason(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    backgroundColor: "#0d131f",
+                    border: "1px solid #374151",
+                    color: "#f8fafc",
+                    fontSize: "0.85rem",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowRecoveryModal(false)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    backgroundColor: "#1f2937",
+                    border: "1px solid #374151",
+                    color: "#94a3b8",
+                    fontSize: "0.85rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRecovery}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "8px",
+                    backgroundColor: "#dc2626",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "0.85rem",
+                    fontWeight: 700,
+                    cursor: submittingRecovery ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {submittingRecovery ? "Initiating..." : "Confirm & Broadcast Petition"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

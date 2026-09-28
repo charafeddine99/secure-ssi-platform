@@ -176,7 +176,11 @@ async def proxy_fraud(path: str, request: Request):
 @router.api_route("/recovery/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_recovery(path: str, request: Request):
     normalized = path.lstrip("/")
-    target = f"{RECOVERY_SERVICE_URL}/api/v1/recovery/{normalized}"
+    # Handle /recovery/guardians routing directly to recovery service /api/v1/guardians
+    if normalized.startswith("guardians"):
+        target = f"{RECOVERY_SERVICE_URL}/api/v1/{normalized}"
+    else:
+        target = f"{RECOVERY_SERVICE_URL}/api/v1/recovery/{normalized}"
     resp = await forward_request(target, request)
     if resp.status_code == 404:
         fallback_target = f"{RECOVERY_SERVICE_URL}/api/{normalized}"
@@ -184,3 +188,15 @@ async def proxy_recovery(path: str, request: Request):
         if fallback_resp.status_code != 404:
             return fallback_resp
     return resp
+
+# 3.1 Direct Guardians Proxy
+@router.api_route("/guardians", methods=["GET", "POST"])
+@router.api_route("/guardians/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_guardians(request: Request, path: str = ""):
+    normalized = path.lstrip("/")
+    if normalized:
+        target = f"{RECOVERY_SERVICE_URL}/api/v1/guardians/{normalized}"
+    else:
+        target = f"{RECOVERY_SERVICE_URL}/api/v1/guardians"
+    return await forward_request(target, request)
+

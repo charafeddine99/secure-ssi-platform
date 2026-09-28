@@ -182,6 +182,10 @@ DID signature, so the API must not be described as cryptographic
 multisignature. Full state, security, and response-boundary details are in
 [account-recovery.md](account-recovery.md).
 
+All recovery endpoints are proxied through API Gateway (`http://localhost:8000`):
+- `/api/v1/recovery/*` -> `http://recovery-service:8003/api/v1/recovery/*`
+- `/api/v1/recovery/guardians` & `/api/v1/guardians/*` -> `http://recovery-service:8003/api/v1/guardians/*`
+
 ## Implemented OID4VP & Holder Consent API
 
 | Method and path | Policy | Responsibility | Result |

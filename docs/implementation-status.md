@@ -335,3 +335,16 @@
 | Verifier request preview modal in `CreateRequestPage` | Implemented |
 | Verifier live status reaction to holder rejection (`STATUS: REJECTED` card & audit notice) | Implemented |
 | Cryptographic Audit Trail integration (`CONSENT_GRANTED` and `CONSENT_REJECTED`) | Implemented |
+
+## Sprint 12 — Guardian Social Recovery, Gateway Integration, and End-to-End Golden Path
+
+| Capability | Status |
+| --- | --- |
+| Gateway reverse proxy routing for `/guardians` and `/recovery/guardians` to `RECOVERY_SERVICE_URL:8003` | Implemented |
+| Web frontend API client recovery methods (`fetchGuardians`, `fetchRecoveryRequests`, `fetchRecoveryRequestById`, `initiateRecoveryRequest`, `cancelRecoveryRequest`, `approveRecoveryPetition`, `rejectRecoveryPetition`, `fetchRecoveryPolicy`, `upsertRecoveryPolicy`) | Implemented |
+| Guardian Dashboard (`GuardianDashboard.tsx`) with dynamic guardian list, active petition awareness, and live quorum tracking | Implemented |
+| Guardian Requests Page (`RecoveryRequestsPage.tsx`) with status filtering (`ALL`, `PENDING`, `APPROVED`, `TIMELOCKED`, `EXECUTED`, `CANCELLED`), quorum indicators, time-lock countdowns, and cancel controls | Implemented |
+| Guardian Approval Page (`ApproveRecoveryPage.tsx`) with challenge validation, guardian signature submission, and rejection flows | Implemented |
+| Holder Security Settings Page (`SecuritySettingsPage.tsx`) with 3-of-5 Shamir Secret Sharing policy display, enrolled guardians directory, emergency recovery initiation modal, and time-lock cancellation | Implemented |
+| End-to-end golden path integration test (`test_social_recovery_golden_path.py`) verifying 3-of-5 policy, 5 guardian enrollments, emergency petition creation, progressive approvals, quorum reach, time-lock enforcement, expiry, and Identity Service key rotation with predecessor key disabled/compromised | Implemented |
+

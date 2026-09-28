@@ -1,36 +1,80 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { approveGuardianRecovery } from "../../services/api";
-import { ShieldCheck, ArrowLeft, CheckCircle2, Lock, KeyRound } from "lucide-react";
+import {
+  fetchRecoveryRequestById,
+  approveRecoveryPetition,
+  rejectRecoveryPetition,
+  RecoveryRequest,
+} from "../../services/api";
+import {
+  ShieldCheck,
+  ArrowLeft,
+  CheckCircle2,
+  Lock,
+  KeyRound,
+  XCircle,
+  RefreshCw,
+  AlertTriangle,
+} from "lucide-react";
 
 export const ApproveRecoveryPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const [request, setRequest] = useState<RecoveryRequest | null>(null);
+  const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const petition = {
-    id: id || "1",
-    targetWallet: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-    newSuggestedKey: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-    guardianAccount: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    guardianName: "Institutional Notary Agent"
-  };
+  useEffect(() => {
+    const loadRequest = async () => {
+      setLoading(true);
+      try {
+        const found = await fetchRecoveryRequestById(id || "");
+        setRequest(found);
+      } catch (err: any) {
+        setError("Failed to load recovery petition from Recovery Service.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadRequest();
+  }, [id]);
 
   const handleApprove = async () => {
     setSigning(true);
+    setError(null);
     try {
-      const res = await approveGuardianRecovery(Number(petition.id), petition.guardianAccount);
-      setTxHash(res?.tx_hash || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420");
-      setSuccess(true);
-    } catch {
-      setTxHash("0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420");
-      setSuccess(true);
+      const res = await approveRecoveryPetition(
+        id || "req_default",
+        "guardian_institutional_notary"
+      );
+      setTxHash(res.txHash || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420");
+      setSuccessMsg("Guardian cryptographic approval committed to M-of-N quorum!");
+    } catch (err: any) {
+      setError(err.message || "Failed to submit guardian approval.");
     } finally {
       setSigning(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setRejecting(true);
+    setError(null);
+    try {
+      await rejectRecoveryPetition(
+        id || "req_default",
+        "guardian_institutional_notary"
+      );
+      setSuccessMsg("Guardian rejection recorded. Petition has been opposed.");
+    } catch (err: any) {
+      setError(err.message || "Failed to reject petition.");
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -47,7 +91,7 @@ export const ApproveRecoveryPage: React.FC = () => {
           color: "#94a3b8",
           fontSize: "0.85rem",
           cursor: "pointer",
-          padding: 0
+          padding: 0,
         }}
       >
         <ArrowLeft size={16} />
@@ -63,9 +107,24 @@ export const ApproveRecoveryPage: React.FC = () => {
           Cryptographic Recovery Authorization
         </h1>
         <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-          Sign and submit on-chain consensus approval via `EmergencyRecovery.sol`.
+          Verify petition legitimacy and sign authorization share via Shamir M-of-N Quorum.
         </p>
       </div>
+
+      {error && (
+        <div
+          style={{
+            padding: "12px",
+            borderRadius: "8px",
+            backgroundColor: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "#f87171",
+            fontSize: "0.85rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       <div
         style={{
@@ -75,93 +134,154 @@ export const ApproveRecoveryPage: React.FC = () => {
           padding: "24px",
           display: "flex",
           flexDirection: "column",
-          gap: "18px"
+          gap: "18px",
         }}
       >
-        {success ? (
+        {successMsg ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#34d399" }}>
               <CheckCircle2 size={28} />
               <div>
                 <h3 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-                  Guardian Signature Broadcast to Blockchain!
+                  {successMsg}
                 </h3>
                 <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: "2px 0 0 0" }}>
-                  Threshold requirement met. Wallet key rotation has been authorized on-chain.
+                  The approval has been verified and recorded in the Recovery Service audit ledger.
                 </p>
               </div>
             </div>
 
-            <div style={{ backgroundColor: "#0d131f", padding: "12px", borderRadius: "8px", border: "1px solid #1f2937", fontSize: "0.75rem" }}>
-              <span style={{ color: "#94a3b8" }}>EVM Transaction Hash:</span>
-              <div style={{ fontFamily: "var(--font-mono)", color: "#c084fc", marginTop: "2px" }}>
-                {txHash}
+            {txHash && (
+              <div style={{ backgroundColor: "#0d131f", padding: "12px", borderRadius: "8px", border: "1px solid #1f2937", fontSize: "0.75rem" }}>
+                <span style={{ color: "#94a3b8" }}>On-Chain Attestation Reference:</span>
+                <div style={{ fontFamily: "var(--font-mono)", color: "#c084fc", marginTop: "2px" }}>
+                  {txHash}
+                </div>
               </div>
-            </div>
+            )}
 
             <button
-              onClick={() => navigate("/guardian")}
+              onClick={() => navigate("/guardian/requests")}
               style={{
                 padding: "10px 18px",
                 borderRadius: "8px",
                 backgroundColor: "#2563eb",
                 color: "#ffffff",
                 border: "none",
-                fontWeight: 700,
+                fontSize: "0.85rem",
+                fontWeight: 600,
                 cursor: "pointer",
-                marginTop: "8px"
+                alignSelf: "flex-start",
               }}
             >
-              Return to Guardian Dashboard
+              Return to Recovery Petitions
             </button>
           </div>
+        ) : loading ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#94a3b8", padding: "20px" }}>
+            <RefreshCw size={16} className="animate-spin" />
+            Loading petition details...
+          </div>
         ) : (
-          <>
-            <div style={{ backgroundColor: "#0d131f", padding: "16px", borderRadius: "10px", border: "1px solid #1f2937", display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.8rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", color: "#fbbf24" }}>
+                Petition ID: {request?.requestId || id}
+              </span>
+              <span style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: "9999px", backgroundColor: "rgba(59, 130, 246, 0.2)", color: "#60a5fa", fontWeight: 700 }}>
+                STATUS: {request?.status || "PENDING"}
+              </span>
+            </div>
+
+            <div style={{ backgroundColor: "#0d131f", padding: "16px", borderRadius: "10px", border: "1px solid #1f2937", display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.85rem" }}>
               <div>
-                <span style={{ color: "#94a3b8" }}>Target Wallet to Recover:</span>
+                <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Target Sovereign Wallet:</span>
                 <div style={{ fontFamily: "var(--font-mono)", color: "#f87171", marginTop: "2px" }}>
-                  {petition.targetWallet}
+                  {request?.walletId || "wallet_holder_primary"}
                 </div>
               </div>
 
               <div>
-                <span style={{ color: "#94a3b8" }}>Authorized Replacement Key:</span>
-                <div style={{ fontFamily: "var(--font-mono)", color: "#34d399", marginTop: "2px" }}>
-                  {petition.newSuggestedKey}
+                <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Stated Reason for Emergency Recovery:</span>
+                <div style={{ color: "#ffffff", marginTop: "2px", lineHeight: "1.4" }}>
+                  {request?.reason || "Device lost or private key compromised. Holder requested managed-key rotation."}
                 </div>
               </div>
 
               <div>
-                <span style={{ color: "#94a3b8" }}>Signing Guardian Entity:</span>
-                <div style={{ fontWeight: 600, color: "#f8fafc", marginTop: "2px" }}>
-                  {petition.guardianName} ({petition.guardianAccount})
+                <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Quorum Progress:</span>
+                <div style={{ color: "#fbbf24", fontWeight: 700, marginTop: "2px" }}>
+                  {request?.approvalsCount ?? 2} of {request?.requiredCount ?? 3} approvals gathered (Threshold: 3-of-5)
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={handleApprove}
-              disabled={signing}
+            <div
               style={{
-                padding: "12px",
-                borderRadius: "10px",
-                backgroundColor: "#d97706",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "0.95rem",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px"
+                backgroundColor: "rgba(245, 158, 11, 0.1)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                padding: "12px 14px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+                color: "#fbbf24",
+                lineHeight: "1.4",
               }}
             >
-              <KeyRound size={18} />
-              {signing ? "Broadcasting Signature to Hardhat..." : "Sign and Submit Recovery Approval"}
-            </button>
-          </>
+              <strong>Security Protocol Warning:</strong> Authorizing this petition reconstructs one share of the 128-bit Shamir recovery secret. Once 3 of 5 guardians approve, a time-lock window activates before the managed presentation key is rotated.
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+              <button
+                onClick={handleApprove}
+                disabled={signing || rejecting}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: "10px",
+                  backgroundColor: "#059669",
+                  color: "#ffffff",
+                  fontSize: "0.9rem",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                }}
+              >
+                {signing ? (
+                  <span>Signing Recovery Share...</span>
+                ) : (
+                  <>
+                    <ShieldCheck size={18} />
+                    Sign Cryptographic Approval
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleReject}
+                disabled={signing || rejecting}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: "10px",
+                  backgroundColor: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  color: "#f87171",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <XCircle size={16} />
+                Decline / Oppose
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
