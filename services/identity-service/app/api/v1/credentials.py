@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Request, status
 
@@ -31,7 +31,7 @@ from app.schemas.credential_api import (
 
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {
         "model": ApiErrorResponse,
         "description": "Malformed or unusable credential input.",
@@ -300,7 +300,7 @@ def credential_history(
             CredentialStatusEventResponse(
                 event_id=ev.id,
                 event_type=ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type),
-                subject_id=ev.subject_id,
+                subject_id=ev.subject_id or "",
                 actor_id=ev.actor_id,
                 correlation_id=ev.correlation_id,
                 created_at=ev.created_at,

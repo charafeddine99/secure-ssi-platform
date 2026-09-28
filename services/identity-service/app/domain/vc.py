@@ -129,6 +129,10 @@ class CredentialVerificationResult:
         return required_passed and status_accepted
 
     @property
+    def is_valid(self) -> bool:
+        return self.verified
+
+    @property
     def reason_codes(self) -> tuple[VerificationReasonCode, ...]:
         return tuple(
             dict.fromkeys(

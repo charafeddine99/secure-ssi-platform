@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
 from app.core.config import MAX_CREDENTIAL_BYTES
@@ -504,5 +504,5 @@ class CredentialProfileValidator:
     def _raise(
         code: VerificationReasonCode,
         message: str,
-    ) -> None:
+    ) -> NoReturn:
         raise CredentialValidationError(code, message)

@@ -1,14 +1,36 @@
 {
   "pythonPlatform": "Windows",
   "pythonVersion": "3.11",
-  "pythonPath": ".venv/Scripts/python.exe",
   "venvPath": ".",
   "venv": ".venv",
-  "extraPaths": [
-    "./.venv/Lib/site-packages",
-    "./services/identity-service",
-    "./services/recovery-service",
-    "./services/api-gateway",
-    "./services/fraud-service"
+  "executionEnvironments": [
+    {
+      "root": "services/identity-service",
+      "extraPaths": [
+        "services/identity-service",
+        ".venv/Lib/site-packages"
+      ]
+    },
+    {
+      "root": "services/recovery-service",
+      "extraPaths": [
+        "services/recovery-service",
+        ".venv/Lib/site-packages"
+      ]
+    },
+    {
+      "root": "services/api-gateway",
+      "extraPaths": [
+        "services/api-gateway",
+        ".venv/Lib/site-packages"
+      ]
+    },
+    {
+      "root": "services/fraud-service",
+      "extraPaths": [
+        "services/fraud-service",
+        ".venv/Lib/site-packages"
+      ]
+    }
   ]
 }

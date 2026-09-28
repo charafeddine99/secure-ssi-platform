@@ -6,6 +6,8 @@ client = TestClient(app)
 
 
 def test_health_check():
+    if not blockchain_manager.w3.is_connected():
+        pytest.skip("Local Hardhat/Ethereum node on port 8545 is offline")
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
@@ -54,6 +56,8 @@ def test_high_risk_rejection_and_blockchain_quarantine():
     SSI service MUST reject with HTTP 403 and immediately submit an on-chain
     quarantine transaction to EmergencyRecovery.sol contract.
     """
+    if not blockchain_manager.w3.is_connected():
+        pytest.skip("Local Hardhat/Ethereum node on port 8545 is offline")
     target_wallet = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"  # Hardhat Account #2
 
     payload = {

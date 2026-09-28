@@ -976,7 +976,7 @@ export async function verifyPresentation(payload: any): Promise<{
 /**
  * Approve recovery guardian alias
  */
-export async function approveGuardianRecovery(
+export async function approveGuardianRecoveryLegacy(
   guardianId: number,
   walletAddress: string
 ): Promise<{ success: boolean; tx_hash?: string }> {

@@ -633,13 +633,13 @@ def _unavailable(operation: str) -> PersistenceUnavailableError:
 
 
 def _allowed_current_statuses(
-    target: CredentialStatus,
+    target: CredentialStatus | CredentialStorageStatus,
 ) -> list[str]:
     legacy_active = [
         CredentialStorageStatus.STORED.value,
         CredentialStorageStatus.VERIFIED.value,
     ]
-    if target is CredentialStatus.ACTIVE:
+    if target is CredentialStatus.ACTIVE or isinstance(target, CredentialStorageStatus):
         return [CredentialStatus.ACTIVE.value, *legacy_active]
     if target is CredentialStatus.SUSPENDED:
         return [

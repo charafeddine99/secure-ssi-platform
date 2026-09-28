@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 import pytest
 
 from app.domain.oid4vp import (
@@ -39,6 +40,7 @@ class DummyVerifierPresentationService:
             revocation_status_clear=True,
             challenge_valid=True,
             ai_risk_level="LOW",
+            ai_risk_score=15,
             blockchain_anchored=True,
             final_policy_result="ACCEPTED",
             details={},
@@ -111,7 +113,7 @@ def test_mapper_preserves_rejected_consent_state():
 
 def test_repository_reject_session_updates_atomically():
     collection = FakeCollection(unique_fields=("sessionId",))
-    repo = MongoVerificationSessionRepository(collection)
+    repo = MongoVerificationSessionRepository(cast(Any, collection))
 
     session = _create_sample_session("session_to_reject_0000000001")
     repo.add(session)
@@ -131,7 +133,7 @@ def test_repository_reject_session_updates_atomically():
 
 def test_repository_reject_session_fails_if_not_found():
     collection = FakeCollection(unique_fields=("sessionId",))
-    repo = MongoVerificationSessionRepository(collection)
+    repo = MongoVerificationSessionRepository(cast(Any, collection))
 
     with pytest.raises(SessionNotFoundError):
         repo.reject_session("session_non_existent_000000001", reason="Some reason", expected_version=1)
@@ -139,7 +141,7 @@ def test_repository_reject_session_fails_if_not_found():
 
 def test_repository_reject_session_fails_if_already_consumed():
     collection = FakeCollection(unique_fields=("sessionId",))
-    repo = MongoVerificationSessionRepository(collection)
+    repo = MongoVerificationSessionRepository(cast(Any, collection))
 
     session = _create_sample_session("session_consumed_00000000001")
     repo.add(session)
@@ -152,7 +154,7 @@ def test_repository_reject_session_fails_if_already_consumed():
 
 def test_oid4vp_service_reject_session_records_audit_event():
     collection = FakeCollection(unique_fields=("sessionId",))
-    session_repo = MongoVerificationSessionRepository(collection)
+    session_repo = MongoVerificationSessionRepository(cast(Any, collection))
     audit_repo = FakeAuditRepository()
 
     service = Oid4vpService(
@@ -187,7 +189,7 @@ def test_oid4vp_service_reject_session_records_audit_event():
 
 def test_oid4vp_service_direct_post_calculates_data_minimization():
     collection = FakeCollection(unique_fields=("sessionId",))
-    session_repo = MongoVerificationSessionRepository(collection)
+    session_repo = MongoVerificationSessionRepository(cast(Any, collection))
     audit_repo = FakeAuditRepository()
 
     service = Oid4vpService(

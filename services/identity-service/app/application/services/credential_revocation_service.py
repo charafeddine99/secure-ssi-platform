@@ -25,6 +25,7 @@ from app.domain.exceptions import PermissionDeniedError
 from app.domain.persistence import (
     AuditEvent,
     AuditEventType,
+    CredentialStorageStatus,
     PersistedCredential,
     RepositoryError,
 )
@@ -32,6 +33,14 @@ from app.domain.persistence import (
 
 Clock = Callable[[], datetime]
 EventIdGenerator = Callable[[], str]
+
+
+def _domain_status(
+    status: CredentialStatus | CredentialStorageStatus,
+) -> CredentialStatus:
+    if isinstance(status, CredentialStatus):
+        return status
+    return CredentialStatus.ACTIVE
 
 
 class CredentialRevocationService:
@@ -69,14 +78,15 @@ class CredentialRevocationService:
             caller_roles=caller_roles,
             caller_issuer_did=caller_issuer_did,
         )
-        if credential.status is CredentialStatus.REVOKED:
+        status = _domain_status(credential.status)
+        if status is CredentialStatus.REVOKED:
             self._ensure_legacy_revocation_delivery(
                 credential,
                 correlation_id=correlation_id,
             )
-        RevocationPolicy.require_revocable(credential.status)
+        RevocationPolicy.require_revocable(status)
         RevocationPolicy.require_transition(
-            current=credential.status,
+            current=status,
             target=CredentialStatus.REVOKED,
         )
         normalized_reason = RevocationPolicy.normalize_reason(reason)
@@ -115,14 +125,15 @@ class CredentialRevocationService:
     ) -> CredentialStatusSnapshot:
         credential = self._require_credential(credential_id)
         checked_at = self._clock()
+        status = _domain_status(credential.status)
         effective_status = RevocationPolicy.effective_status(
-            stored_status=credential.status,
+            stored_status=status,
             expiration_date=credential.expiration_date,
             checked_at=checked_at,
         )
-        if effective_status is not credential.status:
+        if effective_status is not status:
             RevocationPolicy.require_transition(
-                current=credential.status,
+                current=status,
                 target=effective_status,
             )
             credential = self._revocation_repository.mark_expired(
@@ -130,7 +141,8 @@ class CredentialRevocationService:
                 expired_at=checked_at,
                 expected_version=credential.version,
             )
-        if credential.status is CredentialStatus.REVOKED:
+            status = _domain_status(credential.status)
+        if status is CredentialStatus.REVOKED:
             self._ensure_legacy_revocation_delivery(
                 credential,
                 correlation_id=correlation_id,
@@ -140,7 +152,7 @@ class CredentialRevocationService:
             credential_id=credential.credential_id,
             actor_id=actor_id,
             correlation_id=correlation_id,
-            status=credential.status,
+            status=status,
             occurred_at=checked_at,
         )
         return self._snapshot(credential)
@@ -257,7 +269,7 @@ class CredentialRevocationService:
     ) -> CredentialStatusSnapshot:
         return CredentialStatusSnapshot(
             credential_id=credential.credential_id,
-            status=credential.status,
+            status=_domain_status(credential.status),
             expiration_date=credential.expiration_date,
             revoked_at=credential.revoked_at,
             revocation_reason=credential.revocation_reason,
