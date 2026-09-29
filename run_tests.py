@@ -13,6 +13,8 @@ SERVICES = [
     "services/recovery-service",
     "services/fraud-service",
     "services/api-gateway",
+    "packages/shared/tests",
+    "tests",
 ]
 
 def main() -> int:
