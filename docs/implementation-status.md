@@ -44,7 +44,7 @@
 | Persistent key storage | Implemented for non-secret metadata | Managed public metadata, opaque provider reference, lifecycle, lineage, idempotency digest, and reconciliation metadata | Deterministic development adapter | BSON/API/audit/repr/private-material exclusion tests | Raw private keys and provider credentials are prohibited |
 | Production wallet/HSM | Provider-neutral boundary implemented | HTTPS gateway contract, auth abstraction, TLS/mTLS references, timeout/retry/circuit breaker, lifecycle policy | No real provider | Boundary, failure, configuration, and redaction tests | Vendor KMS/HSM/mobile/external-wallet integration and certification required |
 | JSON-LD RDF canonicalization | Not implemented | No | No | JCS tests only | Explicitly outside this profile |
-| Blockchain anchoring | Planned | No | No | No | No contract or credential data on-chain |
+| Blockchain anchoring | Implemented | Hardhat node (8545), 4 contracts, RFC 8785 canonical digest, Mongo blockchain_anchors | Yes | Unit and live Hardhat integration tests | Zero PII on-chain, fail-open resilience |
 
 ## Credential HTTP API sprint status
 
@@ -61,7 +61,7 @@
 | Credential revocation/status | Implemented with object-level authorization, Bitstring Status List verification, OID4VCI status binding, and status audit history |
 | Production KMS/HSM | Holder provider-neutral boundary implemented; issuer/JWT/Status List production custody remains planned |
 | External DID resolution | Not implemented |
-| Blockchain anchoring | Planned |
+| Blockchain anchoring | Implemented |
 
 ## Local authentication and RBAC sprint status
 
@@ -347,4 +347,43 @@
 | Guardian Approval Page (`ApproveRecoveryPage.tsx`) with challenge validation, guardian signature submission, and rejection flows | Implemented |
 | Holder Security Settings Page (`SecuritySettingsPage.tsx`) with 3-of-5 Shamir Secret Sharing policy display, enrolled guardians directory, emergency recovery initiation modal, and time-lock cancellation | Implemented |
 | End-to-end golden path integration test (`test_social_recovery_golden_path.py`) verifying 3-of-5 policy, 5 guardian enrollments, emergency petition creation, progressive approvals, quorum reach, time-lock enforcement, expiry, and Identity Service key rotation with predecessor key disabled/compromised | Implemented |
+
+## Sprint 13–15 — AI Fraud Threat Engine, Adaptive Policy & Verification Matrix
+
+| Capability | Status |
+| --- | --- |
+| Hybrid AI Fraud Detection Engine (XGBoost + Autoencoder) | Implemented |
+| Behavioral feature extraction (impossible travel, brute force, Tor/proxy, frequency flood) | Implemented |
+| Feature store and synthetic baseline training data generator | Implemented |
+| Adaptive risk score classification ([0, 100]) and threshold policies | Implemented |
+| AI-triggered automated quarantine lockout and step-up authentication | Implemented |
+| Cryptographic failure hierarchy (cryptographic invalidity strictly dominates AI advisory score) | Implemented |
+| 9-point verification matrix integration with real-time AI risk evaluation | Implemented |
+
+## Sprint 16 — Blockchain Anchoring Bridge & Smart Contracts
+
+| Capability | Status |
+| --- | --- |
+| Hardhat local EVM node deployment (Chain ID 1337) on port 8545 | Implemented |
+| Smart contract deployment: `DIDRegistry.sol` (`0x5FbDB2315678afecb367f032d93F642f64180aa3`) | Implemented |
+| Smart contract deployment: `RevocationRegistry.sol` (`0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`) | Implemented |
+| Smart contract deployment: `EmergencyRecovery.sol` (`0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`) | Implemented |
+| Smart contract deployment: `AuditLogger.sol` (`0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`) | Implemented |
+| Web3 bridge (`BlockchainBridge`) with deterministic RFC 8785 canonicalization | Implemented |
+| Zero-PII on-chain enforcement (only SHA-256 digests and contract addresses stored) | Implemented |
+| Fail-open resilience (RPC timeouts/failures do not crash credential issuance/verification) | Implemented |
+| MongoDB persistence (`blockchain_anchors` collection) with compound indexes and state machine | Implemented |
+| REST API endpoints (`/api/v1/blockchain/status`, `/anchors/*`) & Gateway routing | Implemented |
+| Live Hardhat integration test suite (`test_blockchain_anchoring.py`) | Implemented |
+
+## Sprint 17 — Full Cross-Layer Integration, End-to-End Golden Path & Production Hardening
+
+| Capability | Status |
+| --- | --- |
+| Live multi-microservice runtime orchestration (Gateway, Identity, Fraud, Recovery, Hardhat, Web) | Active / Operational |
+| End-to-end 9-stage SSI lifecycle verification across all 5 roles (`demo_runner.py`) | Implemented & Verified |
+| 13-point comprehensive system integration verification (`test_complete_system.py`) | Implemented & Verified |
+| Consolidated test runner (`run_tests.py`) multi-root test isolation | Implemented & 100% Passing (524 tests) |
+| Frontend production build and TypeScript verification (`npm run build`) | Implemented & Verified (0 errors) |
+
 

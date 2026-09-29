@@ -13,14 +13,14 @@ export const SmartContractsPage: React.FC = () => {
     },
     {
       name: "EmergencyRecovery.sol",
-      address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      address: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
       sourceLines: "248 lines",
       purpose: "EIP-4337 social recovery with M-of-N guardian consensus threshold & AI quarantine hooks.",
       methods: ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)"]
     },
     {
       name: "RevocationRegistry.sol",
-      address: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+      address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
       sourceLines: "82 lines",
       purpose: "Anchors W3C Bitstring Status List roots for instant verifiable on-chain revocation.",
       methods: ["publishStatusListRoot(bytes32, uint256)", "revokeCredential(bytes32, string)"]

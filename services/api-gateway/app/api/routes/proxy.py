@@ -159,6 +159,19 @@ async def proxy_oid4vp(path: str, request: Request):
     target = f"{IDENTITY_SERVICE_URL}/api/v1/oid4vp/{normalized}"
     return await forward_request(target, request)
 
+# 1.2 Direct Blockchain Anchoring Proxy
+@router.api_route("/blockchain/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_blockchain(path: str, request: Request):
+    normalized = path.lstrip("/")
+    target = f"{IDENTITY_SERVICE_URL}/api/v1/blockchain/{normalized}"
+    resp = await forward_request(target, request)
+    if resp.status_code == 404:
+        fallback_target = f"{IDENTITY_SERVICE_URL}/api/blockchain/{normalized}"
+        fallback_resp = await forward_request(fallback_target, request)
+        if fallback_resp.status_code != 404:
+            return fallback_resp
+    return resp
+
 # 2. Fraud Service Proxy
 @router.api_route("/fraud/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_fraud(path: str, request: Request):
