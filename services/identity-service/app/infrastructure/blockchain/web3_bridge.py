@@ -249,9 +249,9 @@ class BlockchainBridge:
         tx_hash_bytes = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         tx_hash_hex = Web3.to_hex(tx_hash_bytes)
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=self.settings.timeout_seconds)
-        if receipt.status != 1:
-            raise RuntimeError(f"Transaction reverted on-chain. Receipt status: {receipt.status}")
-        return tx_hash_hex, receipt.blockNumber
+        if receipt["status"] != 1:
+            raise RuntimeError(f"Transaction reverted on-chain. Receipt status: {receipt['status']}")
+        return tx_hash_hex, int(receipt["blockNumber"])
 
     # -------------------------------------------------------------------------
     # 1. DID Document Integrity Anchoring

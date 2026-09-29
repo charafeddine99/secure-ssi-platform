@@ -11,6 +11,7 @@ Executes real on-chain smart contract transactions:
 """
 
 import time
+from typing import Any, cast
 import pytest
 from web3 import Web3
 
@@ -34,7 +35,7 @@ from tests.support.fake_mongo import FakeDatabase
 def live_bridge():
     settings = load_blockchain_settings()
     db = FakeDatabase()
-    repo = MongoBlockchainAnchorRepository(db["blockchain_anchors"])
+    repo = MongoBlockchainAnchorRepository(cast(Any, db["blockchain_anchors"]))
     bridge = BlockchainBridge(settings=settings, repository=repo)
 
     if not bridge.is_connected():
@@ -75,6 +76,7 @@ def test_live_did_document_anchoring_and_verification(live_bridge: BlockchainBri
     assert live_bridge.verify_did_anchor(did, tampered_doc) is False
 
     # 4. Verify MongoDB persistence
+    assert live_bridge.repository is not None
     persisted = live_bridge.repository.get_by_id(record.anchor_id)
     assert persisted is not None
     assert persisted.status == BlockchainAnchorStatus.CONFIRMED
@@ -96,6 +98,7 @@ def test_live_w3c_status_list_anchoring(live_bridge: BlockchainBridge):
     assert record.subject_id == status_list_id
 
     # 2. Query smart contract directly to verify on-chain state
+    assert live_bridge.account is not None
     deployer = live_bridge.account.address
     stored_root, stored_ver, updated_at = live_bridge.revocation_contract.functions.getStatusListAnchor(
         deployer,
@@ -179,7 +182,9 @@ def test_negative_invalid_rpc_handling():
 
     rec = bridge.anchor_did_document("did:key:z6MkuBadRPC", {"doc": 1})
     assert rec.status == BlockchainAnchorStatus.FAILED
-    assert "offline" in rec.error_message.lower() or "not reachable" in rec.error_message.lower() or "connection" in rec.error_message.lower()
+    assert rec.error_message is not None
+    err_msg = rec.error_message.lower()
+    assert "offline" in err_msg or "not reachable" in err_msg or "connection" in err_msg
 
 
 def test_negative_no_pii_in_canonical_payload():

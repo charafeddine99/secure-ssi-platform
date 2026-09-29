@@ -1,6 +1,7 @@
 """Unit tests for Blockchain API routes (/api/v1/blockchain/*)."""
 
 import pytest
+from typing import Any, cast
 from fastapi.testclient import TestClient
 
 from app.api.v1.dependencies import (
@@ -24,7 +25,7 @@ from app.config.blockchain_settings import BlockchainSettings
 @pytest.fixture
 def blockchain_client():
     db = FakeDatabase()
-    repo = MongoBlockchainAnchorRepository(db["blockchain_anchors"])
+    repo = MongoBlockchainAnchorRepository(cast(Any, db["blockchain_anchors"]))
     settings = BlockchainSettings(
         rpc_url="http://127.0.0.1:8545",
         network_name="localhost",

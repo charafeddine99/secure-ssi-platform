@@ -334,15 +334,15 @@ class BlockchainManager:
         logger.info(f"Submitted quarantine TX: {tx_hash.hex()} for wallet {checksum_target}")
 
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=15)
-        status_ok = (receipt.status == 1)
+        status_ok = (receipt["status"] == 1)
 
         is_quarantined = self.recovery_contract.functions.isWalletQuarantined(checksum_target).call()
         formatted_hash = Web3.to_hex(tx_hash)
 
         return {
             "transaction_hash": formatted_hash,
-            "block_number": receipt.blockNumber,
-            "gas_used": receipt.gasUsed,
+            "block_number": receipt["blockNumber"],
+            "gas_used": receipt["gasUsed"],
             "status": "SUCCESS" if status_ok else "FAILED",
             "is_quarantined_on_chain": is_quarantined
         }

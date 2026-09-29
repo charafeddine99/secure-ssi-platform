@@ -2,6 +2,8 @@ import time
 import hashlib
 from typing import Optional, Dict, Any
 
+from web3 import Web3
+
 class CredentialStatusCache:
     """
     Tasarım Raporu Tablo 3.3 ve Madde 109, 156, 169 gereğince:
