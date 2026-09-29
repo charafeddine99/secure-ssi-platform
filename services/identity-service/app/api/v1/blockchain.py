@@ -97,6 +97,56 @@ def get_blockchain_status(
     )
 
 
+@router.get("/contracts")
+def get_contracts_directory(
+    bridge: Annotated[BlockchainBridge, Depends(get_blockchain_bridge)],
+) -> dict[str, Any]:
+    return {
+        "status": "SUCCESS",
+        "network": bridge.settings.network_name,
+        "chainId": bridge.settings.chain_id,
+        "contracts": [
+            {
+                "name": "DIDRegistry.sol",
+                "address": bridge.settings.did_registry_address,
+                "purpose": "Anchors user DIDs to initial VC hashes and manages owner-authorized key rotations.",
+                "methods": ["registerDID(string, bytes32)", "updateVCHash(string, bytes32)", "getDIDRecord(string)", "isDIDRegistered(string)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "RevocationRegistry.sol",
+                "address": bridge.settings.revocation_registry_address,
+                "purpose": "Anchors W3C Bitstring Status List roots and individual credential revocations.",
+                "methods": ["anchorStatusList(string, bytes32, uint256)", "revokeCredential(bytes32, bytes32)", "isCredentialRevoked(bytes32)", "getStatusListAnchor(address, string)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "EmergencyRecovery.sol",
+                "address": bridge.settings.emergency_recovery_address,
+                "purpose": "EIP-4337 social recovery with M-of-N guardian consensus threshold and AI quarantine hooks.",
+                "methods": ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)", "isWalletQuarantined(address)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "AuditLogger.sol",
+                "address": bridge.settings.audit_logger_address,
+                "purpose": "Gas-optimized on-chain event log for critical platform security and recovery milestones.",
+                "methods": ["logEvent(bytes32, uint8)", "getEventCount()", "getEvent(uint256)"],
+                "status": "ACTIVE"
+            }
+        ]
+    }
+
+
+@router.get("/anchors", response_model=list[BlockchainAnchorResponse])
+def list_anchors(
+    repo: Annotated[MongoBlockchainAnchorRepository, Depends(get_blockchain_anchor_repository)],
+    limit: int = 50,
+) -> list[BlockchainAnchorResponse]:
+    records = repo.list_all(limit=limit)
+    return [_to_response(r) for r in records]
+
+
 @router.get("/anchors/{anchor_id}", response_model=BlockchainAnchorResponse)
 def get_anchor_by_id(
     anchor_id: str,

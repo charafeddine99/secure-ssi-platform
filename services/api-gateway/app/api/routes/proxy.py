@@ -101,9 +101,12 @@ async def forward_request(target_url: str, request: Request) -> Response:
 @router.get("/system/status", summary="Tüm mikroservislerin birleşik sağlık ve çalışma durumunu döner")
 async def get_system_status():
     """
-    Identity, Fraud ve Recovery servislerinin anlık durumunu sorgular.
+    Identity, Fraud, Recovery, Blockchain EVM Node ve Veritabanı durumunu sorgular.
     """
     services_status = {}
+    blockchain_info = {"connected": False}
+    database_info = {}
+
     async with httpx.AsyncClient(timeout=3.0) as client:
         # 1. Identity Service Check
         try:
@@ -126,11 +129,37 @@ async def get_system_status():
         except Exception:
             services_status["recovery_service"] = "UNREACHABLE"
 
+        # 4. Blockchain Telemetry Check
+        try:
+            r = await client.get(f"{IDENTITY_SERVICE_URL}/api/v1/blockchain/status")
+            if r.status_code == 200:
+                blockchain_info = r.json()
+                services_status["blockchain_node"] = "HEALTHY" if blockchain_info.get("connected") else "DEGRADED"
+            else:
+                r2 = await client.get(f"{IDENTITY_SERVICE_URL}/api/blockchain/status")
+                if r2.status_code == 200:
+                    blockchain_info = r2.json()
+                    services_status["blockchain_node"] = "HEALTHY" if blockchain_info.get("connected") else "DEGRADED"
+                else:
+                    services_status["blockchain_node"] = "DEGRADED"
+        except Exception:
+            services_status["blockchain_node"] = "UNREACHABLE"
+
+        # 5. Database Persistence Stats Check
+        try:
+            r = await client.get(f"{IDENTITY_SERVICE_URL}/api/database/stats")
+            if r.status_code == 200:
+                database_info = r.json()
+        except Exception:
+            pass
+
     all_healthy = all(v == "HEALTHY" for v in services_status.values())
     return {
         "gateway_status": "ONLINE",
         "system_health": "OPTIMAL" if all_healthy else "PARTIAL",
-        "services": services_status
+        "services": services_status,
+        "blockchain": blockchain_info,
+        "database": database_info
     }
 
 # 1. Identity Service Proxy
@@ -141,6 +170,19 @@ async def proxy_identity(path: str, request: Request):
     resp = await forward_request(target, request)
     if resp.status_code == 404 and not normalized.startswith("v1/"):
         fallback_target = f"{IDENTITY_SERVICE_URL}/api/{normalized}"
+        fallback_resp = await forward_request(fallback_target, request)
+        if fallback_resp.status_code != 404:
+            return fallback_resp
+    return resp
+
+# 1.05 Direct Audit Logs Proxy
+@router.api_route("/audit/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_audit(path: str, request: Request):
+    normalized = path.lstrip("/")
+    target = f"{IDENTITY_SERVICE_URL}/api/v1/audit/{normalized}"
+    resp = await forward_request(target, request)
+    if resp.status_code == 404:
+        fallback_target = f"{IDENTITY_SERVICE_URL}/api/database/audit_{normalized}"
         fallback_resp = await forward_request(fallback_target, request)
         if fallback_resp.status_code != 404:
             return fallback_resp

@@ -80,6 +80,14 @@ DID_REGISTRY_ADDRESS = os.getenv(
     "DID_REGISTRY_CONTRACT_ADDRESS",
     _deployed_contracts.get("DIDRegistry", "0x5FbDB2315678afecb367f032d93F642f64180aa3")
 )
+REVOCATION_REGISTRY_ADDRESS = os.getenv(
+    "REVOCATION_REGISTRY_CONTRACT_ADDRESS",
+    _deployed_contracts.get("RevocationRegistry", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512")
+)
+AUDIT_LOGGER_ADDRESS = os.getenv(
+    "AUDIT_LOGGER_CONTRACT_ADDRESS",
+    _deployed_contracts.get("AuditLogger", "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9")
+)
 DEPLOYER_PRIVATE_KEY = os.getenv(
     "DEPLOYER_PRIVATE_KEY",
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -398,17 +406,27 @@ class BlockchainManager:
         return Web3.to_hex(tx_hash)
 
     def get_recovery_status(self, wallet_address: str) -> Dict[str, Any]:
-        checksum_target = Web3.to_checksum_address(wallet_address)
-        status = self.recovery_contract.functions.getRecoveryStatus(checksum_target).call()
-        owner = self.recovery_contract.functions.getWalletOwner(checksum_target).call()
-        return {
-            "target_wallet": checksum_target,
-            "proposed_new_owner": status[0],
-            "approval_count": status[1],
-            "executed": status[2],
-            "active": status[3],
-            "current_owner": owner
-        }
+        try:
+            checksum_target = Web3.to_checksum_address(wallet_address)
+            status = self.recovery_contract.functions.getRecoveryStatus(checksum_target).call()
+            owner = self.recovery_contract.functions.getWalletOwner(checksum_target).call()
+            return {
+                "target_wallet": checksum_target,
+                "proposed_new_owner": status[0],
+                "approval_count": status[1],
+                "executed": status[2],
+                "active": status[3],
+                "current_owner": owner,
+                "configured": True
+            }
+        except Exception:
+            return {
+                "target_wallet": wallet_address,
+                "configured": False,
+                "active": False,
+                "approval_count": 0,
+                "executed": False
+            }
 
 
 # =====================================================================
@@ -836,16 +854,20 @@ async def verify_presentation_endpoint(payload: Dict[str, Any]):
     }
 
 @app.get("/api/database/audit_logs", tags=["Database & Health"])
-async def get_audit_logs_endpoint():
-    logs = db_get_audit_logs(limit=50)
+@app.get("/api/v1/audit_logs", tags=["Database & Health"])
+@app.get("/api/audit_logs", tags=["Database & Health"])
+async def get_audit_logs_endpoint(limit: int = 100):
+    logs = db_get_audit_logs(limit=limit)
     return {"status": "SUCCESS", "count": len(logs), "audit_logs": logs}
 
 @app.get("/api/blockchain/status", tags=["Blockchain & Health"])
+@app.get("/api/v1/blockchain/status", tags=["Blockchain & Health"])
 async def get_blockchain_status():
     try:
         block_number = blockchain_manager.w3.eth.block_number
         is_conn = blockchain_manager.w3.is_connected()
         chain_id = blockchain_manager.w3.eth.chain_id
+        gas_price = blockchain_manager.w3.eth.gas_price
         target = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
         recovery_status = blockchain_manager.get_recovery_status(target)
         return {
@@ -853,14 +875,56 @@ async def get_blockchain_status():
             "connected": is_conn,
             "block_number": block_number,
             "chain_id": chain_id,
+            "gas_price_gwei": round(gas_price / 1e9, 2),
+            "network": "Hardhat Local EVM (1337)",
             "contracts": {
                 "did_registry": DID_REGISTRY_ADDRESS,
-                "emergency_recovery": EMERGENCY_RECOVERY_ADDRESS
+                "revocation_registry": REVOCATION_REGISTRY_ADDRESS,
+                "emergency_recovery": EMERGENCY_RECOVERY_ADDRESS,
+                "audit_logger": AUDIT_LOGGER_ADDRESS
             },
             "recovery_status": recovery_status
         }
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
+
+@app.get("/api/blockchain/contracts", tags=["Blockchain & Health"])
+@app.get("/api/v1/blockchain/contracts", tags=["Blockchain & Health"])
+async def get_blockchain_contracts():
+    return {
+        "status": "SUCCESS",
+        "network": "Hardhat Local EVM (Chain ID 1337)",
+        "contracts": [
+            {
+                "name": "DIDRegistry.sol",
+                "address": DID_REGISTRY_ADDRESS,
+                "purpose": "Anchors user DIDs to initial VC hashes and owner key rotations.",
+                "methods": ["registerDID(string, bytes32)", "updateVCHash(string, bytes32)", "getDIDRecord(string)", "isDIDRegistered(string)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "RevocationRegistry.sol",
+                "address": REVOCATION_REGISTRY_ADDRESS,
+                "purpose": "Anchors W3C Bitstring Status List roots and individual credential revocations.",
+                "methods": ["anchorStatusList(string, bytes32, uint256)", "revokeCredential(bytes32, bytes32)", "isCredentialRevoked(bytes32)", "getStatusListAnchor(address, string)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "EmergencyRecovery.sol",
+                "address": EMERGENCY_RECOVERY_ADDRESS,
+                "purpose": "EIP-4337 social recovery with M-of-N consensus threshold and AI-triggered quarantine.",
+                "methods": ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)", "isWalletQuarantined(address)"],
+                "status": "ACTIVE"
+            },
+            {
+                "name": "AuditLogger.sol",
+                "address": AUDIT_LOGGER_ADDRESS,
+                "purpose": "Gas-optimized on-chain event log for critical platform security and recovery milestones.",
+                "methods": ["logEvent(bytes32, uint8)", "getEventCount()", "getEvent(uint256)"],
+                "status": "ACTIVE"
+            }
+        ]
+    }
 
 @app.get("/api/database/stats", tags=["Database & Health"])
 async def get_database_stats():

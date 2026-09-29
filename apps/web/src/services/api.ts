@@ -58,10 +58,15 @@ export interface BlockchainStatus {
   connected: boolean;
   block_number: number;
   chain_id: number;
+  gas_price_gwei?: number;
+  network?: string;
   contracts: {
     did_registry: string;
+    revocation_registry?: string;
     emergency_recovery: string;
+    audit_logger?: string;
   };
+  recovery_status?: any;
 }
 
 export interface GatewayStatus {
@@ -71,7 +76,53 @@ export interface GatewayStatus {
     identity_service: string;
     fraud_service: string;
     recovery_service: string;
+    blockchain_node?: string;
   };
+  blockchain?: BlockchainStatus;
+  database?: any;
+}
+
+export interface SmartContractInfo {
+  name: string;
+  address: string;
+  purpose: string;
+  methods: string[];
+  status: string;
+}
+
+export interface FraudModelStats {
+  model_type: string;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  confusion_matrix: {
+    true_positives: number;
+    true_negatives: number;
+    false_positives: number;
+    false_negatives: number;
+  };
+  sample_count: number;
+  latency_ms_avg: number;
+  model_quantization: string;
+  last_trained: string;
+}
+
+export interface OnChainAnchor {
+  anchorId: string;
+  eventType: string;
+  eventHash: string;
+  contractType: string;
+  contractAddress: string;
+  network: string;
+  chainId: number;
+  status: string;
+  createdAt: string;
+  subjectId?: string;
+  txHash?: string;
+  blockNumber?: number;
+  confirmedAt?: string;
+  errorMessage?: string;
 }
 
 /**
@@ -736,46 +787,132 @@ export const approveGuardianRecovery = async (petitionId: number | string, guard
 /**
  * Fetch audit logs from authoritative persistence layer
  */
-export async function fetchAuditLogs(): Promise<BackendAuditLog[]> {
+export async function fetchAuditLogs(filterType?: string, limit: number = 100): Promise<BackendAuditLog[]> {
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 
+  const queryParams = new URLSearchParams();
+  if (filterType && filterType !== "ALL") queryParams.append("event_type", filterType);
+  queryParams.append("limit", String(limit));
+
+  // 1. Try Gateway audit route
   try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/audit_logs`, { headers });
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/audit_logs?${queryParams.toString()}`, { headers });
     if (res.ok) {
       const data = await res.json();
-      return data.audit_logs || data.events || data || [];
+      return data.audit_logs || data.events || [];
     }
   } catch {
-    // Continue to legacy fallback
+    // Continue to direct identity fallback
   }
 
+  // 2. Try direct Identity Service database endpoint
   try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/database/audit_logs`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data.audit_logs || [];
+    const res = await fetch(`${SSI_CORE_BASE_URL}/api/database/audit_logs?limit=${limit}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.audit_logs || [];
+    }
   } catch (err) {
     console.warn("fetchAuditLogs fallback:", err);
-    return [];
   }
+  return [];
 }
 
 /**
  * Fetch blockchain status (Hardhat Node)
  */
 export async function fetchBlockchainStatus(): Promise<BlockchainStatus | null> {
+  // 1. Try Gateway proxy
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/blockchain/status`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Continue
+  }
+
+  // 2. Try Identity Service direct
   try {
     const res = await fetch(`${SSI_CORE_BASE_URL}/api/blockchain/status`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    if (res.ok) return await res.json();
   } catch (err) {
     console.warn("fetchBlockchainStatus fallback:", err);
-    return null;
   }
+  return null;
+}
+
+/**
+ * Fetch detailed smart contracts registry from Web3 bridge
+ */
+export async function fetchBlockchainContracts(): Promise<SmartContractInfo[]> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/blockchain/contracts`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.contracts || [];
+    }
+  } catch {
+    // Fallback to direct identity endpoint
+  }
+
+  try {
+    const res = await fetch(`${SSI_CORE_BASE_URL}/api/blockchain/contracts`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.contracts || [];
+    }
+  } catch (err) {
+    console.warn("fetchBlockchainContracts fallback:", err);
+  }
+
+  return [
+    {
+      name: "DIDRegistry.sol",
+      address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      purpose: "Binds user DIDs to initial VC hashes and manages owner-authorized key rotations.",
+      methods: ["registerDID(string, bytes32)", "updateVCHash(string, bytes32)", "getDIDRecord(string)", "isDIDRegistered(string)"],
+      status: "ACTIVE"
+    },
+    {
+      name: "RevocationRegistry.sol",
+      address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      purpose: "Anchors W3C Bitstring Status List roots and individual credential revocations.",
+      methods: ["anchorStatusList(string, bytes32, uint256)", "revokeCredential(bytes32, bytes32)", "isCredentialRevoked(bytes32)", "getStatusListAnchor(address, string)"],
+      status: "ACTIVE"
+    },
+    {
+      name: "EmergencyRecovery.sol",
+      address: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+      purpose: "EIP-4337 social recovery with M-of-N guardian consensus threshold & AI quarantine hooks.",
+      methods: ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)", "isWalletQuarantined(address)"],
+      status: "ACTIVE"
+    },
+    {
+      name: "AuditLogger.sol",
+      address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+      purpose: "Gas-optimized on-chain event log for critical platform security and recovery milestones.",
+      methods: ["logEvent(bytes32, uint8)", "getEventCount()", "getEvent(uint256)"],
+      status: "ACTIVE"
+    }
+  ];
+}
+
+/**
+ * Fetch recent on-chain anchor transactions
+ */
+export async function fetchBlockchainAnchors(limit: number = 20): Promise<OnChainAnchor[]> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/blockchain/anchors?limit=${limit}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("fetchBlockchainAnchors fallback:", err);
+  }
+  return [];
 }
 
 /**
@@ -789,6 +926,60 @@ export async function fetchGatewayStatus(): Promise<GatewayStatus | null> {
   } catch (err) {
     console.warn("fetchGatewayStatus fallback:", err);
     return null;
+  }
+}
+
+/**
+ * Fetch AI Fraud Model Stats from Fraud Service
+ */
+export async function fetchFraudStats(): Promise<FraudModelStats | null> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/fraud/stats`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Continue
+  }
+
+  try {
+    const res = await fetch(`${FRAUD_BASE_URL}/api/v1/fraud/stats`);
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("fetchFraudStats fallback:", err);
+  }
+  return null;
+}
+
+/**
+ * Fetch database persistence stats from Identity Service
+ */
+export async function fetchDatabaseStats(): Promise<any> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/database/stats`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Continue
+  }
+
+  try {
+    const res = await fetch(`${SSI_CORE_BASE_URL}/api/database/stats`);
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("fetchDatabaseStats fallback:", err);
+  }
+  return null;
+}
+
+/**
+ * Release an account from quarantine
+ */
+export async function releaseAccountQuarantine(did: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/fraud/quarantine/${encodeURIComponent(did)}`, {
+      method: "DELETE"
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
