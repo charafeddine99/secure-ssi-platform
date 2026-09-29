@@ -1,3 +1,4 @@
+from typing import Any
 from fastapi import APIRouter, Depends, Response, Security
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -22,7 +23,7 @@ from app.schemas.credential_api import ApiErrorResponse
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
-AUTH_ERROR_RESPONSES = {
+AUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {
         "model": ApiErrorResponse,
         "description": "Authentication failed or the access token is invalid.",

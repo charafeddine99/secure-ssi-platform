@@ -5,6 +5,7 @@ sliding-window rate limiting with standard RFC headers, sensitive endpoint prote
 JSON nesting depth limits, payload size bounds, and CORS lockdown.
 """
 
+from typing import Any
 import json
 from fastapi.testclient import TestClient
 from app.main import app
@@ -74,7 +75,7 @@ def test_payload_size_limit():
 
 def test_json_depth_bomb_defense():
     # Build 20-level nested JSON object
-    nested = {"leaf": "data"}
+    nested: dict[str, Any] = {"leaf": "data"}
     for i in range(20, 0, -1):
         nested = {f"k_{i}": nested}
 

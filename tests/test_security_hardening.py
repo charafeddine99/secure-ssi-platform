@@ -7,6 +7,7 @@ and sensitive credential/key leakage masking across the unified API Gateway faca
 
 import sys
 import json
+from typing import Any
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -91,7 +92,7 @@ class TestLiveGatewaySecurityHardening:
 
     def test_live_json_depth_bomb_defense(self):
         # 20-level nested JSON object
-        nested = {"leaf": "data"}
+        nested: dict[str, Any] = {"leaf": "data"}
         for i in range(20, 0, -1):
             nested = {f"k_{i}": nested}
 

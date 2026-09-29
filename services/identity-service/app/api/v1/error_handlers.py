@@ -1,4 +1,5 @@
 import logging
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -137,7 +138,7 @@ async def request_validation_error_handler(
     request: Request,
     error: RequestValidationError,
 ) -> JSONResponse:
-    details = [
+    details: list[dict[str, str | None]] = [
         {
             "code": str(item.get("type", "invalid_value")),
             "location": ".".join(str(part) for part in item.get("loc", ())),
@@ -564,39 +565,39 @@ async def unexpected_error_handler(
 def install_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         RequestValidationError,
-        request_validation_error_handler,
+        cast(Any, request_validation_error_handler),
     )
     app.add_exception_handler(
         AuthenticationError,
-        authentication_error_handler,
+        cast(Any, authentication_error_handler),
     )
     app.add_exception_handler(
         CredentialValidationError,
-        credential_validation_error_handler,
+        cast(Any, credential_validation_error_handler),
     )
     app.add_exception_handler(
         CredentialProofError,
-        credential_proof_error_handler,
+        cast(Any, credential_proof_error_handler),
     )
     app.add_exception_handler(
         CredentialStatusError,
-        credential_status_error_handler,
+        cast(Any, credential_status_error_handler),
     )
     app.add_exception_handler(
         CredentialIssuanceError,
-        credential_issuance_error_handler,
+        cast(Any, credential_issuance_error_handler),
     )
-    app.add_exception_handler(StatusListError, status_list_error_handler)
-    app.add_exception_handler(PresentationError, presentation_error_handler)
+    app.add_exception_handler(StatusListError, cast(Any, status_list_error_handler))
+    app.add_exception_handler(PresentationError, cast(Any, presentation_error_handler))
     app.add_exception_handler(
         HolderWalletError,
-        holder_wallet_error_handler,
+        cast(Any, holder_wallet_error_handler),
     )
     app.add_exception_handler(
         PresentationChallengeError,
-        presentation_challenge_error_handler,
+        cast(Any, presentation_challenge_error_handler),
     )
-    app.add_exception_handler(ManagedKeyError, managed_key_error_handler)
-    app.add_exception_handler(RepositoryError, repository_error_handler)
-    app.add_exception_handler(HTTPException, http_error_handler)
-    app.add_exception_handler(Exception, unexpected_error_handler)
+    app.add_exception_handler(ManagedKeyError, cast(Any, managed_key_error_handler))
+    app.add_exception_handler(RepositoryError, cast(Any, repository_error_handler))
+    app.add_exception_handler(HTTPException, cast(Any, http_error_handler))
+    app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))
