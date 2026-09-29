@@ -128,6 +128,7 @@ class FakeCollection:
         self,
         filters: dict[str, Any],
         update: dict[str, Any],
+        upsert: bool = False,
     ) -> FakeWriteResult:
         for document in self.documents:
             if _matches(document, filters):
@@ -140,6 +141,15 @@ class FakeCollection:
                         _get_path(document, field) + increment,
                     )
                 return FakeWriteResult(matched_count=1)
+        if upsert:
+            new_doc = deepcopy(update.get("$set", {}))
+            for k, v in filters.items():
+                if k not in new_doc:
+                    new_doc[k] = deepcopy(v)
+            if "_id" not in new_doc:
+                new_doc["_id"] = str(len(self.documents) + 1)
+            self.documents.append(new_doc)
+            return FakeWriteResult(matched_count=1)
         return FakeWriteResult(matched_count=0)
 
     def create_indexes(self, indexes: list[Any]) -> list[str]:

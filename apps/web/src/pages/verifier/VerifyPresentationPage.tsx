@@ -115,7 +115,7 @@ export const VerifyPresentationPage: React.FC = () => {
           description: isValid
             ? "W3C DataIntegrity signature cryptographically valid via RFC 8785 canonicalization."
             : "Cryptographic signature validation returned validation notes.",
-          status: isValid ? "SUCCESS" : "ERROR",
+          status: isValid ? "SUCCESS" : "FAILED",
           latencyMs: Number(latencyPerStep),
           details: `Proof cryptosuite: eddsa-jcs-2022 | Verified key: did:gov:eudi:nvi-authority#key-1 | Latency: ${latencyPerStep}ms`
         },
@@ -123,7 +123,7 @@ export const VerifyPresentationPage: React.FC = () => {
           id: "step-status",
           title: "W3C Bitstring Status List Revocation Check",
           description: "Bit #104 is UNSET (0) on RevocationRegistry.sol. Credential is active.",
-          status: isValid ? "SUCCESS" : "ERROR",
+          status: isValid ? "SUCCESS" : "FAILED",
           latencyMs: Number(latencyPerStep),
           details: "StatusList2021 Bitstring root: 0x94635169d750b520e53f6a2a6be2739ef25d"
         },

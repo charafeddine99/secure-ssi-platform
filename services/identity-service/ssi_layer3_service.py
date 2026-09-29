@@ -61,15 +61,24 @@ initialize_database()
 # Configuration & Environment Variables
 # =====================================================================
 
+DEPLOYED_CONTRACTS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "blockchain", "deployed-contracts.json")
+_deployed_contracts = {}
+if os.path.exists(DEPLOYED_CONTRACTS_PATH):
+    try:
+        with open(DEPLOYED_CONTRACTS_PATH, "r", encoding="utf-8") as _f:
+            _deployed_contracts = json.load(_f).get("contracts", {})
+    except Exception:
+        pass
+
 RPC_URL = os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545")
 AI_FRAUD_API_URL = os.getenv("AI_FRAUD_API_URL", "http://127.0.0.1:8002/api/fraud_detection")
 EMERGENCY_RECOVERY_ADDRESS = os.getenv(
     "EMERGENCY_RECOVERY_CONTRACT_ADDRESS",
-    "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    _deployed_contracts.get("EmergencyRecovery", "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0")
 )
 DID_REGISTRY_ADDRESS = os.getenv(
     "DID_REGISTRY_CONTRACT_ADDRESS",
-    "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    _deployed_contracts.get("DIDRegistry", "0x5FbDB2315678afecb367f032d93F642f64180aa3")
 )
 DEPLOYER_PRIVATE_KEY = os.getenv(
     "DEPLOYER_PRIVATE_KEY",

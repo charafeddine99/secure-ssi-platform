@@ -19,6 +19,7 @@ PRESENTATION_CHALLENGES_COLLECTION = "presentation_challenges"
 MANAGED_KEYS_COLLECTION = "managed_keys"
 CREDENTIAL_OFFERS_COLLECTION = "credential_offers"
 VERIFICATION_SESSIONS_COLLECTION = "verification_sessions"
+BLOCKCHAIN_ANCHORS_COLLECTION = "blockchain_anchors"
 
 USER_INDEXES = (
     IndexModel(
@@ -354,6 +355,30 @@ VERIFICATION_SESSION_INDEXES = (
     ),
 )
 
+BLOCKCHAIN_ANCHOR_INDEXES = (
+    IndexModel(
+        [("anchorId", ASCENDING)],
+        unique=True,
+        name="uq_blockchain_anchors_anchor_id",
+    ),
+    IndexModel(
+        [("eventHash", ASCENDING)],
+        name="ix_blockchain_anchors_event_hash",
+    ),
+    IndexModel(
+        [("subjectId", ASCENDING)],
+        name="ix_blockchain_anchors_subject_id",
+    ),
+    IndexModel(
+        [("status", ASCENDING)],
+        name="ix_blockchain_anchors_status",
+    ),
+    IndexModel(
+        [("createdAt", DESCENDING)],
+        name="ix_blockchain_anchors_created_at",
+    ),
+)
+
 
 def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
     try:
@@ -394,6 +419,9 @@ def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
         )
         database[VERIFICATION_SESSIONS_COLLECTION].create_indexes(
             list(VERIFICATION_SESSION_INDEXES)
+        )
+        database[BLOCKCHAIN_ANCHORS_COLLECTION].create_indexes(
+            list(BLOCKCHAIN_ANCHOR_INDEXES)
         )
     except PyMongoError as error:
         raise PersistenceUnavailableError(

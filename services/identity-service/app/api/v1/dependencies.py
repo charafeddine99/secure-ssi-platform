@@ -134,10 +134,15 @@ from app.infrastructure.persistence.indexes import (
     MANAGED_KEYS_COLLECTION,
     CREDENTIAL_OFFERS_COLLECTION,
     VERIFICATION_SESSIONS_COLLECTION,
+    BLOCKCHAIN_ANCHORS_COLLECTION,
 )
 from app.application.ports.oid4vci_repository import CredentialOfferRepository
 from app.application.ports.oid4vp_repository import VerificationSessionRepository
 from app.infrastructure.persistence.oid4vci_repository import MongoCredentialOfferRepository
+from app.infrastructure.persistence.blockchain_anchor_repository import (
+    MongoBlockchainAnchorRepository,
+)
+from app.infrastructure.blockchain.web3_bridge import BlockchainBridge
 from app.infrastructure.persistence.oid4vp_repository import MongoVerificationSessionRepository
 from app.application.services.oid4vci_service import Oid4vciService
 from app.application.services.oid4vp_service import Oid4vpService
@@ -1123,3 +1128,19 @@ def get_oid4vp_service(
         verifier_presentation_service=verifier_service,
         status_list_service=status_list_service,
     )
+
+
+def get_blockchain_anchor_repository(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+) -> MongoBlockchainAnchorRepository:
+    return MongoBlockchainAnchorRepository(
+        manager.database[BLOCKCHAIN_ANCHORS_COLLECTION]
+    )
+
+
+def get_blockchain_bridge(
+    anchor_repository: MongoBlockchainAnchorRepository = Depends(
+        get_blockchain_anchor_repository
+    ),
+) -> BlockchainBridge:
+    return BlockchainBridge(repository=anchor_repository)

@@ -19,13 +19,29 @@ async function main() {
   const didRegistryAddress = await didRegistry.getAddress();
   console.log(`   DIDRegistry deployed at: ${didRegistryAddress}`);
 
-  // 2. Deploy EmergencyRecovery (2-out-of-3 Multi-Sig Guardian Recovery)
-  console.log("2. Deploying EmergencyRecovery...");
+  // 2. Deploy RevocationRegistry (W3C Bitstring Status List & Credential Revocation)
+  console.log("2. Deploying RevocationRegistry...");
+  const RevocationRegistryFactory = await ethers.getContractFactory("RevocationRegistry");
+  const revocationRegistry = await RevocationRegistryFactory.deploy();
+  await revocationRegistry.waitForDeployment();
+  const revocationRegistryAddress = await revocationRegistry.getAddress();
+  console.log(`   RevocationRegistry deployed at: ${revocationRegistryAddress}`);
+
+  // 3. Deploy EmergencyRecovery (2-out-of-3 Multi-Sig Guardian Recovery & AI Quarantine)
+  console.log("3. Deploying EmergencyRecovery...");
   const EmergencyRecoveryFactory = await ethers.getContractFactory("EmergencyRecovery");
   const emergencyRecovery = await EmergencyRecoveryFactory.deploy();
   await emergencyRecovery.waitForDeployment();
   const emergencyRecoveryAddress = await emergencyRecovery.getAddress();
   console.log(`   EmergencyRecovery deployed at: ${emergencyRecoveryAddress}`);
+
+  // 4. Deploy AuditLogger (Tamper-evident Security & Audit Event Hashes)
+  console.log("4. Deploying AuditLogger...");
+  const AuditLoggerFactory = await ethers.getContractFactory("AuditLogger");
+  const auditLogger = await AuditLoggerFactory.deploy();
+  await auditLogger.waitForDeployment();
+  const auditLoggerAddress = await auditLogger.getAddress();
+  console.log(`   AuditLogger deployed at: ${auditLoggerAddress}`);
 
   // Deployment Summary & Local JSON Artifact
   const deploymentInfo = {
@@ -35,7 +51,9 @@ async function main() {
     timestamp: new Date().toISOString(),
     contracts: {
       DIDRegistry: didRegistryAddress,
+      RevocationRegistry: revocationRegistryAddress,
       EmergencyRecovery: emergencyRecoveryAddress,
+      AuditLogger: auditLoggerAddress,
     },
   };
 

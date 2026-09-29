@@ -11,6 +11,7 @@ from app.api.v1.wallets import router as wallets_router
 from app.api.v1.managed_keys import router as managed_keys_router
 from app.api.v1.oid4vci import router as oid4vci_router
 from app.api.v1.oid4vp import router as oid4vp_router
+from app.api.v1.blockchain import router as blockchain_router
 
 
 router = APIRouter(prefix="/api/v1")
@@ -23,3 +24,4 @@ router.include_router(presentation_challenges_router)
 router.include_router(managed_keys_router)
 router.include_router(oid4vci_router)
 router.include_router(oid4vp_router)
+router.include_router(blockchain_router)
