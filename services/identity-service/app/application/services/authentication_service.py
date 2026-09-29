@@ -8,11 +8,16 @@ from app.application.ports.password_hasher import PasswordHasherPort
 from app.application.ports.user_provider import UserProvider
 from app.domain.auth import AuthenticatedPrincipal
 from app.domain.exceptions import (
+    AccessTokenRevokedError,
     AuthConfigurationError,
     InvalidAccessTokenError,
     InvalidCredentialsError,
     UserDisabledError,
     UserNotFoundError,
+)
+from app.infrastructure.auth.token_revocation import (
+    TokenRevocationStore,
+    get_token_revocation_store,
 )
 
 
@@ -32,6 +37,7 @@ class AuthenticationService:
         access_token_service: AccessTokenService,
         clock: Callable[[], datetime],
         jti_generator: JtiGenerator,
+        revocation_store: TokenRevocationStore | None = None,
         enabled: bool = True,
     ) -> None:
         self.user_provider = user_provider
@@ -39,6 +45,11 @@ class AuthenticationService:
         self.access_token_service = access_token_service
         self.clock = clock
         self.jti_generator = jti_generator
+        self.revocation_store = (
+            revocation_store
+            if revocation_store is not None
+            else get_token_revocation_store()
+        )
         self.enabled = enabled
 
     def authenticate(
@@ -86,6 +97,11 @@ class AuthenticationService:
             token,
             checked_at=self.clock(),
         )
+        if self.revocation_store is not None and self.revocation_store.is_revoked(
+            claims.jwt_id, claims.subject
+        ):
+            raise AccessTokenRevokedError("Access token has been revoked.")
+
         record = self.user_provider.find_by_id(claims.subject)
         if record is None:
             raise UserNotFoundError("Token subject is not registered.")
@@ -99,6 +115,25 @@ class AuthenticationService:
             record.user,
             authentication_source=self.user_provider.authentication_source,
         )
+
+    def revoke_token(self, token: str, reason: str = "logout") -> None:
+        """Revokes a specific token by decoding its JTI and blacklisting it."""
+        if self.revocation_store is None:
+            return
+        claims = self.access_token_service.decode_access_token(
+            token,
+            checked_at=self.clock(),
+        )
+        self.revocation_store.revoke_token(
+            jti=claims.jwt_id,
+            expires_at=claims.expires_at,
+            reason=reason,
+        )
+
+    def revoke_subject(self, subject: str, reason: str = "security_quarantine") -> None:
+        """Revokes all active sessions for a given subject (user/DID)."""
+        if self.revocation_store is not None:
+            self.revocation_store.revoke_subject(subject, reason=reason)
 
     def _ensure_enabled(self) -> None:
         if not self.enabled:

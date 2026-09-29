@@ -70,6 +70,10 @@ class AccessTokenInvalidUseError(InvalidAccessTokenError):
     """The token is not an access token."""
 
 
+class AccessTokenRevokedError(InvalidAccessTokenError):
+    """The access token has been explicitly revoked or blacklisted."""
+
+
 class UserNotFoundError(AuthenticationError):
     """A signed token subject is not present in the current local registry."""
 

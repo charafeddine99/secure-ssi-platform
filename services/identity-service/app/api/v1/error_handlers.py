@@ -14,6 +14,7 @@ from app.domain.exceptions import (
     AuthConfigurationError,
     AuthenticationError,
     AuthenticationRequiredError,
+    AccessTokenRevokedError,
     CanonicalizationError,
     CredentialProofError,
     ExistingProofError,
@@ -215,6 +216,9 @@ async def authentication_error_handler(
     elif isinstance(error, AccessTokenInvalidUseError):
         code = "ACCESS_TOKEN_INVALID_USE"
         message = "The token cannot be used as an access token."
+    elif isinstance(error, AccessTokenRevokedError):
+        code = "ACCESS_TOKEN_REVOKED"
+        message = "The access token has been revoked."
     elif isinstance(error, UserNotFoundError):
         code = "USER_NOT_FOUND"
         message = "The access token subject is unavailable."

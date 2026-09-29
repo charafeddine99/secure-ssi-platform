@@ -66,3 +66,15 @@ class CurrentUserResponse(PublicUserResponse):
             permissions=list(principal.permissions),
             authentication_source="local-synthetic-fixture",
         )
+
+
+class TokenRevokeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str | None = Field(default=None, max_length=2048)
+    reason: str = Field(default="logout", max_length=128)
+
+
+class TokenRevokeResponse(ApiModel):
+    status: Literal["SUCCESS"] = "SUCCESS"
+    message: str = "Token successfully revoked."
+

@@ -31,47 +31,81 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         return response
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     """
-    Sliding-window token bucket rate limiter to protect microservice APIs from DoS.
-    Allows 180 requests per minute per IP address.
+    Sliding-window token bucket rate limiter to protect microservice APIs from DoS
+    and brute-force credential stuffing.
+    - Standard endpoints: 180 requests per minute.
+    - Sensitive endpoints (auth, credentials, recovery): 30 requests per minute.
     """
-    def __init__(self, app, max_requests: int = 180, window_seconds: int = 60):
+    def __init__(self, app, max_requests: int = 180, window_seconds: int = 60, sensitive_requests: int = 30):
         super().__init__(app)
         self.max_requests = max_requests
+        self.sensitive_requests = sensitive_requests
         self.window_seconds = window_seconds
         self.clients: Dict[str, list] = {}
+
+    def _is_sensitive_path(self, path: str) -> bool:
+        sensitive_prefixes = (
+            "/api/v1/auth/login",
+            "/api/v1/identity/auth/login",
+            "/api/v1/identity/credentials/sign",
+            "/api/v1/recovery/request",
+            "/api/v1/fraud/quarantine",
+        )
+        return any(path.startswith(prefix) for prefix in sensitive_prefixes)
 
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else "127.0.0.1"
         now = time.time()
+        path = request.url.path
 
-        # Exclude health checks from rate limiting
-        if request.url.path in ("/health", "/api/v1/system/status"):
+        # Exclude health and root discovery from rate limiting
+        if path in ("/health", "/api/v1/system/status", "/docs", "/openapi.json"):
             return await call_next(request)
 
+        is_sensitive = self._is_sensitive_path(path)
+        effective_limit = self.sensitive_requests if is_sensitive else self.max_requests
+        rate_key = f"{client_ip}:{'sensitive' if is_sensitive else 'standard'}"
+
         # Clean timestamps older than the sliding window
-        timestamps = self.clients.get(client_ip, [])
+        timestamps = self.clients.get(rate_key, [])
         timestamps = [t for t in timestamps if now - t < self.window_seconds]
-        
-        if len(timestamps) >= self.max_requests:
+
+        reset_time = int(timestamps[0] + self.window_seconds) if timestamps else int(now + self.window_seconds)
+        remaining = max(0, effective_limit - len(timestamps))
+
+        if len(timestamps) >= effective_limit:
             correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
+            retry_after = int(self.window_seconds - (now - timestamps[0]))
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
                     "error": {
                         "code": "RATE_LIMIT_EXCEEDED",
-                        "message": f"Rate limit of {self.max_requests} requests per minute exceeded.",
+                        "message": f"Rate limit of {effective_limit} requests per minute exceeded for this endpoint tier.",
                         "correlation_id": correlation_id,
-                        "retry_after": int(self.window_seconds - (now - timestamps[0]))
+                        "retry_after": retry_after
                     }
                 },
-                headers={"Retry-After": str(int(self.window_seconds - (now - timestamps[0])))}
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Limit": str(effective_limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset_time),
+                }
             )
 
         timestamps.append(now)
-        self.clients[client_ip] = timestamps
-        return await call_next(request)
+        self.clients[rate_key] = timestamps
+
+        response: Response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(effective_limit)
+        response.headers["X-RateLimit-Remaining"] = str(remaining - 1 if remaining > 0 else 0)
+        response.headers["X-RateLimit-Reset"] = str(reset_time)
+        return response

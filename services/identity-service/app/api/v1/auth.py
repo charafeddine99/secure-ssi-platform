@@ -1,17 +1,22 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Security
+from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.v1.dependencies import (
+    bearer_scheme,
     get_authentication_service,
     require_permission,
 )
 from app.application.services.authentication_service import AuthenticationService
 from app.domain.auth import AuthenticatedPrincipal
+from app.domain.exceptions import AuthenticationRequiredError
 from app.domain.permissions import Permission
 from app.schemas.auth_api import (
     CurrentUserResponse,
     PublicUserResponse,
     TokenRequest,
     TokenResponse,
+    TokenRevokeRequest,
+    TokenRevokeResponse,
 )
 from app.schemas.credential_api import ApiErrorResponse
 
@@ -89,3 +94,34 @@ def current_user(
     ),
 ) -> CurrentUserResponse:
     return CurrentUserResponse.from_principal(principal)
+
+
+@router.post(
+    "/revoke",
+    response_model=TokenRevokeResponse,
+    summary="Revoke an active access token",
+    description=(
+        "Immediately revokes a JWT access token, blacklisting its JTI against future API requests."
+    ),
+    responses={
+        401: AUTH_ERROR_RESPONSES[401],
+        500: AUTH_ERROR_RESPONSES[500],
+    },
+)
+def revoke_access_token(
+    request: TokenRevokeRequest = TokenRevokeRequest(),
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+    service: AuthenticationService = Depends(get_authentication_service),
+) -> TokenRevokeResponse:
+    target_token = request.token
+    if not target_token and credentials and credentials.scheme.casefold() == "bearer":
+        target_token = credentials.credentials
+
+    if not target_token:
+        raise AuthenticationRequiredError(
+            "Bearer token or explicit token body required for revocation."
+        )
+
+    service.revoke_token(target_token, reason=request.reason)
+    return TokenRevokeResponse(status="SUCCESS", message="Token successfully revoked.")
+

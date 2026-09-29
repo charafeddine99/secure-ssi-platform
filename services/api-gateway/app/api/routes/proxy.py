@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import Any
 from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter, Request, Response, status
@@ -8,11 +9,27 @@ from app.core.config import IDENTITY_SERVICE_URL, FRAUD_SERVICE_URL, RECOVERY_SE
 router = APIRouter(prefix="/api/v1", tags=["API Gateway Facade & Proxy"])
 
 MAX_PAYLOAD_BYTES = 1024 * 1024  # 1 MB
+MAX_JSON_DEPTH = 16
+HTTP_413 = status.HTTP_413_CONTENT_TOO_LARGE
+
+
+def compute_json_depth(val: Any, current_depth: int = 1) -> int:
+    """Recursively computes the maximum nesting depth of a parsed JSON structure."""
+    if isinstance(val, dict):
+        if not val:
+            return current_depth
+        return max(compute_json_depth(v, current_depth + 1) for v in val.values())
+    elif isinstance(val, (list, tuple)):
+        if not val:
+            return current_depth
+        return max(compute_json_depth(item, current_depth + 1) for item in val)
+    return current_depth
+
 
 async def forward_request(target_url: str, request: Request) -> Response:
     """
     Forwards client request to target microservice with context propagation,
-    payload size validation, and consistent error formatting.
+    payload size validation, JSON depth defense, and consistent error formatting.
     """
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
     body = await request.body()
@@ -28,10 +45,49 @@ async def forward_request(target_url: str, request: Request) -> Response:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }).encode(),
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=HTTP_413,
             media_type="application/json",
             headers={"X-Correlation-ID": correlation_id}
         )
+
+    # 1.5. JSON Depth & UTF-8 Bomb Defense
+    content_type = request.headers.get("content-type", "")
+    if body and ("application/json" in content_type or "application/ld+json" in content_type):
+        try:
+            body_str = body.decode("utf-8")
+            parsed_json = json.loads(body_str)
+            depth = compute_json_depth(parsed_json)
+            if depth > MAX_JSON_DEPTH:
+                return Response(
+                    content=json.dumps({
+                        "error": {
+                            "code": "JSON_DEPTH_EXCEEDED",
+                            "message": f"JSON nesting depth of {depth} exceeds maximum allowable threshold ({MAX_JSON_DEPTH}).",
+                            "correlation_id": correlation_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        }
+                    }).encode(),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    media_type="application/json",
+                    headers={"X-Correlation-ID": correlation_id}
+                )
+        except UnicodeDecodeError:
+            return Response(
+                content=json.dumps({
+                    "error": {
+                        "code": "INVALID_ENCODING",
+                        "message": "Request body contains invalid UTF-8 byte sequences.",
+                        "correlation_id": correlation_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                }).encode(),
+                status_code=status.HTTP_400_BAD_REQUEST,
+                media_type="application/json",
+                headers={"X-Correlation-ID": correlation_id}
+            )
+        except json.JSONDecodeError:
+            # Let downstream microservice validation provide standard schema errors
+            pass
 
     # 2. Context propagation headers
     headers = dict(request.headers)
@@ -84,11 +140,15 @@ async def forward_request(target_url: str, request: Request) -> Response:
                 headers={"X-Correlation-ID": correlation_id}
             )
         except Exception as exc:
+            safe_msg = str(exc)
+            if "://" in safe_msg and "@" in safe_msg:
+                import re
+                safe_msg = re.sub(r"://([^:@]+):([^@]+)@", r"://\1:***REDACTED***@", safe_msg)
             return Response(
                 content=json.dumps({
                     "error": {
                         "code": "BAD_GATEWAY",
-                        "message": f"Proxy forwarding error: {str(exc)}",
+                        "message": f"Proxy forwarding error: {safe_msg}",
                         "correlation_id": correlation_id,
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }
