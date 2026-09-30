@@ -193,12 +193,13 @@ class Oid4vpService:
 
         # 9-point verification logic
         cred_valid = len(vcs) > 0 and isinstance(vcs[0], dict)
-        target_vc = vcs[0] if cred_valid else {}
-        issuer_did = target_vc.get("issuer", "")
+        target_vc: dict[str, Any] = dict(vcs[0]) if cred_valid else {}
+        issuer_did = str(target_vc.get("issuer") or "")
         issuer_trusted = issuer_did.startswith("did:web:") or issuer_did.startswith("did:key:")
         
         # Proof & Signature
-        proof = target_vc.get("proof", {})
+        raw_proof = target_vc.get("proof")
+        proof: dict[str, Any] = raw_proof if isinstance(raw_proof, dict) else {}
         has_proof_structure = bool(proof.get("proofValue") and proof.get("type"))
         sig_valid = False
         if has_proof_structure:
@@ -218,7 +219,9 @@ class Oid4vpService:
                 sig_valid = has_proof_structure
 
         # Holder Binding
-        subject_id = target_vc.get("credentialSubject", {}).get("id", "")
+        raw_subject = target_vc.get("credentialSubject")
+        subject_dict: dict[str, Any] = raw_subject if isinstance(raw_subject, dict) else {}
+        subject_id = str(subject_dict.get("id") or "")
         holder_binding_valid = bool(subject_id and (subject_id.startswith("did:key:") or subject_id.startswith("0x")))
 
         # Expiration Check
@@ -411,13 +414,18 @@ class Oid4vpService:
         status = VerificationSessionStatus.VERIFIED if policy_accepted else VerificationSessionStatus.REJECTED
         presentation_id = vp_token.get("id", f"urn:uuid:{ObjectId()}")
 
+        claims_to_store: Mapping[str, Any] | None = disclosed_claims
+        if claims_to_store is None:
+            raw_claims = target_vc.get("credentialSubject")
+            claims_to_store = raw_claims if isinstance(raw_claims, Mapping) else {}
+
         # Update session in MongoDB
         self._sessions.update_result(
             session.session_id,
             status=status,
             presentation_id=presentation_id,
             verification_result=result,
-            disclosed_claims=disclosed_claims or target_vc.get("credentialSubject", {}),
+            disclosed_claims=claims_to_store,
             expected_version=session.version
         )
 

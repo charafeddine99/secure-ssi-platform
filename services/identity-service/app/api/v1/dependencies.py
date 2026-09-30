@@ -919,7 +919,7 @@ def get_holder_presentation_service(
         builder=PresentationBuilder(
             canonicalizer=_CANONICALIZER,
             signer=_SIGNER,
-            key_provider=holder_key_router,
+            key_provider=_HOLDER_KEY_PROVIDER,
             holder_signer=holder_key_router,
             key_metadata_provider=holder_key_router,
         ),

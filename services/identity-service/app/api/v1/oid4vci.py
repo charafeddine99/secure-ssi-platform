@@ -175,7 +175,7 @@ def claim_credential(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return ClaimOfferResponse(
-        credential=dict(credential.raw_credential),
+        credential=dict(credential.raw_credential or {}),
         credential_id=credential.credential_id,
         status=credential.status.value,
     )

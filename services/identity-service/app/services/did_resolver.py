@@ -181,6 +181,8 @@ class DidWebFixtureResolver:
 
 
 class CompositeDidResolver:
+    method: str = "composite"
+
     def __init__(self, resolvers: Mapping[str, DidResolver]) -> None:
         self.resolvers = dict(resolvers)
 

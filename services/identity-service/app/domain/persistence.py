@@ -188,13 +188,12 @@ class PersistedCredential:
             if isinstance(self.status, CredentialStorageStatus)
             else CredentialStatus(self.status)
         )
-        revocation_values = (
-            self.revoked_at,
-            self.revoked_by,
-            self.revocation_reason,
-        )
         if normalized_status is CredentialStatus.REVOKED:
-            if any(value is None for value in revocation_values):
+            if (
+                self.revoked_at is None
+                or self.revoked_by is None
+                or self.revocation_reason is None
+            ):
                 raise ValueError(
                     "Revoked credential requires complete revocation metadata."
                 )
@@ -208,13 +207,16 @@ class PersistedCredential:
                 or len(self.revocation_reason) > 500
             ):
                 raise ValueError("Revocation metadata is invalid.")
-        elif any(value is not None for value in revocation_values):
+        elif (
+            self.revoked_at is not None
+            or self.revoked_by is not None
+            or self.revocation_reason is not None
+        ):
             raise ValueError(
                 "Non-revoked credential cannot contain revocation metadata."
             )
-        status_entry_values = (self.status_list_id, self.status_list_index)
-        if any(value is not None for value in status_entry_values):
-            if any(value is None for value in status_entry_values):
+        if self.status_list_id is not None or self.status_list_index is not None:
+            if self.status_list_id is None or self.status_list_index is None:
                 raise ValueError(
                     "Credential status-list mapping must be complete."
                 )
@@ -233,9 +235,8 @@ class PersistedCredential:
                 self.status_entry_id,
                 name="Credential status entry id",
             )
-        ownership_values = (self.wallet_id, self.owner_user_id)
-        if any(value is not None for value in ownership_values):
-            if any(value is None for value in ownership_values):
+        if self.wallet_id is not None or self.owner_user_id is not None:
+            if self.wallet_id is None or self.owner_user_id is None:
                 raise ValueError(
                     "Credential wallet ownership mapping must be complete."
                 )
