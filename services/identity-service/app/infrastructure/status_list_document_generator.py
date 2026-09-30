@@ -1,6 +1,6 @@
 import base64
 import gzip
-from collections.abc import Mapping
+from collections.abc import Collection, Iterable, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
 from io import BytesIO
@@ -83,7 +83,7 @@ class StatusListDocumentGenerator:
 
 
 def encode_status_list(
-    revoked_indices: tuple[int, ...],
+    revoked_indices: Collection[int] | Iterable[int],
     *,
     list_length: int,
 ) -> str:

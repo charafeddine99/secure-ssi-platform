@@ -263,7 +263,7 @@ def run_oid4vp_benchmark() -> Dict[str, Any]:
     )
 
     # Pre-generate 131,072 bitstatus list
-    status_list_encoded = encode_status_list({9999}, list_length=131072)
+    status_list_encoded = encode_status_list((9999,), list_length=131072)
 
     workloads = [10, 50, 100, 200]
     results: Dict[str, Any] = {}
@@ -343,7 +343,7 @@ def run_bitstring_status_list_benchmark() -> Dict[str, Any]:
     )
 
     capacity = 131072
-    revoked_indices = set(range(10, 110))  # 100 revoked credentials
+    revoked_indices = tuple(range(10, 110))  # 100 revoked credentials
 
     # 1. Construction & Encoding
     t0_enc = time.perf_counter()
