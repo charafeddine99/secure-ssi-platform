@@ -254,6 +254,30 @@ export const RootLayout: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* User Account / Sign In */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <Link
+            to="/login"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              color: location.pathname === "/login" ? "#ffffff" : "#cbd5e1",
+              backgroundColor: location.pathname === "/login" ? "#2563eb" : "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              transition: "all 0.15s ease"
+            }}
+          >
+            <UserCheck size={15} />
+            <span>{user?.name ? user.name.split(" ")[0] : "Sign In"}</span>
+          </Link>
+        </div>
       </header>
 
       {/* Main Outlet */}

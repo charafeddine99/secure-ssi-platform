@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { RootLayout } from "../layouts/RootLayout";
 import { PublicLayout } from "../layouts/PublicLayout";
 import { HolderLayout } from "../layouts/HolderLayout";
@@ -19,6 +19,7 @@ const PageLoader: React.FC = () => (
 const LandingPage = React.lazy(() => import("../pages/public/LandingPage").then(m => ({ default: m.LandingPage })));
 const EcosystemPage = React.lazy(() => import("../pages/public/EcosystemPage").then(m => ({ default: m.EcosystemPage })));
 const ArchitectureDocsPage = React.lazy(() => import("../pages/public/ArchitectureDocsPage").then(m => ({ default: m.ArchitectureDocsPage })));
+const AuthPage = React.lazy(() => import("../components/auth/AuthPage").then(m => ({ default: m.AuthPage })));
 const NotFoundPage = React.lazy(() => import("../pages/public/NotFoundPage").then(m => ({ default: m.NotFoundPage })));
 
 // Holder Pages (Lazy)
@@ -62,6 +63,7 @@ export const AppRoutes: React.FC = () => {
           <Route index element={<LandingPage />} />
           <Route path="ecosystem" element={<EcosystemPage />} />
           <Route path="docs" element={<ArchitectureDocsPage />} />
+          <Route path="login" element={<AuthPage />} />
         </Route>
 
         {/* 2. Holder Wallet Routes */}

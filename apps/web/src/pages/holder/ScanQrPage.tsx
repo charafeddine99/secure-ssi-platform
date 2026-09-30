@@ -295,9 +295,12 @@ export const ScanQrPage: React.FC = () => {
                     {req.purpose}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#60a5fa", fontSize: "0.75rem", fontWeight: 600 }}>
-                  <span>{req.type}</span>
-                  <ArrowRight size={14} />
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#fbbf24", backgroundColor: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "2px 6px", borderRadius: "4px" }}>
+                    DEMO LAB
+                  </span>
+                  <span style={{ color: "#60a5fa", fontSize: "0.75rem", fontWeight: 600 }}>{req.type}</span>
+                  <ArrowRight size={14} color="#60a5fa" />
                 </div>
               </div>
             ))}

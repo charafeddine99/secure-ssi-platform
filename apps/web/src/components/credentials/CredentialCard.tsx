@@ -92,7 +92,25 @@ export const CredentialCard: React.FC<CredentialCardProps> = ({
             </h4>
           </div>
         </div>
-        <StatusChip status={credential.status} size="sm" />
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {(credential.id.includes("prototype") || credential.id.includes("subu") || credential.id.includes("bank")) && (
+            <span
+              style={{
+                fontSize: "0.62rem",
+                fontWeight: 700,
+                color: "#fbbf24",
+                backgroundColor: "rgba(245, 158, 11, 0.15)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                letterSpacing: "0.04em"
+              }}
+            >
+              DEMO LAB
+            </span>
+          )}
+          <StatusChip status={credential.status} size="sm" />
+        </div>
       </div>
 
       {/* Claims Preview */}

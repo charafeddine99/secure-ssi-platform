@@ -4,14 +4,19 @@ import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import { VerificationChecklist, VerificationStep } from "../../components/verification/VerificationChecklist";
 import { verifyPresentation } from "../../services/api";
-import { Search, ShieldCheck, ArrowLeft, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, ArrowLeft, CheckCircle2 } from "lucide-react";
+
+interface VerificationPresentationResult {
+  totalLatencyMs?: string | number;
+  [key: string]: unknown;
+}
 
 export const VerifyPresentationPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [verifying, setVerifying] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<VerificationPresentationResult | null>(null);
 
   const initialSteps: VerificationStep[] = [
     {
@@ -50,23 +55,28 @@ export const VerifyPresentationPage: React.FC = () => {
     const samplePayload = {
       presentation: {
         "@context": [
-          "https://www.w3.org/2018/credentials/v1",
-          "https://w3id.org/security/suites/ed25519-2020/v1"
+          "https://www.w3.org/ns/credentials/v2"
         ],
         id: "urn:uuid:vp-audit-9021",
         type: ["VerifiablePresentation"],
         holder: "did:key:z6MkuTi8U5xXyXyXyXyXyXyXyXyXyXyXyXyXyXyXyXy",
         verifiableCredential: [
           {
-            "@context": ["https://www.w3.org/2018/credentials/v1"],
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://secure-ssi.example/contexts/university-affiliation/v1"
+            ],
             id: "urn:uuid:natid-prototype-2026-tr",
-            type: ["VerifiableCredential", "NationalIdentityCredential"],
-            issuer: "did:gov:eudi:nvi-authority",
-            issuanceDate: "2025-01-15T00:00:00Z",
+            type: ["VerifiableCredential", "UniversityAffiliationCredential"],
+            issuer: "did:web:subu.edu.tr",
+            validFrom: "2025-01-15T00:00:00Z",
+            validUntil: "2035-01-15T00:00:00Z",
             credentialSubject: {
               id: "did:key:z6MkuTi8U5xXyXyXyXyXyXyXyXyXyXyXyXyXyXyXyXy",
-              Nationality: "TUR",
-              "Assurance Level": "Prototype High LoA"
+              affiliation: "student",
+              programCode: "SYN-CS-001",
+              degree: "Bachelor of Science",
+              graduationYear: 2026
             },
             proof: {
               type: "DataIntegrityProof",
