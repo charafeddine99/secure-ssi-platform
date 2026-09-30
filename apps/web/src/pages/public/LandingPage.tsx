@@ -155,14 +155,14 @@ export const LandingPage: React.FC = () => {
     path: string;
     desc: string;
   }> = [
-    { step: 1, title: "Initialize Wallet", role: "HOLDER", path: "/wallet", desc: "Access the holder wallet, inspect your did:key identifier, and check active credentials." },
-    { step: 2, title: "Issue University Credential", role: "ISSUER", path: "/issuer/issue", desc: "Select Academic Degree template, fill student details, and generate OID4VCI offer." },
-    { step: 3, title: "Claim via OID4VCI", role: "HOLDER", path: "/wallet/scan", desc: "Scan or accept credential offer; credential is cryptographically signed and stored in wallet." },
-    { step: 4, title: "Create Verification Request", role: "VERIFIER", path: "/verifier/request", desc: "Employer generates OID4VP presentation request with challenge nonce and QR code." },
-    { step: 5, title: "Selective Disclosure Consent", role: "HOLDER", path: "/wallet/consent", desc: "Holder reviews purpose, deselects optional claims, and submits direct-post presentation." },
-    { step: 6, title: "9-Point Trust Audit", role: "VERIFIER", path: "/verifier/verify", desc: "Verifier inspects cryptographic signature, expiration, status list bit, and AI risk score." },
-    { step: 7, title: "Instant Status Revocation", role: "ISSUER", path: "/issuer/revocations", desc: "Issuer revokes credential bit; subsequent verification attempts are immediately REJECTED." },
-    { step: 8, title: "Guardian Social Recovery", role: "GUARDIAN", path: "/guardian", desc: "Simulate lost device recovery via 3-of-5 Shamir secret sharing and successor key rotation." }
+    { step: 1, title: "Issuer Creates Credential Schema", role: "ISSUER", path: "/issuer/templates", desc: "Define W3C VC 2.0 schema, claim definitions, and status list bit assignment." },
+    { step: 2, title: "Issuer Issues Credential", role: "ISSUER", path: "/issuer/issue", desc: "Generate Ed25519 Data Integrity proof, sign credential, and produce OID4VCI offer." },
+    { step: 3, title: "Holder Receives Credential", role: "HOLDER", path: "/wallet/scan", desc: "Scan or ingest OID4VCI credential offer via deep-link protocol trigger." },
+    { step: 4, title: "Credential Appears in Wallet", role: "HOLDER", path: "/wallet", desc: "Inspect newly anchored credential card, claims, and cryptographic proof." },
+    { step: 5, title: "Verifier Creates Verification Request", role: "VERIFIER", path: "/verifier/request", desc: "Generate OID4VP presentation definition with challenge nonce and required claims." },
+    { step: 6, title: "Holder Approves Sharing", role: "HOLDER", path: "/wallet/consent", desc: "Review request purpose, toggle selective disclosure, and sign salted blinded presentation." },
+    { step: 7, title: "Verifier Receives Verification Result", role: "VERIFIER", path: "/verifier/verify", desc: "9-point trust audit confirms signature, validity, non-revocation, and zero-leakage." },
+    { step: 8, title: "Audit Log Records Event", role: "ADMIN", path: "/admin/audit", desc: "Inspect append-only tamper-proof audit trail and Hardhat EVM anchored event." }
   ];
 
   const techStack = [
@@ -219,16 +219,16 @@ export const LandingPage: React.FC = () => {
           and zero-PII <strong>Ethereum smart contract trust anchors</strong>.
         </p>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: "14px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
           <button
             onClick={() => handleRoleLaunch("HOLDER", "/wallet")}
             style={{
-              padding: "13px 26px",
+              padding: "12px 22px",
               borderRadius: "10px",
               backgroundColor: "#2563eb",
               color: "#ffffff",
               fontWeight: 700,
-              fontSize: "0.95rem",
+              fontSize: "0.92rem",
               border: "none",
               cursor: "pointer",
               display: "inline-flex",
@@ -237,48 +237,88 @@ export const LandingPage: React.FC = () => {
               boxShadow: "0 4px 16px rgba(37,99,235,0.4)"
             }}
           >
-            Launch Holder Wallet
-            <ArrowRight size={18} />
+            Start as Holder
+            <ArrowRight size={17} />
           </button>
 
           <button
             onClick={() => handleRoleLaunch("ISSUER", "/issuer")}
             style={{
-              padding: "13px 24px",
+              padding: "12px 20px",
               borderRadius: "10px",
               backgroundColor: "#111827",
               border: "1px solid #1f2937",
               color: "#e2e8f0",
               fontWeight: 600,
-              fontSize: "0.95rem",
+              fontSize: "0.92rem",
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: "8px"
             }}
           >
-            <Building2 size={18} color="#60a5fa" />
-            Issuer Console
+            <Building2 size={17} color="#60a5fa" />
+            Start as Issuer
           </button>
 
-          <Link
-            to="/docs"
+          <button
+            onClick={() => handleRoleLaunch("VERIFIER", "/verifier")}
             style={{
-              padding: "13px 24px",
+              padding: "12px 20px",
               borderRadius: "10px",
-              backgroundColor: "#1f2937",
+              backgroundColor: "#111827",
+              border: "1px solid #1f2937",
               color: "#e2e8f0",
               fontWeight: 600,
-              fontSize: "0.95rem",
-              border: "1px solid #374151",
-              textDecoration: "none",
+              fontSize: "0.92rem",
+              cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: "8px"
             }}
           >
-            <FileCode size={18} />
-            Architecture & Standards Docs
+            <Search size={17} color="#34d399" />
+            Start as Verifier
+          </button>
+
+          <button
+            onClick={() => handleRoleLaunch("ADMIN", "/admin")}
+            style={{
+              padding: "12px 20px",
+              borderRadius: "10px",
+              backgroundColor: "#111827",
+              border: "1px solid #1f2937",
+              color: "#e2e8f0",
+              fontWeight: 600,
+              fontSize: "0.92rem",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px"
+            }}
+          >
+            <Settings size={17} color="#a78bfa" />
+            Start Admin View
+          </button>
+
+          <Link
+            to="/docs"
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              backgroundColor: "#1f2937",
+              color: "#94a3b8",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              border: "1px solid #374151",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            <FileCode size={16} />
+            Docs &amp; Specs
           </Link>
         </div>
       </section>

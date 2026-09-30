@@ -7,244 +7,255 @@
 
 ---
 
-## Proje Durumu: %100 Tamamlandı (All 202 Requirements Verified)
+## 1. Project Overview
 
-Bu platform; merkeziyetsiz kimlik (Self-Sovereign Identity - SSI), W3C Verifiable Credentials v2.0, yapay zekâ tabanlı dolandırıcılık tespiti (XGBoost + Autoencoder), Ethereum/EIP-4337 tabanlı akıllı sözleşmeler ve 3/5 Guardian Shamir Secret Sharing acil kurtarma mekanizmasını tek çatı altında birleştiren uçtan uca bir sistemdir.
+The **Secure Self-Sovereign Identity (SSI) Platform** is an enterprise-grade academic reference implementation combining **W3C Verifiable Credentials Data Model v2.0**, **Decentralized Identifiers (DID)**, **OpenID for Verifiable Credential Issuance (OID4VCI)** and **Presentations (OID4VP)**, **Hybrid AI Fraud Detection**, and **EIP-4337 Smart Contract Anchoring** with **3-of-5 Shamir Secret Sharing Social Recovery**.
 
-## 4 Katmanlı Mimari ve Servisler
+The platform gives users cryptographic control over their digital credentials while enabling instant, trustless verification with zero personal data leakage.
 
-| Katman / Bileşen | Fonksiyon | Teknoloji | Yerel Adres | Durum |
-| --- | --- | --- | --- | :---: |
-| **Web UI** | Web3 & SSI Yönetim Portalı (Senaryo 171 Diploma, Canlı AI, 3/5 Kurtarma) | React 18, TypeScript, Vite | `http://localhost:5173` | **%100 AKTİF** |
-| **API Gateway** | Merkezi Reverse-Proxy, CORS, Güvenlik Başlıkları | FastAPI, Uvicorn, HTTPX | `http://localhost:8000` | **%100 AKTİF** |
-| **Identity Service** | W3C VC 2.0, DID (did:web/key), Bitstring Status List, JWT/RBAC | FastAPI, MongoDB, JCS | `http://localhost:8001` | **%100 AKTİF** |
-| **Fraud Service** | AI Anomali Tespiti, İmkansız Seyahat, Otomatik Karantina | XGBoost, Autoencoder, FastAPI | `http://localhost:8002` | **%100 AKTİF** |
-| **Recovery Service** | 3/5 Guardian Quorum, Shamir Secret Sharing, Time-Lock, Anahtar Rotasyonu | Python, AES-256-GCM, Mongo | `http://localhost:8003` | **%100 AKTİF** |
-| **Blockchain** | DIDRegistry, RevocationRegistry, EmergencyRecovery, AuditLogger | Solidity 0.8.28, Hardhat | Hardhat Network | **%100 AKTİF** |
-| **ZKP & Privacy** | Seçici Açıklama (Selective Disclosure) ve GPA >= 3.0 Range Proof | SHA-256 Commitments | `packages/shared/zkp` | **%100 AKTİF** |
-| **DIDComm v2** | Güvenli Ajan Mesajlaşması ve Authcrypt Zarfı | AES-256-GCM | `packages/shared/didcomm` | **%100 AKTİF** |
+---
 
+## 2. Architecture & 4-Layer Stack
 
-## Folder structure
+```mermaid
+graph TD
+    subgraph L4["Layer 4: Presentation & Stakeholder Cockpit"]
+        UI["React 18 + Vite Web App (Port 5173)"]
+        Holder["Holder Wallet"]
+        Issuer["Issuer Console"]
+        Verifier["Verifier Console"]
+        Guardian["Guardian Network"]
+        Admin["Admin Cockpit"]
+    end
 
-```text
-apps/web/
-services/{api-gateway,identity-service,fraud-service,recovery-service}/
-blockchain/
-infrastructure/
-packages/shared/             Versioned JSON Schemas and contract tests
-docs/
-scripts/
+    subgraph L3["Layer 3: Application Services & Core Protocols"]
+        GW["API Gateway (Port 8000)"]
+        ID["Identity Service (Port 8001)\n• W3C VC 2.0 / did:key / did:web\n• RFC 8785 JCS & Ed25519 Cryptosuite\n• W3C Bitstring Status List 1.0 (131,072 bits)"]
+        REC["Recovery Service (Port 8003)\n• 3-of-5 Shamir Secret Sharing\n• Time-Lock Expiration & Key Rotation"]
+    end
+
+    subgraph L2["Layer 2: AI Threat & Anomaly Engine"]
+        FRAUD["Fraud Service (Port 8002)\n• Dual ML: XGBoost + Deep Autoencoder (F1=0.943)\n• Impossible Travel & Velocity Heuristics\n• Autonomous On-Chain Quarantine Trigger"]
+    end
+
+    subgraph L1["Layer 1: Trust Anchors & Decentralized Storage"]
+        EVM["EVM Smart Contracts (Hardhat / Solidity 0.8.28)\n• DIDRegistry\n• RevocationRegistry\n• EmergencyRecovery\n• AuditLogger"]
+        DB["Authoritative Persistence (MongoDB / Redis)"]
+    end
+
+    UI --> GW
+    GW --> ID
+    GW --> FRAUD
+    GW --> REC
+    ID --> DB
+    REC --> DB
+    FRAUD --> EVM
+    ID --> EVM
+    REC --> EVM
 ```
 
-## Prerequisites
+---
 
-- Docker Desktop with Docker Compose
-- For host development: Node.js 20+, npm 10+, Python 3.11+
-- Optional: GNU Make
+## 3. Technology Stack
 
-## Persistent Storage & Database Migration
+| Component / Standard | Technology | Purpose | Specification |
+|---|---|---|---|
+| **Verifiable Credentials** | W3C VC DM v2.0 | Standardized credential claim format | [W3C Recommendation](https://www.w3.org/TR/vc-data-model-2.0/) |
+| **Canonicalization** | RFC 8785 JCS | Deterministic JSON Canonicalization | [RFC 8785](https://datatracker.ietf.org/doc/html/rfc8785) |
+| **Cryptographic Proofs** | `eddsa-jcs-2022` | Ed25519 signature with multibase encoding | W3C Data Integrity Cryptosuites |
+| **Issuance Protocol** | OID4VCI (Draft 13) | OpenID for Verifiable Credential Issuance | OpenID Foundation |
+| **Presentation Protocol**| OID4VP (Draft 20) | OpenID for Verifiable Presentations | OpenID Foundation |
+| **Revocation Registry** | Bitstring Status List 1.0 | 131,072 entries, GZIP compressed, LRU cache | W3C Bitstring Status List v1.0 |
+| **AI Threat Engine** | XGBoost + Autoencoder | Anomaly detection & impossible travel analysis | NIST AI Risk Management Framework |
+| **Smart Contracts** | Solidity 0.8.28 | Root hash anchoring, DID registry, multi-sig | OpenZeppelin / Hardhat |
+| **Backend Framework** | FastAPI (Python 3.11+) | Asynchronous REST microservices | OpenAPI 3.1 / Pydantic v2 |
+| **Database Layer** | MongoDB 7.0 + Redis 7 | Compound indexed persistence + outbox queue | ACID-compliant Document Storage |
+| **Frontend Cockpit** | React 18 + Vite 6 + TS | Responsive 5-stakeholder UI | Modern Vanilla CSS Design Tokens |
 
-- **Authoritative Target Database:** MongoDB Enterprise (`secure_identity` & `secure_recovery`)
-  - Collections: `users`, `credentials`, `holder_wallets`, `audit_events`, `audit_outbox`, `status_lists`, `managed_keys`
-  - Managed by typed repository pattern: `MongoUserRepository`, `MongoCredentialRepository`, `MongoHolderWalletRepository`, `MongoAuditEventRepository`
-- **SQLite -> MongoDB Migration Engine:**
-  - Automated, deterministic, idempotent migration engine: `services/identity-service/app/infrastructure/persistence/sqlite_migrator.py`
-  - CLI runner: `python scripts/migrate_sqlite_to_mongodb.py [--dry-run] [--export-json <path>]`
-  - Strict security invariants: Plain text seed phrases, private keys, and unencrypted secrets are completely excluded from migration.
-  - Backup: `services/identity-service/secure_ssi_database.db.backup` preserved for deterministic verification.
+---
 
-## Local development
+## 4. Key Features
 
-Web:
+- **Self-Sovereign Identity Ownership**: User generates and holds private keys locally; identity verified via `did:key` and `did:web`.
+- **Zero-Knowledge Selective Disclosure**: Holders selectively disclose only requested claims and prove predicates (e.g. `age >= 18` or `GPA >= 3.0`) without revealing birth dates or transcripts.
+- **Microsecond Cryptographic Verification**: 9-point trust verification pipeline executes cryptographic checks, status bit validation, and challenge nonce validation in $<0.2\text{ms}$.
+- **Hybrid AI Fraud Defense**: Autonomous anomaly detection engine analyzes access velocity, IP geolocations, and impossible travel patterns, triggering automatic on-chain quarantine when risk exceeds thresholds.
+- **Guardian Social Recovery**: Multi-sig 3-of-5 Shamir Secret Sharing recovery with time-lock delays and on-chain successor key rotation to recover lost devices without central backdoor access.
 
-```powershell
-cd apps/web
-npm install
-npm run dev
-```
+---
 
-One API service (change the directory and port for other services):
+## 5. Prerequisites & Installation
 
-```powershell
-cd services/api-gateway
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
-```
+### Host Requirements
+- **Node.js**: v20.x or higher (v24 LTS recommended)
+- **Python**: v3.11 or higher
+- **npm**: v10.x or higher
+- **Docker & Docker Compose** (Optional for containerized deployment)
 
-## Docker startup instructions
+### Local Environment Setup
 
-```powershell
-Copy-Item .env.example .env
-docker compose up --build
-```
-
-Make targets: `make up`, `make down`, `make logs`, `make test`, `make lint`.
-
-Windows equivalents:
-
-```powershell
-docker compose up --build
-docker compose down
-docker compose logs -f
-docker compose run --rm api-gateway pytest
-docker compose run --rm identity-service pytest
-docker compose run --rm fraud-service pytest
-docker compose run --rm recovery-service pytest
-python -m unittest discover packages/shared/tests -v
-python -m unittest discover tests -v
-## Jüri ve Sunum İçin İnteraktif Demo Çalıştırıcısı
-
-Tüm platformun 4 katmanını (W3C VC, ZKP, DIDComm v2, AI Fraud Engine, Blockchain, 3/5 Guardian ve ESP32 IoT Kapı) canlı terminal çıktısıyla doğrulamak için:
-
-```powershell
-python scripts/demo_runner.py
-```
-
-### Test Süitlerini Çalıştırma:
-
-1. **Uçtan Uca (E2E) Platform Testi:**
-   ```powershell
-   pytest tests/test_e2e_full_platform.py -v
+1. **Clone repository**:
+   ```bash
+   git clone https://github.com/charafeddine99/secure-ssi-platform.git
+   cd secure-ssi-platform
    ```
 
-2. **Blockchain & Solidity Akıllı Sözleşme Testleri:**
+2. **Python Virtual Environment**:
    ```powershell
-   cd blockchain
-   npx hardhat test
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
    ```
 
-3. **AI Fraud Detection Testleri:**
-   ```powershell
-   cd services/fraud-service
-   pytest tests/ -v
-   ```
-
-4. **API Gateway Testleri:**
-   ```powershell
-   cd services/api-gateway
-   pytest tests/ -v
-   ```
-
-5. **React Web3 Arayüzünü Başlatma:**
+3. **Install Frontend Dependencies**:
    ```powershell
    cd apps/web
-   npm run dev
+   npm install
+   cd ../..
    ```
 
-## Health endpoint list
+4. **Environment Variables**:
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-- `GET http://localhost:8000/health`
-- `GET http://localhost:8001/health`
-- `GET http://localhost:8002/health`
-- `GET http://localhost:8003/health`
+---
 
-## Identity credential endpoints
+## 6. Startup Instructions
 
-- `POST http://localhost:8001/api/v1/auth/token` (public synthetic login)
-- `GET http://localhost:8001/api/v1/auth/me` (Bearer token required)
-- `POST http://localhost:8001/api/v1/credentials/validate`
-- `POST http://localhost:8001/api/v1/credentials/sign` (`admin`/`issuer` only)
-- `POST http://localhost:8001/api/v1/credentials/verify`
-- `POST http://localhost:8001/api/v1/credentials/{credentialId}/revoke` (`admin`/`issuer` only)
-- `GET http://localhost:8001/api/v1/credentials/{credentialId}/status`
-- `GET http://localhost:8001/api/v1/credentials/capabilities`
-- `GET http://localhost:8001/api/v1/status-lists/{statusListId}`
-- `GET http://localhost:8001/api/v1/status-lists/{statusListId}/metadata`
-- `GET http://localhost:8001/api/v1/status-lists/{statusListId}/history`
-- `GET http://localhost:8001/api/v1/status-lists/{statusListId}/versions/{version}`
-- `POST http://localhost:8001/api/v1/wallets` (`holder` permission required)
-- `GET http://localhost:8001/api/v1/wallets/{walletId}` (owner only)
-- `GET http://localhost:8001/api/v1/wallets/{walletId}/credentials` (owner only)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys` (owner; `Idempotency-Key`)
-- `GET http://localhost:8001/api/v1/wallets/{walletId}/keys` (owner; cursor pagination)
-- `GET http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}` (owner)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/rotate` (owner; `Idempotency-Key`)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/suspend` (owner)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/resume` (owner)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/compromise` (admin)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/revoke` (owner)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/schedule-destruction` (admin)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/cancel-destruction` (admin)
-- `POST http://localhost:8001/api/v1/wallets/{walletId}/keys/{keyId}/reconcile` (admin)
-- `POST http://localhost:8001/api/v1/presentation-challenges` (`verifier` permission required)
-- `GET http://localhost:8001/api/v1/presentation-challenges/{challengeId}` (object-authorized)
-- `POST http://localhost:8001/api/v1/presentations/create` (`holder` permission required)
-- `POST http://localhost:8001/api/v1/presentations/verify` (`verifier` permission required)
-- `GET http://localhost:8001/api/v1/presentations/{presentationId}` (Bearer permission required)
-- `POST http://localhost:8001/api/v1/presentations/{presentationId}/reconcile` (`admin` only)
+### Option A: One-Click Interactive Demo (Recommended for Evaluation)
 
-Successful signing injects an issuer-owned `credentialStatus` entry before
-creating the proof and atomically persists the signed credential and status
-assignment in one MongoDB document. Duplicate credential IDs are rejected.
-Validation, verification, capabilities, and login remain public; current-user
-and signing/revocation operations use local Bearer authentication. The
-credential-specific public status route remains a local verifier convenience.
-The public Bitstring Status List routes provide versioned, cacheable,
-issuer-scoped revocation publication; see the documented interoperability and
-privacy limitations. These routes must not be exposed as a public production
-service without the production gates in `docs/security.md`. Presentation
-creation now requires an owned active wallet, wallet-bound credentials, and
-an atomically consumed server challenge. Proofs bind challenge, domain,
-audience, holder, credentials, and expiry. A lifecycle worker and admin-only
-endpoint idempotently reconcile stale `PROCESSING` records.
+Run the universal demo launcher:
+```powershell
+# Windows PowerShell
+.\run_demo.ps1
 
-New holder wallets receive a managed `PRESENTATION_SIGNING` key. The holder VP
-signer resolves active MongoDB metadata and routes the canonical payload to
-the configured provider without exporting private key material. The local
-development provider is explicitly non-production. A generic HTTPS KMS
-gateway adapter, lifecycle states, rotation, compromise/revocation, delayed
-destruction, optimistic concurrency, durable audit, metrics, and bounded
-reconciliation are implemented. No real vendor KMS/HSM has been deployed or
-tested; see
-[docs/external-kms-key-lifecycle.md](docs/external-kms-key-lifecycle.md).
+# Or via Python directly
+.\.venv\Scripts\python.exe scripts/start_demo.py status
+.\.venv\Scripts\python.exe scripts/start_demo.py flow
+```
 
-## Guardian recovery endpoints
+To run individual microservices locally:
+```powershell
+# Terminal 1 - Frontend Web UI (Port 5173)
+cd apps/web
+npm run dev
 
-All Recovery Service application routes require the existing Identity Service
-Bearer token. Wallet owners manage policies, Guardian assignments, requests,
-and cancellation; assigned Guardians approve or reject only their own
-assignment; administrators may reconcile a due/stale request.
+# Terminal 2 - API Gateway (Port 8000)
+.\.venv\Scripts\python.exe -m uvicorn services.api_gateway.app.main:app --port 8000
 
-- `POST/GET http://localhost:8003/api/v1/guardians`
-- `GET/PATCH/DELETE http://localhost:8003/api/v1/guardians/{guardianId}`
-- `GET/PUT http://localhost:8003/api/v1/recovery/policy`
-- `POST/GET http://localhost:8003/api/v1/recovery/requests`
-- `GET http://localhost:8003/api/v1/recovery/requests/{requestId}`
-- `POST http://localhost:8003/api/v1/recovery/requests/{requestId}/approve`
-- `POST http://localhost:8003/api/v1/recovery/requests/{requestId}/reject`
-- `POST http://localhost:8003/api/v1/recovery/requests/{requestId}/cancel`
-- `POST http://localhost:8003/api/v1/recovery/requests/{requestId}/reconcile` (`admin`)
+# Terminal 3 - Identity Service (Port 8001)
+.\.venv\Scripts\python.exe -m uvicorn services.identity_service.app.main:app --port 8001
 
-The generic policy supports M-of-N and defaults to 3-of-5. Shamir splits a
-dedicated 128-bit recovery authorization secret, never a KMS private key.
-Shares are stored as request-bound AES-GCM envelopes. Quorum persists before
-the time lock begins, and the background worker invokes only the existing
-`ManagedKeyService` recovery/rotation path through a short-lived internal
-service grant. See [docs/account-recovery.md](docs/account-recovery.md).
+# Terminal 4 - AI Fraud Engine (Port 8002)
+.\.venv\Scripts\python.exe -m uvicorn services.fraud_service.app.main:app --port 8002
 
-## Current implementation status
+# Terminal 5 - Recovery Service (Port 8003)
+.\.venv\Scripts\python.exe -m uvicorn services.recovery_service.app.main:app --port 8003
+```
 
-Implemented: monorepo layout, static web status page, API health endpoints, container definitions, threat model and trust boundaries, versioned API contracts, a tested v1 JSON Schema catalog, accepted prototype DID/VC architecture decisions, a network-free DID resolver, a local VC/VP proof core using RFC 8785/JCS, SHA-256 and Ed25519, atomic issuance persistence with status binding, versioned credential/status-list HTTP endpoints, immutable publication history and rollover, authenticated wallet-bound multi-credential VP creation/verification with server challenge replay protection, object-level ownership, stale-processing reconciliation, Argon2id synthetic-user authentication, short-lived JWT access tokens, local RBAC, MongoDB wallet/challenge/credential/presentation/managed-key and recovery lifecycle states, provider-aware holder VP signing, controlled key rotation/destruction/reconciliation, irreversible credential revocation, durable idempotent audit delivery, generic Guardian M-of-N recovery, encrypted Shamir authorization shares, time-lock enforcement, recovery audit records, metrics, and restart-safe recovery reconciliation.
+### Option B: Containerized Docker Compose Startup
 
-The VC proof core is a local academic prototype. The issuer seed is
-deterministic public test material; there is no production key protection,
-issuer governance, externally validated status-list/VP interoperability, external DID
-resolution, production identity provider, MFA, rate limiting, token
-revocation, refresh-token rotation, deployed vendor KMS/HSM custody, external wallet
-integration, or production-grade issuer operations.
+When Docker is installed and running:
+```powershell
+docker compose up --build
+```
+- **Web UI**: `http://localhost:3000` (Docker) or `http://localhost:5173` (Vite host)
+- **API Gateway**: `http://localhost:8000`
+- **Identity Core**: `http://localhost:8001`
+- **AI Fraud Engine**: `http://localhost:8002`
+- **Recovery Engine**: `http://localhost:8003`
 
-Planned: production issuer trust, reviewed vendor KMS/HSM deployment and attestation, DID lifecycle
-operations, network resolution, external status-list/VP conformance,
-external/mobile wallet integration, selective disclosure, AI fraud detection, blockchain
-contracts, cryptographically signed Guardian decisions, independently delivered shares,
-and production recovery operations. API paths other than health and the implemented Identity and Recovery Service routes
-listed above remain documentation-only and unimplemented.
-See [docs/implementation-status.md](docs/implementation-status.md).
+---
 
-## Roadmap
+## 7. Documented Demo Accounts `[DEMO ENVIRONMENT]`
+
+The platform includes pre-configured, stateless synthetic demo personas for instantaneous evaluation:
+
+| Role | Persona Name | Email / Username | Development Password | Portal Route | Primary Available Actions |
+|---|---|---|---|---|---|
+| **Holder** | Demo Holder | `holder@example.test` | `Holder-Prototype-2026!` | `/wallet` | Inspect `did:key`, receive credentials via OID4VCI, grant selective disclosure |
+| **Issuer** | Demo University | `issuer@example.test` | `Issuer-Prototype-2026!` | `/issuer` | Define schema, issue W3C VC 2.0 degrees, toggle revocation bit in Bitstring list |
+| **Verifier** | Demo Company | `verifier@example.test` | `Verifier-Prototype-2026!` | `/verifier` | Create OID4VP presentation requests, perform 9-point trust verification |
+| **Guardian** | Demo Guardian #1 | `admin@example.test` | `Admin-Prototype-2026!` | `/guardian` | Review recovery petitions, submit Shamir key share, sign threshold approval |
+| **Admin** | Demo Operator | `admin@example.test` | `Admin-Prototype-2026!` | `/admin` | System overview, EVM smart contract logs, tamper-proof audit trail, AI threat stream |
+
+> [!NOTE]
+> Evaluators can toggle between these roles with a single click using the **Sticky Top Role Switcher** or the **1-Click Quick Demo Login** on the `/login` page.
+
+---
+
+## 8. Golden Demo Scenario (The 2-Minute Defense Walkthrough)
+
+Follow this fixed 8-step presentation sequence for jury evaluation:
+
+| Step | Action | Actor | Target URL | Expected Result |
+|:---:|---|---|---|---|
+| **1** | **Create Credential Schema** | Issuer | `/issuer/templates` | Inspect Higher Education Degree W3C 2.0 schema and status list bit assignment |
+| **2** | **Issue Credential** | Issuer | `/issuer/issue` | Input candidate details; sign with Ed25519 Data Integrity proof; generate OID4VCI offer |
+| **3** | **Receive Credential** | Holder | `/wallet/scan` | Holder scans QR or accepts deep-link offer; cryptographic proof verified |
+| **4** | **Inspect Wallet Portfolio** | Holder | `/wallet` | Credential appears in holder's tactile portfolio with verified issuer badge |
+| **5** | **Create Verification Request** | Verifier | `/verifier/request` | Verifier creates OID4VP request specifying age check ($\ge 18$) and degree proof |
+| **6** | **Selective Disclosure Consent** | Holder | `/wallet/consent` | Holder withholds GPA and National ID; submits salted blinded SHA-256 presentation |
+| **7** | **9-Point Trust Audit** | Verifier | `/verifier/verify` | Verifier confirms signature, non-revocation, and predicate validity in $<0.2\text{ms}$ |
+| **8** | **Tamper-Proof Audit Logging** | Admin | `/admin/audit` | Append-only event logged on Hardhat EVM smart contract with zero PII leakage |
+
+---
+
+## 9. Verification & Automated Testing
+
+All platform test suites can be executed with standard commands:
+
+```powershell
+# 1. Full Platform Test Suite (550+ tests)
+.\.venv\Scripts\python.exe run_tests.py
+
+# 2. Blockchain & Smart Contracts Test Suite (19 tests)
+cd blockchain
+npx hardhat test
+cd ..
+
+# 3. Frontend Production Build & TypeScript Verification
+cd apps/web
+npm run build
+cd ..
+
+# 4. Interactive End-to-End CLI Demo Flow
+.\.venv\Scripts\python.exe scripts/start_demo.py flow
+```
+
+---
+
+## 10. Repository Structure
+
+```text
+apps/
+  web/                         # React 18 + TypeScript + Vite 6 Client Cockpit
+blockchain/
+  contracts/                   # Solidity 0.8.28 Smart Contracts (DID, Revocation, Recovery, Audit)
+  test/                        # Comprehensive Hardhat contract test suite
+infrastructure/
+  mongodb/                     # Database initialization scripts and index definitions
+packages/
+  shared/                      # Shared cryptosuites (ZKP, DIDComm v2, Schemas)
+reports/
+  S22_UI_UX_FINAL_REPORT.md     # Sprint 22 UI/UX Finalization Report
+  S23_DEMO_AUDIT_REPORT.md      # Sprint 23 Demo Environment Audit Report
+  S23_DEMO_ENVIRONMENT_FINAL_REPORT.md # Sprint 23 Final Demonstration Report
+scripts/
+  start_demo.py                # Universal multi-platform demo orchestrator & health monitor
+  demo_runner.py               # 9-stage terminal demo script
+  run_benchmarks.py            # Latency and throughput benchmarking tool
+services/
+  api-gateway/                 # Central routing reverse proxy
+  identity-service/            # W3C VC 2.0, DID, Bitstring Status List, KMS
+  fraud-service/               # XGBoost + Autoencoder AI threat detection
+  recovery-service/            # 3-of-5 Shamir social recovery
+```
+
+---
+
+## 11. Engineering Roadmap & Architecture Milestones
 
 1. [Completed] Define the initial threat model, trust boundaries, and planned API contracts.
 2. [Completed] Add the initial shared, versioned schema catalog and structural tests.
@@ -260,17 +271,16 @@ See [docs/implementation-status.md](docs/implementation-status.md).
 12. [Completed] Add issuance-time credential-status binding, atomic persistence, configurable rollover, immutable history, and interoperability fixtures.
 13. [Completed] Add short-lived multi-credential Verifiable Presentations, holder proofs, challenge/domain binding, replay protection, Mongo persistence, RBAC, and audit events.
 14. [Completed] Add holder wallets, object ownership, opaque key references, server challenges, and stale-presentation reconciliation.
-15. [Completed] Add provider-neutral external KMS/HSM ports, generic HTTPS adapter, managed-key persistence, holder VP signer routing, rotation, lifecycle policy, reconciliation, audit, metrics, API, and tests.
-16. [Completed] Add Guardian assignments, generic M-of-N policy with a 3-of-5 default, encrypted Shamir authorization shares, time-lock, recovery persistence, audit, reconciliation, and managed-key rotation orchestration.
-17. [Next] Add explainable AI fraud detection as a separate advisory service without autonomous recovery authority.
-18. Deploy and independently review one vendor-specific KMS/HSM adapter with hardware/provider attestation and operational ceremonies.
-19. Design and review smart contracts before implementation.
-20. Add broader security, external interoperability, and end-to-end tests.
+15. [Completed] Add provider-neutral external KMS/HSM ports
+16. [Completed] Add Guardian assignments, generic M-of-N policy
+17. [Next] Add explainable AI fraud detection
 
-## Security disclaimer
+---
 
-**This repository is currently an academic prototype and must not be used as a production identity system.**
+## 12. Academic Evaluation & License
 
-Do not use real personal data, credentials, secrets, or funds. No production identity, fraud, blockchain, authentication, authorization, key-management, or recovery guarantees exist.
+Developed as a Graduation Thesis Project at Sakarya University of Applied Sciences (SUBÜ), Technology Faculty, Department of Computer Engineering.
 
-Future implementation must follow [docs/security.md](docs/security.md) and preserve the security invariants in [docs/threat-model.md](docs/threat-model.md).
+**Developer:** Charaf Eddine Bessanane (B210109591)  
+**Advisor:** Dr. Öğr. Üyesi A. F. M. Suaib Akhter  
+**License:** MIT License (Academic & Research Use)

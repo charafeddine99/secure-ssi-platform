@@ -74,10 +74,10 @@ async function exchangeBackendToken(username: string, pass: string): Promise<str
 }
 
 const DEFAULT_DEMO_USER: UserProfile = {
-  name: "Charaf Eddine Bessanane",
-  nationalId: "ACAD-SSI-829104",
-  email: "researcher@academic-ssi.local",
-  organization: "Open Academic SSI Prototype Framework",
+  name: "Demo Holder (Charaf Eddine Bessanane)",
+  nationalId: "DEMO-HOLD-829104",
+  email: "holder@example.test",
+  organization: "Demo Academic Wallet [DEMO ENVIRONMENT]",
   did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
   walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   seedPhrase: "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard",
@@ -124,11 +124,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const roleOrgs: Record<string, string> = {
-      HOLDER: "Academic SSI Prototype Framework",
-      ISSUER: "Accredited SSI Issuance Authority (Prototype)",
-      VERIFIER: "Digital Verification & Trust Inspection Service",
-      GUARDIAN: "EIP-4337 Social Recovery Network",
-      ADMIN: "SSI Platform Infrastructure & Security Administration"
+      HOLDER: "Demo Academic Wallet [DEMO ENVIRONMENT]",
+      ISSUER: "Demo University (Accredited Issuer) [DEMO ENVIRONMENT]",
+      VERIFIER: "Demo Company (Trust Verification) [DEMO ENVIRONMENT]",
+      GUARDIAN: "Demo Social Recovery Network [DEMO ENVIRONMENT]",
+      ADMIN: "Demo Platform Operations [DEMO ENVIRONMENT]"
+    };
+
+    const roleNames: Record<string, string> = {
+      HOLDER: "Demo Holder (Charaf Eddine Bessanane)",
+      ISSUER: "Demo University Authority",
+      VERIFIER: "Demo Company Compliance",
+      GUARDIAN: "Demo Quorum Guardian #1",
+      ADMIN: "Demo System Administrator"
+    };
+
+    const roleEmails: Record<string, string> = {
+      HOLDER: "holder@example.test",
+      ISSUER: "issuer@example.test",
+      VERIFIER: "verifier@example.test",
+      GUARDIAN: "admin@example.test",
+      ADMIN: "admin@example.test"
     };
 
     setUser((prev) => {
@@ -136,6 +152,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return {
         ...base,
         role: role,
+        name: roleNames[role] || base.name,
+        email: roleEmails[role] || base.email,
         did: roleDids[role] || base.did,
         organization: roleOrgs[role] || base.organization
       };

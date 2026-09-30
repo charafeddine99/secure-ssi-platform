@@ -1,20 +1,33 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { 
+  KeyRound, 
+  Building2, 
+  Search, 
+  Users, 
+  Settings, 
+  ArrowRight, 
+  Sparkles,
+  Check,
+  Copy
+} from "lucide-react";
 
 export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) => {
-  const { login, register, loginWithMetaMask, loginWithSeedPhrase, quickDemoLogin } = useAuth();
-  const [mode, setMode] = useState<"login" | "register" | "seed">("login");
+  const { login, register, loginWithMetaMask, loginWithSeedPhrase, switchDemoRole } = useAuth();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<"demo" | "login" | "register" | "seed">("demo");
 
   // Login form
-  const [loginEmail, setLoginEmail] = useState("charaf.bessanane@identity-eudi.eu");
-  const [loginPassword, setLoginPassword] = useState("123456");
+  const [loginEmail, setLoginEmail] = useState("holder@example.test");
+  const [loginPassword, setLoginPassword] = useState("Holder-Prototype-2026!");
 
   // Register form
-  const [regName, setRegName] = useState("Charaf Eddine Bessanane");
-  const [regNationalId, setRegNationalId] = useState("EU-ID-829104752");
-  const [regEmail, setRegEmail] = useState("charaf.bessanane@identity-eudi.eu");
-  const [regOrganization, setRegOrganization] = useState("European Digital Identity Framework");
-  const [regPassword, setRegPassword] = useState("123456");
+  const [regName, setRegName] = useState("Demo Citizen");
+  const [regNationalId, setRegNationalId] = useState("DEMO-NAT-829104");
+  const [regEmail, setRegEmail] = useState("citizen@example.test");
+  const [regOrganization, setRegOrganization] = useState("Demo Identity Framework [DEMO ENVIRONMENT]");
+  const [regPassword, setRegPassword] = useState("Prototype-2026!");
 
   // Seed phrase login
   const [seedPhraseInput, setSeedPhraseInput] = useState("");
@@ -29,22 +42,97 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const demoAccounts = [
+    {
+      role: "HOLDER" as const,
+      title: "Demo Holder (Student / Citizen)",
+      email: "holder@example.test",
+      password: "Holder-Prototype-2026!",
+      org: "Demo Academic Wallet",
+      targetPath: "/wallet",
+      icon: KeyRound,
+      color: "#6366f1",
+      badge: "Primary Citizen Role",
+      desc: "Access digital wallet, inspect credentials, scan OID4VCI offers, and grant selective disclosure."
+    },
+    {
+      role: "ISSUER" as const,
+      title: "Demo University (Issuer Authority)",
+      email: "issuer@example.test",
+      password: "Issuer-Prototype-2026!",
+      org: "Demo University (Accredited Issuer)",
+      targetPath: "/issuer",
+      icon: Building2,
+      color: "#2563eb",
+      badge: "Institutional Issuer",
+      desc: "Issue Academic Degree credentials, manage W3C Bitstring 1.0 status lists, and revoke credentials."
+    },
+    {
+      role: "VERIFIER" as const,
+      title: "Demo Company (Trust Verifier)",
+      email: "verifier@example.test",
+      password: "Verifier-Prototype-2026!",
+      org: "Demo Company Compliance",
+      targetPath: "/verifier",
+      icon: Search,
+      color: "#059669",
+      badge: "Relying Party",
+      desc: "Create OID4VP verification requests, inspect cryptographic proofs, and verify predicate conditions."
+    },
+    {
+      role: "GUARDIAN" as const,
+      title: "Demo Social Recovery Guardian #1",
+      email: "admin@example.test",
+      password: "Admin-Prototype-2026!",
+      org: "Demo Guardian Quorum",
+      targetPath: "/guardian",
+      icon: Users,
+      color: "#d97706",
+      badge: "Key Guardian",
+      desc: "Review wallet recovery petitions, vote with Shamir key shares, and sign threshold authorizations."
+    },
+    {
+      role: "ADMIN" as const,
+      title: "Demo Platform Administrator",
+      email: "admin@example.test",
+      password: "Admin-Prototype-2026!",
+      org: "Secure SSI Platform Ops",
+      targetPath: "/admin",
+      icon: Settings,
+      color: "#7c3aed",
+      badge: "System Operations",
+      desc: "Live microservices telemetry, Hardhat EVM smart contract logs, and real-time AI fraud monitoring."
+    }
+  ];
+
+  const handleQuickDemoLaunch = (account: typeof demoAccounts[0]) => {
+    switchDemoRole(account.role);
+    login(account.email, account.password);
+    if (onComplete) onComplete();
+    navigate(account.targetPath);
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     if (!loginEmail.trim()) {
-      setErrorMsg("Lütfen geçerli bir e-posta veya DID girin.");
+      setErrorMsg("Please enter a valid email or DID identifier.");
       return;
     }
-    login(loginEmail, loginPassword);
-    if (onComplete) onComplete();
+    const success = login(loginEmail, loginPassword);
+    if (success) {
+      if (onComplete) onComplete();
+      navigate("/wallet");
+    } else {
+      setErrorMsg("Authentication failed. Please verify credentials.");
+    }
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     if (!regName.trim() || !regEmail.trim()) {
-      setErrorMsg("Lütfen Ad Soyad ve E-posta alanlarını doldurunuz.");
+      setErrorMsg("Please fill in Full Name and Email fields.");
       return;
     }
     const res = register(regName, regNationalId, regEmail, regOrganization, regPassword);
@@ -59,14 +147,15 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
     e.preventDefault();
     setErrorMsg(null);
     if (!seedPhraseInput.trim()) {
-      setErrorMsg("Lütfen 12 veya 24 kelimelik kurtarma tohum ifadenizi girin.");
+      setErrorMsg("Please enter your 12 or 24-word recovery seed phrase.");
       return;
     }
     const success = loginWithSeedPhrase(seedPhraseInput);
     if (success) {
       if (onComplete) onComplete();
+      navigate("/wallet");
     } else {
-      setErrorMsg("Geçersiz kurtarma ifadesi. Lütfen en az 12 geçerli BIP-39 kelimesi girin.");
+      setErrorMsg("Invalid recovery phrase. Please supply valid BIP-39 mnemonic words.");
     }
   };
 
@@ -75,8 +164,9 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
     const success = await loginWithMetaMask();
     if (success) {
       if (onComplete) onComplete();
+      navigate("/wallet");
     } else {
-      setErrorMsg("MetaMask bağlantısı kurulamadı. Lütfen cüzdan eklentinizi kontrol edin.");
+      setErrorMsg("MetaMask connection failed. Please ensure your Web3 wallet extension is unlocked.");
     }
   };
 
@@ -88,168 +178,382 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
 
   return (
     <div style={{
-      minHeight: "100vh",
+      minHeight: "calc(100vh - 140px)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "var(--bg-app)",
-      padding: "24px"
+      padding: "32px 16px"
     }}>
       <div style={{
         width: "100%",
-        maxWidth: "480px",
-        backgroundColor: "var(--bg-surface)",
-        border: "1px solid var(--border-default)",
-        borderRadius: "12px",
+        maxWidth: "580px",
+        backgroundColor: "#111827",
+        border: "1px solid #1f2937",
+        borderRadius: "16px",
         padding: "32px",
-        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)"
+        boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)"
       }}>
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <div style={{
             display: "inline-flex",
             alignItems: "center",
-            justifyContent: "center",
-            width: "48px",
-            height: "48px",
-            borderRadius: "10px",
-            backgroundColor: "var(--color-primary)",
-            color: "#ffffff",
-            fontWeight: "800",
-            fontSize: "20px",
+            gap: "6px",
+            padding: "4px 12px",
+            borderRadius: "9999px",
+            backgroundColor: "rgba(245, 158, 11, 0.12)",
+            border: "1px solid rgba(245, 158, 11, 0.3)",
+            color: "#fbbf24",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
             marginBottom: "12px"
           }}>
-            SSI
+            <Sparkles size={13} />
+            DEMO ENVIRONMENT — ACADEMIC EVALUATION
           </div>
-          <h1 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", marginBottom: "6px" }}>
-            Secure SSI Platform
+
+          <h1 style={{ fontSize: "1.45rem", fontWeight: 800, color: "#ffffff", marginBottom: "6px", letterSpacing: "-0.02em" }}>
+            Identity &amp; Access Gateway
           </h1>
-          <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-            EUDI Wallet ARF & W3C Verifiable Credentials 2.0
+          <p style={{ fontSize: "0.85rem", color: "#94a3b8", lineHeight: 1.4 }}>
+            W3C VC 2.0 • Ed25519 Data Integrity • OID4VCI &amp; OID4VP • EIP-4337
           </p>
         </div>
 
         {/* Tab switcher */}
         <div style={{
           display: "flex",
-          backgroundColor: "var(--bg-subtle)",
+          backgroundColor: "#0b0f19",
           padding: "4px",
-          borderRadius: "8px",
+          borderRadius: "10px",
           marginBottom: "24px",
-          border: "1px solid var(--border-default)"
+          border: "1px solid #1f2937"
         }}>
           <button
             type="button"
-            onClick={() => { setMode("login"); setErrorMsg(null); setNewIdentity(null); }}
+            onClick={() => { setMode("demo"); setErrorMsg(null); }}
             style={{
               flex: 1,
-              padding: "8px 12px",
+              padding: "9px 12px",
               fontSize: "12px",
-              fontWeight: "600",
-              borderRadius: "6px",
+              fontWeight: 700,
+              borderRadius: "8px",
               border: "none",
               cursor: "pointer",
-              backgroundColor: mode === "login" ? "var(--color-primary)" : "transparent",
-              color: mode === "login" ? "#ffffff" : "var(--text-muted)",
+              backgroundColor: mode === "demo" ? "#2563eb" : "transparent",
+              color: mode === "demo" ? "#ffffff" : "#94a3b8",
               transition: "all 0.15s ease"
             }}
           >
-            Giriş Yap
+            ⚡ Demo Personas
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("login"); setErrorMsg(null); }}
+            style={{
+              flex: 1,
+              padding: "9px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              backgroundColor: mode === "login" ? "#2563eb" : "transparent",
+              color: mode === "login" ? "#ffffff" : "#94a3b8",
+              transition: "all 0.15s ease"
+            }}
+          >
+            Sign In
           </button>
           <button
             type="button"
             onClick={() => { setMode("register"); setErrorMsg(null); setNewIdentity(null); }}
             style={{
               flex: 1,
-              padding: "8px 12px",
+              padding: "9px 12px",
               fontSize: "12px",
-              fontWeight: "600",
-              borderRadius: "6px",
+              fontWeight: 700,
+              borderRadius: "8px",
               border: "none",
               cursor: "pointer",
-              backgroundColor: mode === "register" ? "var(--color-primary)" : "transparent",
-              color: mode === "register" ? "#ffffff" : "var(--text-muted)",
+              backgroundColor: mode === "register" ? "#2563eb" : "transparent",
+              color: mode === "register" ? "#ffffff" : "#94a3b8",
               transition: "all 0.15s ease"
             }}
           >
-            Yeni Kimlik
+            New Identity
           </button>
           <button
             type="button"
-            onClick={() => { setMode("seed"); setErrorMsg(null); setNewIdentity(null); }}
+            onClick={() => { setMode("seed"); setErrorMsg(null); }}
             style={{
               flex: 1,
-              padding: "8px 12px",
+              padding: "9px 12px",
               fontSize: "12px",
-              fontWeight: "600",
-              borderRadius: "6px",
+              fontWeight: 700,
+              borderRadius: "8px",
               border: "none",
               cursor: "pointer",
-              backgroundColor: mode === "seed" ? "var(--color-primary)" : "transparent",
-              color: mode === "seed" ? "#ffffff" : "var(--text-muted)",
+              backgroundColor: mode === "seed" ? "#2563eb" : "transparent",
+              color: mode === "seed" ? "#ffffff" : "#94a3b8",
               transition: "all 0.15s ease"
             }}
           >
-            Kurtarma İfadesi
+            Seed Phrase
           </button>
         </div>
 
         {errorMsg && (
           <div style={{
-            padding: "10px 14px",
-            borderRadius: "6px",
-            backgroundColor: "rgba(220, 38, 38, 0.12)",
-            border: "1px solid rgba(220, 38, 38, 0.3)",
-            color: "#ef4444",
+            padding: "12px 14px",
+            borderRadius: "8px",
+            backgroundColor: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "#f87171",
             fontSize: "12px",
-            marginBottom: "16px"
+            marginBottom: "18px"
           }}>
             {errorMsg}
           </div>
         )}
 
-        {/* 1. LOGIN MODE */}
+        {/* 1. DEMO PERSONAS MODE (RECOMMENDED FOR EVALUATORS) */}
+        {mode === "demo" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "4px" }}>
+              Select a documented stakeholder persona for immediate, zero-friction evaluation:
+            </div>
+
+            {demoAccounts.map((account) => {
+              const IconComp = account.icon;
+              return (
+                <div
+                  key={account.role}
+                  onClick={() => handleQuickDemoLaunch(account)}
+                  style={{
+                    backgroundColor: "#0b0f19",
+                    border: `1px solid ${account.color}40`,
+                    borderRadius: "12px",
+                    padding: "14px 16px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    transition: "all 0.15s ease"
+                  }}
+                  className="portal-card-hover"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "10px",
+                      backgroundColor: `${account.color}20`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: account.color
+                    }}>
+                      <IconComp size={18} />
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#f8fafc" }}>
+                          {account.title}
+                        </span>
+                        <span style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 700,
+                          backgroundColor: `${account.color}25`,
+                          color: account.color,
+                          padding: "2px 6px",
+                          borderRadius: "4px"
+                        }}>
+                          {account.badge}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "2px" }}>
+                        {account.desc}
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowRight size={16} color="#64748b" />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 2. MANUAL LOGIN MODE */}
         {mode === "login" && (
           <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
-                Kurumsal E-Posta veya DID
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "6px" }}>
+                Username / Email / DID
               </label>
               <input
                 type="text"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="ornek@identity-eudi.eu veya did:key:..."
+                placeholder="holder@example.test or did:key:..."
                 style={{
                   width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
+                  padding: "11px 14px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
                   fontSize: "13px",
                   outline: "none"
                 }}
               />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
-                Parola / PIN
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "6px" }}>
+                Password / Secret PIN
               </label>
               <input
                 type="password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••"
+                placeholder="••••••••••••"
+                style={{
+                  width: "100%",
+                  padding: "11px 14px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px",
+                  outline: "none"
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                marginTop: "6px",
+                padding: "12px",
+                backgroundColor: "#2563eb",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Sign In to Identity Wallet
+            </button>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "4px 0" }}>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "#1f2937" }} />
+              <span style={{ fontSize: "11px", color: "#64748b" }}>OR WEB3</span>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "#1f2937" }} />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleMetaMask}
+              style={{
+                padding: "11px",
+                backgroundColor: "#0b0f19",
+                color: "#f8fafc",
+                border: "1px solid #1f2937",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
+            >
+              🦊 Verify with Web3 Wallet (MetaMask)
+            </button>
+          </form>
+        )}
+
+        {/* 3. NEW IDENTITY GENERATION */}
+        {mode === "register" && !newIdentity && (
+          <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "10px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
-                  fontSize: "13px",
-                  outline: "none"
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                National / Student ID Reference
+              </label>
+              <input
+                type="text"
+                value={regNationalId}
+                onChange={(e) => setRegNationalId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                Organization Affiliation
+              </label>
+              <input
+                type="text"
+                value={regOrganization}
+                onChange={(e) => setRegOrganization(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px"
                 }}
               />
             </div>
@@ -258,188 +562,49 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
               type="submit"
               style={{
                 marginTop: "8px",
-                padding: "10px",
-                backgroundColor: "var(--color-primary)",
+                padding: "11px",
+                backgroundColor: "#2563eb",
                 color: "#ffffff",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 fontSize: "13px",
-                fontWeight: "600",
+                fontWeight: 700,
                 cursor: "pointer"
               }}
             >
-              Kimlik Cüzdanına Giriş Yap
-            </button>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "8px 0" }}>
-              <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-default)" }} />
-              <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>VEYA</span>
-              <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-default)" }} />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleMetaMask}
-              style={{
-                padding: "10px",
-                backgroundColor: "var(--bg-subtle)",
-                color: "var(--text-main)",
-                border: "1px solid var(--border-default)",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: "600",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px"
-              }}
-            >
-              🦊 Web3 Cüzdan ile Doğrula (MetaMask)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { quickDemoLogin(); if (onComplete) onComplete(); }}
-              style={{
-                padding: "9px",
-                backgroundColor: "transparent",
-                color: "#60a5fa",
-                border: "1px dashed var(--border-accent)",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: "600",
-                cursor: "pointer"
-              }}
-            >
-              ⚡ Hızlı Egemen Kimlik ile Devam Et
+              🔐 Generate Ed25519 DID Key Pair
             </button>
           </form>
         )}
 
-        {/* 2. REGISTER MODE */}
-        {mode === "register" && !newIdentity && (
-          <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
-                Ad Soyad
-              </label>
-              <input
-                type="text"
-                value={regName}
-                onChange={(e) => setRegName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
-                  fontSize: "13px"
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
-                Ulusal Kimlik No / eIDAS Ref
-              </label>
-              <input
-                type="text"
-                value={regNationalId}
-                onChange={(e) => setRegNationalId(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
-                  fontSize: "13px"
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
-                E-Posta Adresi
-              </label>
-              <input
-                type="email"
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
-                  fontSize: "13px"
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
-                Kurum / Çatı Çerçeve
-              </label>
-              <input
-                type="text"
-                value={regOrganization}
-                onChange={(e) => setRegOrganization(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
-                  fontSize: "13px"
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              style={{
-                marginTop: "10px",
-                padding: "10px",
-                backgroundColor: "var(--color-primary)",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer"
-              }}
-            >
-              🔐 Kriptografik Kimlik & Anahtar Çifti Üret
-            </button>
-          </form>
-        )}
-
-        {/* 2B. NEW IDENTITY CREATED */}
+        {/* 3B. NEW IDENTITY CREATED */}
         {mode === "register" && newIdentity && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{
               padding: "12px",
               borderRadius: "8px",
-              backgroundColor: "rgba(22, 163, 74, 0.12)",
-              border: "1px solid rgba(22, 163, 74, 0.3)",
-              color: "#4ade80",
+              backgroundColor: "rgba(16, 185, 129, 0.12)",
+              border: "1px solid rgba(16, 185, 129, 0.3)",
+              color: "#34d399",
               fontSize: "13px",
-              fontWeight: "600"
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px"
             }}>
-              ✓ Egemen Kimliğiniz Başarıyla Oluşturuldu
+              <Check size={16} />
+              Self-Sovereign Identity Generated Successfully
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "4px" }}>
-                W3C DID Kimliği
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                W3C Decentralized Identifier (DID)
               </label>
               <div style={{
-                padding: "8px",
-                backgroundColor: "var(--bg-input)",
-                border: "1px solid var(--border-default)",
-                borderRadius: "6px",
+                padding: "10px",
+                backgroundColor: "#0b0f19",
+                border: "1px solid #1f2937",
+                borderRadius: "8px",
                 fontFamily: "var(--font-mono)",
                 fontSize: "11px",
                 color: "#60a5fa",
@@ -450,14 +615,14 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "#f59e0b", marginBottom: "4px" }}>
-                ⚠️ 12 Kelimelik Kurtarma Tohum İfadesi (Bunu Güvenli Bir Yere Kaydedin)
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#fbbf24", marginBottom: "4px" }}>
+                ⚠️ 12-Word Recovery Seed Phrase (Store in a Safe Location)
               </label>
               <div style={{
                 padding: "12px",
                 backgroundColor: "rgba(245, 158, 11, 0.08)",
                 border: "1px solid rgba(245, 158, 11, 0.3)",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 fontFamily: "var(--font-mono)",
                 fontSize: "12px",
                 color: "#fcd34d",
@@ -471,43 +636,48 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
               type="button"
               onClick={() => copyToClipboard(newIdentity.seedPhrase)}
               style={{
-                padding: "8px",
-                backgroundColor: "var(--bg-subtle)",
-                color: "var(--text-main)",
-                border: "1px solid var(--border-default)",
-                borderRadius: "6px",
+                padding: "10px",
+                backgroundColor: "#0b0f19",
+                color: "#f8fafc",
+                border: "1px solid #1f2937",
+                borderRadius: "8px",
                 fontSize: "12px",
-                cursor: "pointer"
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
               }}
             >
-              {copied ? "✓ Kopyalandı!" : "📋 Tohum İfadesini Kopyala"}
+              <Copy size={14} />
+              {copied ? "✓ Copied to Clipboard!" : "Copy Seed Phrase"}
             </button>
 
             <button
               type="button"
-              onClick={() => { if (onComplete) onComplete(); }}
+              onClick={() => { if (onComplete) onComplete(); navigate("/wallet"); }}
               style={{
-                padding: "10px",
-                backgroundColor: "var(--color-primary)",
+                padding: "11px",
+                backgroundColor: "#2563eb",
                 color: "#ffffff",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 fontSize: "13px",
-                fontWeight: "600",
+                fontWeight: 700,
                 cursor: "pointer"
               }}
             >
-              Cüzdanıma Devam Et
+              Proceed to Wallet
             </button>
           </div>
         )}
 
-        {/* 3. SEED LOGIN */}
+        {/* 4. SEED LOGIN */}
         {mode === "seed" && (
           <form onSubmit={handleSeedLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
-                12 veya 24 Kelimelik Kurtarma İfadesi
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "6px" }}>
+                12 or 24-Word Recovery Seed Phrase
               </label>
               <textarea
                 value={seedPhraseInput}
@@ -517,14 +687,15 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
                 style={{
                   width: "100%",
                   padding: "10px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-main)",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
                   fontSize: "12px",
                   fontFamily: "var(--font-mono)",
                   lineHeight: "1.5",
-                  resize: "vertical"
+                  resize: "vertical",
+                  outline: "none"
                 }}
               />
             </div>
@@ -532,17 +703,17 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
             <button
               type="submit"
               style={{
-                padding: "10px",
-                backgroundColor: "var(--color-primary)",
+                padding: "11px",
+                backgroundColor: "#2563eb",
                 color: "#ffffff",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 fontSize: "13px",
-                fontWeight: "600",
+                fontWeight: 700,
                 cursor: "pointer"
               }}
             >
-              Kimliği Kurtar ve Giriş Yap
+              Recover Identity &amp; Sign In
             </button>
           </form>
         )}
