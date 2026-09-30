@@ -1,3 +1,8 @@
 python-platform = "win32"
 python-version = "3.11.0"
 infer-with-first-use = false
+search-path = [
+    "services/identity-service",
+    ".venv/Lib/site-packages",
+]
+

@@ -20,8 +20,8 @@ from packages.shared.zkp.selective_disclosure import ZKPSelectiveDisclosure
 from packages.shared.didcomm.v2 import DIDCommV2
 
 # 3. AI Fraud Detection Motoru
-from app.application.hybrid_detector import HybridFraudDetector
-from app.schemas.fraud import FraudEvaluationRequest
+from app.application.hybrid_detector import HybridFraudDetector  # type: ignore[import-not-found]
+from app.schemas.fraud import FraudEvaluationRequest  # type: ignore[import-not-found]
 
 # 4. Cache ve Blockchain Köprüsü
 import importlib.util
@@ -29,6 +29,7 @@ cache_anchor_spec = importlib.util.spec_from_file_location(
     "cache_and_anchor",
     str(ROOT_DIR / "services" / "identity-service" / "app" / "infrastructure" / "cache_and_anchor.py")
 )
+assert cache_anchor_spec is not None and cache_anchor_spec.loader is not None
 cache_and_anchor = importlib.util.module_from_spec(cache_anchor_spec)
 cache_anchor_spec.loader.exec_module(cache_and_anchor)
 CredentialStatusCache = cache_and_anchor.CredentialStatusCache

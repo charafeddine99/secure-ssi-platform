@@ -118,12 +118,18 @@ def run_vc_issuance_benchmark() -> Dict[str, Any]:
         sys.path.insert(0, id_service_path)
     
     from datetime import UTC, datetime
-    from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner
-    from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
-    from app.infrastructure.crypto.local_issuer_key_provider import LocalIssuerKeyProvider, SYNTHETIC_ISSUER_DID
-    from app.services.credential_validator import CredentialProfileValidator
-    from app.application.services.credential_proof_service import CredentialProofService
-    from app.services.did_resolver import CompositeDidResolver, DidWebFixtureResolver
+    from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner  # type: ignore[import-not-found]
+    from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer  # type: ignore[import-not-found]
+    from app.infrastructure.crypto.local_issuer_key_provider import (  # type: ignore[import-not-found]
+        LocalIssuerKeyProvider,
+        SYNTHETIC_ISSUER_DID,
+    )
+    from app.services.credential_validator import CredentialProfileValidator  # type: ignore[import-not-found]
+    from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
+    from app.services.did_resolver import (  # type: ignore[import-not-found]
+        CompositeDidResolver,
+        DidWebFixtureResolver,
+    )
 
     fixture_path = REPO_ROOT / "services" / "identity-service" / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
     validator = CredentialProfileValidator()
@@ -229,13 +235,22 @@ def run_oid4vp_benchmark() -> Dict[str, Any]:
         sys.path.insert(0, id_service_path)
 
     from datetime import UTC, datetime
-    from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner
-    from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
-    from app.infrastructure.crypto.local_issuer_key_provider import LocalIssuerKeyProvider, SYNTHETIC_ISSUER_DID
-    from app.services.credential_validator import CredentialProfileValidator
-    from app.application.services.credential_proof_service import CredentialProofService
-    from app.services.did_resolver import CompositeDidResolver, DidWebFixtureResolver
-    from app.infrastructure.status_list_document_generator import encode_status_list, decode_status_list_bit
+    from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner  # type: ignore[import-not-found]
+    from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer  # type: ignore[import-not-found]
+    from app.infrastructure.crypto.local_issuer_key_provider import (  # type: ignore[import-not-found]
+        LocalIssuerKeyProvider,
+        SYNTHETIC_ISSUER_DID,
+    )
+    from app.services.credential_validator import CredentialProfileValidator  # type: ignore[import-not-found]
+    from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
+    from app.services.did_resolver import (  # type: ignore[import-not-found]
+        CompositeDidResolver,
+        DidWebFixtureResolver,
+    )
+    from app.infrastructure.status_list_document_generator import (  # type: ignore[import-not-found]
+        encode_status_list,
+        decode_status_list_bit,
+    )
 
     fixture_path = REPO_ROOT / "services" / "identity-service" / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
     proof_service = CredentialProofService(
@@ -321,7 +336,7 @@ def run_bitstring_status_list_benchmark() -> Dict[str, Any]:
     if id_service_path not in sys.path:
         sys.path.insert(0, id_service_path)
 
-    from app.infrastructure.status_list_document_generator import (
+    from app.infrastructure.status_list_document_generator import (  # type: ignore[import-not-found]
         encode_status_list,
         decode_status_list_bit,
         decompress_status_list,
@@ -503,18 +518,10 @@ def run_blockchain_gas_benchmark() -> Dict[str, Any]:
             text=True,
             check=True
         )
-        # Parse JSON output from last lines
-        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip().startswith("{") or "}" in line or ":" in line]
-        json_text = "{" + "".join(lines).split("{", 1)[1] if "{" in "".join(lines) else proc.stdout
-        gas_data = json.loads(proc.stdout.split("{", 1)[1].rsplit("}", 1)[0] + "}")
-        gas_data = {"{" + proc.stdout.split("{", 1)[1]: None} if not isinstance(gas_data, dict) else gas_data
-    except Exception:
-        # Fallback to direct execution output parsing
-        try:
-            raw_out = proc.stdout[proc.stdout.find("{"):proc.stdout.rfind("}")+1]
-            gas_data = json.loads(raw_out)
-        except Exception as e:
-            return {"status": "BLOCKED", "error": str(e)}
+        raw_out = proc.stdout[proc.stdout.find("{"):proc.stdout.rfind("}")+1]
+        gas_data = json.loads(raw_out)
+    except Exception as e:
+        return {"status": "BLOCKED", "error": str(e)}
 
     for op, gas in gas_data.items():
         print(f"  -> {op:30s}: {gas:>10,d} gas")

@@ -29,6 +29,8 @@ from app.services.did_resolver import (
     DidWebFixtureResolver,
 )
 
+from datetime import UTC, datetime
+
 _FIXTURE_PATH = Path(__file__).resolve().parents[2] / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
 
 
@@ -47,7 +49,7 @@ def identity_crypto_engine():
         signer=signer,
         key_provider=key_provider,
         did_resolver=did_resolver,
-        clock=lambda: time.time(),
+        clock=lambda: datetime.now(UTC),
     )
     return {
         "validator": validator,

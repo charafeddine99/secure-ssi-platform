@@ -1,7 +1,7 @@
 # S20 PERFORMANCE & BENCHMARKING REPORT
 
 **Repository**: `secure-ssi-platform`  
-**Execution Timestamp**: 2026-09-30 14:13:43 UTC  
+**Execution Timestamp**: 2026-09-30 14:28:48 UTC  
 **Environment**: Windows-10-10.0.26200-SP0 | Python 3.11.16 | Node v24.19.0  
 
 ---
@@ -12,10 +12,10 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Frontend Bundle** | Main Entry JS Size | 837.65 kB (260.33 kB gzip) | **410.44 kB** (149.86 kB gzip) | **-51.0%** bundle size reduction |
 | **Frontend Build** | Build Duration | 7.07 seconds | **3.72 seconds** | **47.4%** faster compilation |
-| **Bitstring Status List** | 131,072 Bit Lookup | 15.9 µs (raw gzip decompress) | **0.2 µs** (LRU decompress) | **85.2x** faster lookup |
-| **VC Issuance** | Ed25519/JCS Issuance | N/A (unbenchmarked) | **2677.76 creds/sec** | p50 = 0.278 ms |
-| **OID4VP Verification** | 9-Point Verification | N/A (unbenchmarked) | **1469.41 verifs/sec** | p50 = 0.336 ms |
-| **AI Fraud Engine** | Hybrid Inference (100) | N/A (unbenchmarked) | **168208.57 samples/sec** | avg = 0.004 ms |
+| **Bitstring Status List** | 131,072 Bit Lookup | 14.5 µs (raw gzip decompress) | **0.2 µs** (LRU decompress) | **79.2x** faster lookup |
+| **VC Issuance** | Ed25519/JCS Issuance | N/A (unbenchmarked) | **2610.63 creds/sec** | p50 = 0.285 ms |
+| **OID4VP Verification** | 9-Point Verification | N/A (unbenchmarked) | **1426.74 verifs/sec** | p50 = 0.345 ms |
+| **AI Fraud Engine** | Hybrid Inference (100) | N/A (unbenchmarked) | **114246.54 samples/sec** | avg = 0.006 ms |
 
 ---
 
@@ -26,18 +26,18 @@ Evaluates Ed25519 signature generation and RFC 8785 JSON Canonicalization Scheme
 ### Service Benchmark (Full Proof Pipeline)
 | Workload | Throughput (creds/s) | Average (ms) | p50 (ms) | p90 (ms) | p95 (ms) | p99 (ms) | Total Time (s) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **10 credentials** | 2608.58 | 0.314 | 0.298 | 0.36 | 0.411 | 0.451 | 0.0038s |
-| **100 credentials** | 2648.85 | 0.308 | 0.274 | 0.411 | 0.537 | 0.594 | 0.0378s |
-| **500 credentials** | 2648.07 | 0.307 | 0.279 | 0.4 | 0.469 | 0.57 | 0.1888s |
-| **1000 credentials** | 2677.76 | 0.304 | 0.278 | 0.381 | 0.447 | 0.558 | 0.3734s |
+| **10 credentials** | 2318.09 | 0.358 | 0.318 | 0.504 | 0.524 | 0.539 | 0.0043s |
+| **100 credentials** | 2611.1 | 0.309 | 0.283 | 0.358 | 0.464 | 0.541 | 0.0383s |
+| **500 credentials** | 2532.17 | 0.319 | 0.284 | 0.391 | 0.467 | 0.709 | 0.1975s |
+| **1000 credentials** | 2610.63 | 0.311 | 0.285 | 0.402 | 0.466 | 0.576 | 0.383s |
 
 ### Unit Benchmark (Raw JCS Canonicalization + Ed25519 Signing)
 | Workload | Throughput (creds/s) | Average (ms) | p50 (ms) | p95 (ms) | p99 (ms) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **10 credentials** | 14914.24 | 0.067 | 0.065 | 0.077 | 0.077 |
-| **100 credentials** | 14853.32 | 0.067 | 0.064 | 0.077 | 0.134 |
-| **500 credentials** | 14516.44 | 0.069 | 0.064 | 0.091 | 0.147 |
-| **1000 credentials** | 14805.19 | 0.068 | 0.063 | 0.084 | 0.139 |
+| **10 credentials** | 14182.39 | 0.071 | 0.069 | 0.076 | 0.077 |
+| **100 credentials** | 13965.31 | 0.072 | 0.065 | 0.1 | 0.153 |
+| **500 credentials** | 13575.12 | 0.074 | 0.065 | 0.088 | 0.151 |
+| **1000 credentials** | 14321.31 | 0.07 | 0.066 | 0.085 | 0.139 |
 
 ---
 
@@ -56,10 +56,10 @@ Evaluates the complete end-to-end verification pipeline:
 
 | Workload | Throughput (verifs/s) | Average (ms) | p50 (ms) | p90 (ms) | p95 (ms) | p99 (ms) | Total Time (s) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **10 presentations** | 1283.12 | 0.436 | 0.408 | 0.571 | 0.585 | 0.596 | 0.0078s |
-| **50 presentations** | 1454.07 | 0.371 | 0.341 | 0.465 | 0.543 | 0.6 | 0.0344s |
-| **100 presentations** | 1469.41 | 0.369 | 0.336 | 0.486 | 0.56 | 0.622 | 0.0681s |
-| **200 presentations** | 1488.13 | 0.362 | 0.339 | 0.434 | 0.511 | 0.591 | 0.1344s |
+| **10 presentations** | 1319.68 | 0.392 | 0.359 | 0.515 | 0.538 | 0.557 | 0.0076s |
+| **50 presentations** | 1484.63 | 0.363 | 0.342 | 0.414 | 0.433 | 0.594 | 0.0337s |
+| **100 presentations** | 1426.74 | 0.383 | 0.345 | 0.452 | 0.569 | 0.761 | 0.0701s |
+| **200 presentations** | 1426.75 | 0.373 | 0.346 | 0.444 | 0.526 | 0.667 | 0.1402s |
 
 ---
 
@@ -68,14 +68,14 @@ Evaluates the complete end-to-end verification pipeline:
 - **Capacity**: 131,072 credentials (16,384 bytes uncompressed)
 - **Compressed Wire Size**: 77 bytes (Multibase `u` Base64url)
 - **Compression Efficiency**: 212.78x wire reduction
-- **Encode Time**: 0.284 ms
+- **Encode Time**: 0.149 ms
 
 | Operation | Mode | Average Latency | p50 | p95 | p99 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Status Lookup** | Uncached (Raw Gzip per check) | 15.9 µs | 13.3 µs | 31.93 µs | 49.5 µs |
-| **Status Lookup** | **LRU Decompression Cached** | **0.19 µs** | **0.2 µs** | **0.2 µs** | **0.3 µs** |
+| **Status Lookup** | Uncached (Raw Gzip per check) | 14.51 µs | 14.05 µs | 17.94 µs | 26.51 µs |
+| **Status Lookup** | **LRU Decompression Cached** | **0.18 µs** | **0.2 µs** | **0.2 µs** | **0.3 µs** |
 
-> **Optimization Result**: The LRU decompression cache provides an authoritative **85.2x speedup** on repeated revocation lookups.
+> **Optimization Result**: The LRU decompression cache provides an authoritative **79.2x speedup** on repeated revocation lookups.
 
 ---
 
@@ -85,10 +85,10 @@ Evaluates feature extraction, Autoencoder reconstruction error, XGBoost inferenc
 
 | Workload / Batch Size | Throughput (samples/s) | Total Time (ms) | Average Latency (ms) | p50 (ms) | p95 (ms) | p99 (ms) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Batch 1 (Single Item)** | 33783.79 | 0.03 ms | 0.013 ms | 0.013 ms | 0.013 ms | 0.013 ms |
-| **Batch 10** | 70771.42 | 0.14 ms | 0.011 ms | 0.01 ms | 0.016 ms | 0.018 ms |
-| **Batch 100** | 168208.57 | 0.59 ms | 0.004 ms | 0.004 ms | 0.005 ms | 0.006 ms |
-| **Batch 500** | 156568.03 | 3.19 ms | 0.005 ms | 0.004 ms | 0.006 ms | 0.007 ms |
+| **Batch 1 (Single Item)** | 34364.27 | 0.03 ms | 0.012 ms | 0.012 ms | 0.012 ms | 0.012 ms |
+| **Batch 10** | 71479.65 | 0.14 ms | 0.011 ms | 0.01 ms | 0.016 ms | 0.018 ms |
+| **Batch 100** | 114246.54 | 0.88 ms | 0.006 ms | 0.005 ms | 0.009 ms | 0.024 ms |
+| **Batch 500** | 168412.55 | 2.97 ms | 0.004 ms | 0.004 ms | 0.005 ms | 0.005 ms |
 
 ---
 
@@ -135,11 +135,11 @@ Evaluates complete FastAPI middleware chain (CORS, Rate Limiting, Security Heade
 | Metric | API Gateway Result |
 | :--- | :--- |
 | **Total Processed Requests** | 500 requests |
-| **Gateway Throughput** | **262.35 req/sec** |
-| **Average Middleware Latency** | **3.81 ms** |
-| **p50 Latency** | **3.726 ms** |
-| **p95 Latency** | **4.844 ms** |
-| **p99 Latency** | **5.306 ms** |
+| **Gateway Throughput** | **277.35 req/sec** |
+| **Average Middleware Latency** | **3.604 ms** |
+| **p50 Latency** | **3.389 ms** |
+| **p95 Latency** | **5.433 ms** |
+| **p99 Latency** | **8.039 ms** |
 
 ---
 

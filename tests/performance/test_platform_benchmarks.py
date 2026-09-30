@@ -18,21 +18,22 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "services" / "identity-service"))
 sys.path.insert(0, str(ROOT_DIR))
 
-from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner
-from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
-from app.infrastructure.crypto.local_issuer_key_provider import (
+from datetime import UTC, datetime
+from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner  # type: ignore[import-not-found]
+from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer  # type: ignore[import-not-found]
+from app.infrastructure.crypto.local_issuer_key_provider import (  # type: ignore[import-not-found]
     LocalIssuerKeyProvider,
     SYNTHETIC_ISSUER_DID,
 )
-from app.infrastructure.status_list_document_generator import (
+from app.infrastructure.status_list_document_generator import (  # type: ignore[import-not-found]
     StatusListDocumentGenerator,
     encode_status_list,
     decode_status_list_bit,
     decompress_status_list,
 )
-from app.services.credential_validator import CredentialProfileValidator
-from app.application.services.credential_proof_service import CredentialProofService
-from app.services.did_resolver import (
+from app.services.credential_validator import CredentialProfileValidator  # type: ignore[import-not-found]
+from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
+from app.services.did_resolver import (  # type: ignore[import-not-found]
     CompositeDidResolver,
     DidWebFixtureResolver,
 )
@@ -55,7 +56,7 @@ def ssi_proof_engine():
         signer=signer,
         key_provider=key_provider,
         did_resolver=did_resolver,
-        clock=lambda: time.time(),
+        clock=lambda: datetime.now(UTC),
     )
     return {
         "validator": validator,
