@@ -1,0 +1,543 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 189 Stepping 1, GenuineIntel",
+    "python_version": "3.11.16",
+    "node_version": "v24.19.0",
+    "hardhat_available": true,
+    "mongodb_available": false,
+    "hardhat_version": "2.29.1"
+  },
+  "vc_issuance": {
+    "unit_benchmark": {
+      "10_creds": {
+        "count": 10,
+        "total_time_s": 0.0007,
+        "throughput_ops_sec": 14914.24,
+        "avg_ms": 0.067,
+        "min_ms": 0.062,
+        "max_ms": 0.078,
+        "p50_ms": 0.065,
+        "p90_ms": 0.077,
+        "p95_ms": 0.077,
+        "p99_ms": 0.077
+      },
+      "100_creds": {
+        "count": 100,
+        "total_time_s": 0.0067,
+        "throughput_ops_sec": 14853.32,
+        "avg_ms": 0.067,
+        "min_ms": 0.06,
+        "max_ms": 0.185,
+        "p50_ms": 0.064,
+        "p90_ms": 0.072,
+        "p95_ms": 0.077,
+        "p99_ms": 0.134
+      },
+      "500_creds": {
+        "count": 500,
+        "total_time_s": 0.0344,
+        "throughput_ops_sec": 14516.44,
+        "avg_ms": 0.069,
+        "min_ms": 0.06,
+        "max_ms": 0.321,
+        "p50_ms": 0.064,
+        "p90_ms": 0.078,
+        "p95_ms": 0.091,
+        "p99_ms": 0.147
+      },
+      "1000_creds": {
+        "count": 1000,
+        "total_time_s": 0.0675,
+        "throughput_ops_sec": 14805.19,
+        "avg_ms": 0.068,
+        "min_ms": 0.059,
+        "max_ms": 0.186,
+        "p50_ms": 0.063,
+        "p90_ms": 0.076,
+        "p95_ms": 0.084,
+        "p99_ms": 0.139
+      }
+    },
+    "service_benchmark": {
+      "10_creds": {
+        "count": 10,
+        "total_time_s": 0.0038,
+        "throughput_ops_sec": 2608.58,
+        "avg_ms": 0.314,
+        "min_ms": 0.277,
+        "max_ms": 0.462,
+        "p50_ms": 0.298,
+        "p90_ms": 0.36,
+        "p95_ms": 0.411,
+        "p99_ms": 0.451
+      },
+      "100_creds": {
+        "count": 100,
+        "total_time_s": 0.0378,
+        "throughput_ops_sec": 2648.85,
+        "avg_ms": 0.308,
+        "min_ms": 0.257,
+        "max_ms": 0.624,
+        "p50_ms": 0.274,
+        "p90_ms": 0.411,
+        "p95_ms": 0.537,
+        "p99_ms": 0.594
+      },
+      "500_creds": {
+        "count": 500,
+        "total_time_s": 0.1888,
+        "throughput_ops_sec": 2648.07,
+        "avg_ms": 0.307,
+        "min_ms": 0.254,
+        "max_ms": 0.67,
+        "p50_ms": 0.279,
+        "p90_ms": 0.4,
+        "p95_ms": 0.469,
+        "p99_ms": 0.57
+      },
+      "1000_creds": {
+        "count": 1000,
+        "total_time_s": 0.3734,
+        "throughput_ops_sec": 2677.76,
+        "avg_ms": 0.304,
+        "min_ms": 0.252,
+        "max_ms": 0.733,
+        "p50_ms": 0.278,
+        "p90_ms": 0.381,
+        "p95_ms": 0.447,
+        "p99_ms": 0.558
+      }
+    }
+  },
+  "oid4vp_verification": {
+    "10_presentations": {
+      "count": 10,
+      "total_time_s": 0.0078,
+      "throughput_ops_sec": 1283.12,
+      "avg_ms": 0.436,
+      "min_ms": 0.343,
+      "max_ms": 0.599,
+      "p50_ms": 0.408,
+      "p90_ms": 0.571,
+      "p95_ms": 0.585,
+      "p99_ms": 0.596
+    },
+    "50_presentations": {
+      "count": 50,
+      "total_time_s": 0.0344,
+      "throughput_ops_sec": 1454.07,
+      "avg_ms": 0.371,
+      "min_ms": 0.32,
+      "max_ms": 0.615,
+      "p50_ms": 0.341,
+      "p90_ms": 0.465,
+      "p95_ms": 0.543,
+      "p99_ms": 0.6
+    },
+    "100_presentations": {
+      "count": 100,
+      "total_time_s": 0.0681,
+      "throughput_ops_sec": 1469.41,
+      "avg_ms": 0.369,
+      "min_ms": 0.315,
+      "max_ms": 0.746,
+      "p50_ms": 0.336,
+      "p90_ms": 0.486,
+      "p95_ms": 0.56,
+      "p99_ms": 0.622
+    },
+    "200_presentations": {
+      "count": 200,
+      "total_time_s": 0.1344,
+      "throughput_ops_sec": 1488.13,
+      "avg_ms": 0.362,
+      "min_ms": 0.316,
+      "max_ms": 0.693,
+      "p50_ms": 0.339,
+      "p90_ms": 0.434,
+      "p95_ms": 0.511,
+      "p99_ms": 0.591
+    }
+  },
+  "bitstring_status_list": {
+    "capacity_entries": 131072,
+    "raw_size_bytes": 16384,
+    "compressed_size_bytes": 77,
+    "compression_ratio": 212.78,
+    "encode_time_ms": 0.284,
+    "uncached_lookup": {
+      "avg_us": 15.9,
+      "p50_us": 13.3,
+      "p95_us": 31.93,
+      "p99_us": 49.5
+    },
+    "cached_lookup": {
+      "avg_us": 0.19,
+      "p50_us": 0.2,
+      "p95_us": 0.2,
+      "p99_us": 0.3
+    },
+    "optimization_speedup_factor": 85.2
+  },
+  "ai_fraud_engine": {
+    "batch_1": {
+      "batch_size": 1,
+      "total_time_ms": 0.03,
+      "throughput_samples_sec": 33783.79,
+      "avg_latency_ms": 0.013,
+      "p50_ms": 0.013,
+      "p95_ms": 0.013,
+      "p99_ms": 0.013
+    },
+    "batch_10": {
+      "batch_size": 10,
+      "total_time_ms": 0.14,
+      "throughput_samples_sec": 70771.42,
+      "avg_latency_ms": 0.011,
+      "p50_ms": 0.01,
+      "p95_ms": 0.016,
+      "p99_ms": 0.018
+    },
+    "batch_100": {
+      "batch_size": 100,
+      "total_time_ms": 0.59,
+      "throughput_samples_sec": 168208.57,
+      "avg_latency_ms": 0.004,
+      "p50_ms": 0.004,
+      "p95_ms": 0.005,
+      "p99_ms": 0.006
+    },
+    "batch_500": {
+      "batch_size": 500,
+      "total_time_ms": 3.19,
+      "throughput_samples_sec": 156568.03,
+      "avg_latency_ms": 0.005,
+      "p50_ms": 0.004,
+      "p95_ms": 0.006,
+      "p99_ms": 0.007
+    }
+  },
+  "blockchain_gas": {
+    "DIDRegistry_deployment": 1066526,
+    "RevocationRegistry_deployment": 388716,
+    "EmergencyRecovery_deployment": 1591311,
+    "AuditLogger_deployment": 226304,
+    "registerDID": 184154,
+    "updateVCHash": 43285,
+    "anchorStatusList": 92159,
+    "revokeCredential": 113412,
+    "configureGuardians": 120723,
+    "initiateRecovery": 133304,
+    "approveRecovery_execute": 75873,
+    "logEvent": 135657
+  },
+  "mongodb": {
+    "status": "VERIFIED_SCHEMA_INDEXES",
+    "live_daemon_status": "BLOCKED_DAEMON_OFFLINE (Academic in-memory/isolated repository)",
+    "collections_analyzed": 5,
+    "total_indexes": 23,
+    "indexes_by_collection": {
+      "credentials": [
+        {
+          "name": "uq_credentials_credential_id",
+          "keys": [
+            [
+              "credentialId",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_credentials_issuer_did",
+          "keys": [
+            [
+              "issuerDid",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_credentials_holder_did",
+          "keys": [
+            [
+              "holderDid",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_credentials_status",
+          "keys": [
+            [
+              "status",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_credentials_created_at",
+          "keys": [
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "ix_credentials_status_list_status",
+          "keys": [
+            [
+              "statusListId",
+              1
+            ],
+            [
+              "status",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "uq_credentials_status_list_index",
+          "keys": [
+            [
+              "statusListId",
+              1
+            ],
+            [
+              "statusListIndex",
+              1
+            ]
+          ],
+          "unique": true,
+          "partial": true
+        },
+        {
+          "name": "ix_credentials_wallet_owner_created_at",
+          "keys": [
+            [
+              "walletId",
+              1
+            ],
+            [
+              "ownerUserId",
+              1
+            ],
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        }
+      ],
+      "presentations": [
+        {
+          "name": "uq_presentations_presentation_id",
+          "keys": [
+            [
+              "presentationId",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "uq_presentations_challenge_domain",
+          "keys": [
+            [
+              "challenge",
+              1
+            ],
+            [
+              "domain",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_presentations_holder_created_at",
+          "keys": [
+            [
+              "holderDid",
+              1
+            ],
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "ix_presentations_verification_result",
+          "keys": [
+            [
+              "verificationResult",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_presentations_expires_at",
+          "keys": [
+            [
+              "expiresAt",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_presentations_wallet_owner",
+          "keys": [
+            [
+              "walletId",
+              1
+            ],
+            [
+              "ownerUserId",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_presentations_stale_processing",
+          "keys": [
+            [
+              "verificationResult",
+              1
+            ],
+            [
+              "processingStartedAt",
+              1
+            ]
+          ]
+        }
+      ],
+      "audit_events": [
+        {
+          "name": "ix_audit_events_created_at",
+          "keys": [
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "ix_audit_events_type_created_at",
+          "keys": [
+            [
+              "eventType",
+              1
+            ],
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        }
+      ],
+      "status_lists": [
+        {
+          "name": "uq_status_lists_status_list_id",
+          "keys": [
+            [
+              "statusListId",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_status_lists_issuer_purpose",
+          "keys": [
+            [
+              "issuerDid",
+              1
+            ],
+            [
+              "statusPurpose",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_status_lists_updated_at",
+          "keys": [
+            [
+              "updatedAt",
+              -1
+            ]
+          ]
+        }
+      ],
+      "blockchain_anchors": [
+        {
+          "name": "uq_blockchain_anchors_anchor_id",
+          "keys": [
+            [
+              "anchorId",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_blockchain_anchors_tx_hash",
+          "keys": [
+            [
+              "txHash",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "ix_blockchain_anchors_status_created_at",
+          "keys": [
+            [
+              "status",
+              1
+            ],
+            [
+              "createdAt",
+              -1
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "api_gateway": {
+    "requests": 500,
+    "total_time_s": 1.906,
+    "throughput_req_sec": 262.35,
+    "avg_latency_ms": 3.81,
+    "p50_ms": 3.726,
+    "p95_ms": 4.844,
+    "p99_ms": 5.306
+  },
+  "frontend_bundle": {
+    "baseline": {
+      "status": "PRE_OPTIMIZATION",
+      "main_chunk_kb": 837.65,
+      "main_chunk_gzip_kb": 260.33,
+      "vite_warning": true,
+      "build_time_s": 7.07,
+      "code_splitting": false
+    },
+    "optimized": {
+      "status": "POST_OPTIMIZATION",
+      "main_chunk_file": "index-DV3HfNA2.js",
+      "main_chunk_kb": 400.82,
+      "main_chunk_gzip_kb": 145.99,
+      "vendor_chunk_file": "vendor-lm6fSJnS.js",
+      "vendor_chunk_kb": 159.6,
+      "route_chunks_count": 46,
+      "vite_warning": false,
+      "build_time_s": 3.72,
+      "code_splitting": true,
+      "bundle_reduction_percentage": 52.1
+    }
+  }
+}

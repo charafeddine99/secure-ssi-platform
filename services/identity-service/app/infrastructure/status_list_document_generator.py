@@ -107,13 +107,26 @@ def encode_status_list(
     return "u" + encoded.decode("ascii")
 
 
-def decode_status_list_bit(encoded_list: str, index: int) -> bool:
-    if index < 0:
-        raise ValueError("Status list index must be non-negative.")
+from functools import lru_cache
+
+
+@lru_cache(maxsize=64)
+def decompress_status_list(encoded_list: str) -> bytes:
+    """Cached decompression of base64url-encoded gzip bitstring status list.
+    
+    Prevents repeated expensive gzip.decompress operations during high-frequency
+    credential verification passes across the 131,072-entry status list.
+    """
     raw = encoded_list[1:] if encoded_list.startswith("u") else encoded_list
     padded = raw + "=" * (-len(raw) % 4)
     compressed = base64.urlsafe_b64decode(padded.encode("ascii"))
-    bitstring = gzip.decompress(compressed)
+    return gzip.decompress(compressed)
+
+
+def decode_status_list_bit(encoded_list: str, index: int) -> bool:
+    if index < 0:
+        raise ValueError("Status list index must be non-negative.")
+    bitstring = decompress_status_list(encoded_list)
     byte_index = index // 8
     bit_index = 7 - (index % 8)
     if byte_index >= len(bitstring):

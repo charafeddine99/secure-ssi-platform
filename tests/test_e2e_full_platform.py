@@ -8,6 +8,11 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 sys.path.insert(0, str(ROOT_DIR / "services" / "fraud-service"))
 
+# Clear any conflicting 'app' module loaded from other services
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name == "app" or _mod_name.startswith("app."):
+        del sys.modules[_mod_name]
+
 # 1. ZKP & Selective Disclosure Modülü
 from packages.shared.zkp.selective_disclosure import ZKPSelectiveDisclosure
 

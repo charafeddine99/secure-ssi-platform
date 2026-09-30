@@ -6,46 +6,56 @@ import { HolderLayout } from "../layouts/HolderLayout";
 import { InstitutionalLayout } from "../layouts/InstitutionalLayout";
 import { RoleGuard } from "./RoleGuard";
 
-// Public Pages
-import { LandingPage } from "../pages/public/LandingPage";
-import { EcosystemPage } from "../pages/public/EcosystemPage";
-import { ArchitectureDocsPage } from "../pages/public/ArchitectureDocsPage";
-import { NotFoundPage } from "../pages/public/NotFoundPage";
+// Loading placeholder for async route transitions
+const PageLoader: React.FC = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "350px" }}>
+    <div style={{ padding: "1.5rem 2rem", borderRadius: "10px", background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8", fontSize: "0.95rem" }}>
+      Yükleniyor...
+    </div>
+  </div>
+);
 
-// Holder Pages
-import { WalletDashboard } from "../pages/holder/WalletDashboard";
-import { CredentialDetailPage } from "../pages/holder/CredentialDetailPage";
-import { ScanQrPage } from "../pages/holder/ScanQrPage";
-import { PresentationConsentPage } from "../pages/holder/PresentationConsentPage";
-import { ActivityHistoryPage } from "../pages/holder/ActivityHistoryPage";
-import { SecuritySettingsPage } from "../pages/holder/SecuritySettingsPage";
+// Public Pages (Lazy)
+const LandingPage = React.lazy(() => import("../pages/public/LandingPage").then(m => ({ default: m.LandingPage })));
+const EcosystemPage = React.lazy(() => import("../pages/public/EcosystemPage").then(m => ({ default: m.EcosystemPage })));
+const ArchitectureDocsPage = React.lazy(() => import("../pages/public/ArchitectureDocsPage").then(m => ({ default: m.ArchitectureDocsPage })));
+const NotFoundPage = React.lazy(() => import("../pages/public/NotFoundPage").then(m => ({ default: m.NotFoundPage })));
 
-// Issuer Pages
-import { IssuerDashboard } from "../pages/issuer/IssuerDashboard";
-import { CredentialTemplatesPage } from "../pages/issuer/CredentialTemplatesPage";
-import { IssueCredentialPage } from "../pages/issuer/IssueCredentialPage";
-import { RevocationRegistryPage } from "../pages/issuer/RevocationRegistryPage";
+// Holder Pages (Lazy)
+const WalletDashboard = React.lazy(() => import("../pages/holder/WalletDashboard").then(m => ({ default: m.WalletDashboard })));
+const CredentialDetailPage = React.lazy(() => import("../pages/holder/CredentialDetailPage").then(m => ({ default: m.CredentialDetailPage })));
+const ScanQrPage = React.lazy(() => import("../pages/holder/ScanQrPage").then(m => ({ default: m.ScanQrPage })));
+const PresentationConsentPage = React.lazy(() => import("../pages/holder/PresentationConsentPage").then(m => ({ default: m.PresentationConsentPage })));
+const ActivityHistoryPage = React.lazy(() => import("../pages/holder/ActivityHistoryPage").then(m => ({ default: m.ActivityHistoryPage })));
+const SecuritySettingsPage = React.lazy(() => import("../pages/holder/SecuritySettingsPage").then(m => ({ default: m.SecuritySettingsPage })));
 
-// Verifier Pages
-import { VerifierDashboard } from "../pages/verifier/VerifierDashboard";
-import { CreateRequestPage } from "../pages/verifier/CreateRequestPage";
-import { VerifyPresentationPage } from "../pages/verifier/VerifyPresentationPage";
-import { VerificationHistoryPage } from "../pages/verifier/VerificationHistoryPage";
+// Issuer Pages (Lazy)
+const IssuerDashboard = React.lazy(() => import("../pages/issuer/IssuerDashboard").then(m => ({ default: m.IssuerDashboard })));
+const CredentialTemplatesPage = React.lazy(() => import("../pages/issuer/CredentialTemplatesPage").then(m => ({ default: m.CredentialTemplatesPage })));
+const IssueCredentialPage = React.lazy(() => import("../pages/issuer/IssueCredentialPage").then(m => ({ default: m.IssueCredentialPage })));
+const RevocationRegistryPage = React.lazy(() => import("../pages/issuer/RevocationRegistryPage").then(m => ({ default: m.RevocationRegistryPage })));
 
-// Guardian Pages
-import { GuardianDashboard } from "../pages/guardian/GuardianDashboard";
-import { RecoveryRequestsPage } from "../pages/guardian/RecoveryRequestsPage";
-import { ApproveRecoveryPage } from "../pages/guardian/ApproveRecoveryPage";
+// Verifier Pages (Lazy)
+const VerifierDashboard = React.lazy(() => import("../pages/verifier/VerifierDashboard").then(m => ({ default: m.VerifierDashboard })));
+const CreateRequestPage = React.lazy(() => import("../pages/verifier/CreateRequestPage").then(m => ({ default: m.CreateRequestPage })));
+const VerifyPresentationPage = React.lazy(() => import("../pages/verifier/VerifyPresentationPage").then(m => ({ default: m.VerifyPresentationPage })));
+const VerificationHistoryPage = React.lazy(() => import("../pages/verifier/VerificationHistoryPage").then(m => ({ default: m.VerificationHistoryPage })));
 
-// Admin Pages
-import { AdminDashboard } from "../pages/admin/AdminDashboard";
-import { SmartContractsPage } from "../pages/admin/SmartContractsPage";
-import { AuditExplorerPage } from "../pages/admin/AuditExplorerPage";
-import { AiFraudMonitorPage } from "../pages/admin/AiFraudMonitorPage";
+// Guardian Pages (Lazy)
+const GuardianDashboard = React.lazy(() => import("../pages/guardian/GuardianDashboard").then(m => ({ default: m.GuardianDashboard })));
+const RecoveryRequestsPage = React.lazy(() => import("../pages/guardian/RecoveryRequestsPage").then(m => ({ default: m.RecoveryRequestsPage })));
+const ApproveRecoveryPage = React.lazy(() => import("../pages/guardian/ApproveRecoveryPage").then(m => ({ default: m.ApproveRecoveryPage })));
+
+// Admin Pages (Lazy)
+const AdminDashboard = React.lazy(() => import("../pages/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const SmartContractsPage = React.lazy(() => import("../pages/admin/SmartContractsPage").then(m => ({ default: m.SmartContractsPage })));
+const AuditExplorerPage = React.lazy(() => import("../pages/admin/AuditExplorerPage").then(m => ({ default: m.AuditExplorerPage })));
+const AiFraudMonitorPage = React.lazy(() => import("../pages/admin/AiFraudMonitorPage").then(m => ({ default: m.AiFraudMonitorPage })));
 
 export const AppRoutes: React.FC = () => {
   return (
-    <Routes>
+    <React.Suspense fallback={<PageLoader />}>
+      <Routes>
       <Route path="/" element={<RootLayout />}>
         {/* 1. Public Pages */}
         <Route element={<PublicLayout />}>
@@ -134,5 +144,6 @@ export const AppRoutes: React.FC = () => {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+    </React.Suspense>
   );
 };
