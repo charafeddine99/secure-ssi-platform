@@ -1,0 +1,31 @@
+# Secure Self-Sovereign Identity (SSI) Platform
+# Consolidated Root Requirements for Local & Clean Environment Reproduction
+
+# Core Microservice Framework & Networking
+fastapi>=0.115.6
+pydantic>=2.10.4
+uvicorn[standard]>=0.34.0
+httpx>=0.28.1
+
+# Cryptography, Identity & Proof Standards
+cryptography>=43.0.0
+rfc8785>=0.1.4
+argon2-cffi>=25.1.0
+PyJWT>=2.13.0
+pycryptodome>=3.23.0
+
+# Persistence & Database Drivers
+pymongo>=4.17.0
+
+# AI Fraud Detection & Telemetry Analytics
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+
+# Blockchain Integration (EVM Web3 Bridge)
+web3>=6.0.0
+
+# Testing & Quality Assurance
+pytest>=8.3.4
+ruff>=0.8.6
