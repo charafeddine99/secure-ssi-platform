@@ -105,34 +105,41 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         assert res_poll.status_code == 200
         assert res_poll.json()["status"] == "PENDING"
 
+        import uuid
+        from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
+        now = datetime.now(UTC)
+        proof_service = build_local_proof_service(clock=lambda: now)
+        raw_vc = {
+            "@context": [
+                "https://www.w3.org/ns/credentials/v2",
+                "https://secure-ssi.example/contexts/university-affiliation/v1"
+            ],
+            "id": f"urn:uuid:{uuid.uuid4()}",
+            "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
+            "issuer": "did:web:issuer.example",
+            "validFrom": (now - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+            "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
+            "credentialSubject": {
+                "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+                "Sertifika Sahibi": "Charaf Eddine Bessanane",
+                "Unvan": "Senior Distributed Systems & SSI Security Architect",
+                "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine"
+            }
+        }
+        signed_vc = proof_service.sign_credential(raw_vc)
+
         # 3. Holder submits presentation via Direct Post
         sample_vp = {
             "@context": ["https://www.w3.org/ns/credentials/v2"],
             "type": ["VerifiablePresentation"],
-            "verifiableCredential": [{
-                "@context": ["https://www.w3.org/ns/credentials/v2"],
-                "id": "urn:uuid:test-qeaa-presentation",
-                "type": ["VerifiableCredential", "QualifiedElectronicAttestationCredential"],
-                "issuer": "did:web:trust.eudi.europa.eu",
-                "validFrom": "2026-01-01T00:00:00Z",
-                "validUntil": "2028-01-01T00:00:00Z",
-                "credentialSubject": {
-                    "id": "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-                    "Sertifika Sahibi": "Charaf Eddine Bessanane",
-                    "Unvan": "Senior Distributed Systems & SSI Security Architect",
-                    "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine"
-                },
-                "proof": {
-                    "type": "Ed25519Signature2020",
-                    "proofValue": "zMockValidSignatureValue12345"
-                }
-            }],
+            "verifiableCredential": [signed_vc],
             "proof": {
-                "type": "Ed25519Signature2020",
+                "type": "DataIntegrityProof",
                 "nonce": nonce,
                 "proofValue": "zMockHolderPresentationProof"
             }
         }
+
         dp_payload = {
             "sessionId": session_id,
             "vpToken": sample_vp,

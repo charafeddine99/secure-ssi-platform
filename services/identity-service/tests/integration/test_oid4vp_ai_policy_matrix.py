@@ -45,22 +45,55 @@ def clean_state():
 
 def _create_mock_vp_token(
     *,
-    subject_did: str = "did:key:z6MkuHolderMatrix01",
-    issuer_did: str = "did:web:trusted-issuer.example.com",
+    subject_did: str = "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+    issuer_did: str = "did:web:issuer.example",
     expired: bool = False,
     invalid_signature: bool = False,
     nonce: str = "fresh-session-nonce-12345",
 ) -> dict:
+    now = datetime.now(timezone.utc)
+    valid_from = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
     valid_until = (
-        (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        (now - timedelta(days=2)).isoformat().replace("+00:00", "Z")
         if expired
-        else (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+        else (now + timedelta(days=365)).isoformat().replace("+00:00", "Z")
     )
 
-    proof = {
-        "type": "Ed25519Signature2020",
-        "proofValue": "" if invalid_signature else "z3tF8...mockValidProofValue",
+    unsigned_vc = {
+        "@context": [
+            "https://www.w3.org/ns/credentials/v2",
+            "https://secure-ssi.example/contexts/university-affiliation/v1",
+        ],
+        "id": "urn:uuid:00000000-0000-4000-8000-000000000001",
+        "type": [
+            "VerifiableCredential",
+            "UniversityAffiliationCredential",
+        ],
+        "issuer": issuer_did,
+        "validFrom": valid_from,
+        "validUntil": valid_until,
+        "credentialSubject": {
+            "id": subject_did,
+            "degree": "MSc Computer Science",
+            "gpa": "3.95",
+        },
     }
+
+    if invalid_signature:
+        signed_vc = dict(unsigned_vc)
+        signed_vc["proof"] = {
+            "@context": unsigned_vc["@context"],
+            "type": "DataIntegrityProof",
+            "cryptosuite": "eddsa-jcs-2022",
+            "created": now.isoformat().replace("+00:00", "Z"),
+            "verificationMethod": f"{issuer_did}#key-1",
+            "proofPurpose": "assertionMethod",
+            "proofValue": "zInvalidSignatureValueThatFailsCryptoVerification1234567890",
+        }
+    else:
+        from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
+        proof_service = build_local_proof_service(clock=lambda: now)
+        signed_vc = proof_service.sign_credential(unsigned_vc)
 
     return {
         "type": ["VerifiablePresentation"],
@@ -69,20 +102,9 @@ def _create_mock_vp_token(
             "nonce": nonce,
             "proofValue": "zMockVPProof",
         },
-        "verifiableCredential": [
-            {
-                "id": "urn:uuid:cred-matrix-0001",
-                "issuer": issuer_did,
-                "validUntil": valid_until,
-                "credentialSubject": {
-                    "id": subject_did,
-                    "degree": "MSc Computer Science",
-                    "gpa": "3.95",
-                },
-                "proof": proof,
-            }
-        ],
+        "verifiableCredential": [signed_vc],
     }
+
 
 
 def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_bad_signature():
@@ -217,7 +239,7 @@ def test_adaptive_policy_medium_risk_step_up_required():
 
 def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     """Valid cryptographic checks + CRITICAL AI risk (>= 85) => REJECTED + Auto-Quarantine."""
-    subject_did = "did:key:z6MkuAttackerQuarantine09"
+    subject_did = "did:key:z6MkuAttackerQuarantine99"
 
     verifier_hdrs = _get_headers(client, "verifier")
     # Step 1: Attempt presentation with critical attack telemetry

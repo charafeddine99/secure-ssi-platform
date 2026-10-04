@@ -29,7 +29,22 @@ class FakeAuditRepository:
         return event
 
 
+class DummyCredentialProofResult:
+    is_valid = True
+    verified = True
+
+class DummyCredentialProofService:
+    def verify_credential(self, *args, **kwargs):
+        return DummyCredentialProofResult()
+
+class DummyCredentialInspector:
+    def __init__(self):
+        self._proofs = DummyCredentialProofService()
+
 class DummyVerifierPresentationService:
+    def __init__(self):
+        self._credentials = DummyCredentialInspector()
+
     def verify_presentation(self, *args, **kwargs):
         return NinePointVerificationResult(
             credential_valid=True,
@@ -45,6 +60,7 @@ class DummyVerifierPresentationService:
             final_policy_result="ACCEPTED",
             details={},
         )
+
 
 
 class DummyStatusListService:
@@ -216,16 +232,26 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
         session_id="session_dp_minimization_0001",
         vp_token={
             "type": ["VerifiablePresentation"],
+            "proof": {
+                "type": "DataIntegrityProof",
+                "nonce": "challenge_nonce_xyz123",
+                "proofValue": "zMockProof",
+            },
             "verifiableCredential": [{
                 "id": "urn:uuid:test-cred-001",
                 "issuer": "did:web:issuer.example.com",
                 "credentialSubject": {"id": "did:key:z6MkuHolder123"},
-                "proof": {"type": "DataIntegrityProof", "proofValue": "mock_proof_val"},
+                "proof": {
+                    "type": "DataIntegrityProof",
+                    "cryptosuite": "eddsa-jcs-2022",
+                    "proofValue": "mock_proof_val",
+                },
             }]
         },
         disclosed_claims=disclosed_claims,
         ai_risk_score=10,
     )
+
 
     assert result.final_policy_result == "ACCEPTED"
     data_min = result.details.get("dataMinimization", {})

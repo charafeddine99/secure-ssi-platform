@@ -1,4 +1,11 @@
-from __future__ import annotations
+import sys
+from unittest.mock import MagicMock
+
+if "ckzg" not in sys.modules:
+    try:
+        import ckzg  # noqa: F401
+    except Exception:
+        sys.modules["ckzg"] = MagicMock()
 
 from typing import Any, Generator
 import pytest

@@ -197,26 +197,25 @@ class Oid4vpService:
         issuer_did = str(target_vc.get("issuer") or "")
         issuer_trusted = issuer_did.startswith("did:web:") or issuer_did.startswith("did:key:")
         
-        # Proof & Signature
+        # Proof & Signature (Fail-Closed: explicit cryptographic verification required)
         raw_proof = target_vc.get("proof")
         proof: dict[str, Any] = raw_proof if isinstance(raw_proof, dict) else {}
-        has_proof_structure = bool(proof.get("proofValue") and proof.get("type"))
         sig_valid = False
-        if has_proof_structure:
-            # Verify via credential proof engine if full DataIntegrityProof structure present
-            if (
-                hasattr(self._verifier, "_credentials")
-                and hasattr(self._verifier._credentials, "_proofs")
-                and proof.get("type") == "DataIntegrityProof"
-                and proof.get("cryptosuite") == "eddsa-jcs-2022"
-            ):
-                try:
-                    vc_res = self._verifier._credentials._proofs.verify_credential(target_vc, verified_at=now)
-                    sig_valid = vc_res.is_valid
-                except Exception:
-                    sig_valid = has_proof_structure
-            else:
-                sig_valid = has_proof_structure
+        if (
+            isinstance(raw_proof, dict)
+            and proof.get("type") == "DataIntegrityProof"
+            and proof.get("cryptosuite") == "eddsa-jcs-2022"
+            and bool(proof.get("proofValue"))
+            and hasattr(self._verifier, "_credentials")
+            and hasattr(self._verifier._credentials, "_proofs")
+        ):
+            try:
+                vc_res = self._verifier._credentials._proofs.verify_credential(target_vc, verified_at=now)
+                sig_valid = bool(vc_res and vc_res.is_valid)
+            except Exception:
+                sig_valid = False
+        else:
+            sig_valid = False
 
         # Holder Binding
         raw_subject = target_vc.get("credentialSubject")
@@ -224,7 +223,7 @@ class Oid4vpService:
         subject_id = str(subject_dict.get("id") or "")
         holder_binding_valid = bool(subject_id and (subject_id.startswith("did:key:") or subject_id.startswith("0x")))
 
-        # Expiration Check
+        # Expiration Check (Fail-closed: malformed timestamps must not pass)
         valid_until = target_vc.get("validUntil") or target_vc.get("expirationDate")
         expiry_valid = True
         if valid_until:
@@ -232,7 +231,7 @@ class Oid4vpService:
                 exp_dt = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
                 expiry_valid = exp_dt > now
             except Exception:
-                expiry_valid = True
+                expiry_valid = False
 
         # Status / Revocation Check (authoritative persistence + Bitstring Status List resolution)
         cred_id = target_vc.get("id", "")
@@ -266,10 +265,14 @@ class Oid4vpService:
                     except (ValueError, TypeError):
                         revocation_status_clear = False
 
-        # Challenge / Nonce check
-        vp_proof = vp_token.get("proof", {})
-        challenge_nonce = vp_proof.get("nonce") or vp_proof.get("challenge") or session.nonce
-        challenge_valid = (challenge_nonce == session.nonce)
+        # Challenge / Nonce check (Fail-Closed: strictly bound to session.nonce; zero fallback)
+        vp_proof = vp_token.get("proof")
+        if isinstance(vp_proof, dict):
+            challenge_nonce = vp_proof.get("nonce") or vp_proof.get("challenge")
+            challenge_valid = bool(challenge_nonce and challenge_nonce == session.nonce)
+        else:
+            challenge_nonce = None
+            challenge_valid = False
 
         # Dynamic AI Fraud Threat Engine Evaluation (Section 13, 14, 15)
         ai_reasons: list[str] = []
@@ -400,11 +403,11 @@ class Oid4vpService:
                 "evaluations": {
                     "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
                     "issuer": "Verified trusted issuer DID document" if issuer_trusted else "Issuer untrusted",
-                    "signature": "Cryptographic proof mathematically valid" if sig_valid else "Proof invalid",
+                    "signature": "Cryptographic proof mathematically valid" if sig_valid else "Cryptographic signature invalid or unverified",
                     "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else "Holder mismatch",
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
                     "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
-                    "challenge": "Nonce match confirmed" if challenge_valid else "Nonce mismatch",
+                    "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
                 },

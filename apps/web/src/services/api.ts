@@ -1082,85 +1082,121 @@ export async function assessFraudRisk(payload: {
 }
 
 /**
- * Verify presentation through authoritative API Gateway / Identity Service
+ * Presentation verification result model
  */
-export async function verifyPresentation(payload: any): Promise<{
+export interface PresentationVerificationResult {
   verified: boolean;
+  status: "VERIFIED" | "REJECTED" | "UNAVAILABLE" | "ERROR";
+  signature_valid?: boolean;
+  challenge_valid?: boolean;
   claims?: Record<string, any>;
   details?: any;
-  errors?: string[];
-}> {
+  errors: string[];
+}
+
+export async function verifyPresentation(payload: any): Promise<PresentationVerificationResult> {
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 
-  // 1. Authoritative API Gateway route (/api/v1/identity/presentations/verify)
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/presentations/verify`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        verified: data.valid ?? data.verified ?? true,
-        claims: data.claims || payload.disclosed_claims || {},
-        details: data,
-        errors: data.errors || data.rejection_codes || []
-      };
+  const endpoints = [
+    `${GATEWAY_BASE_URL}/api/v1/identity/presentations/verify`,
+    `${SSI_CORE_BASE_URL}/api/v1/presentations/verify`
+  ];
+
+  let lastNetworkError: Error | null = null;
+  let lastHttpError: { status: number; statusText: string; body?: any } | null = null;
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // non-JSON response body
+      }
+
+      if (res.ok && data) {
+        const isValid = Boolean(
+          data.valid === true ||
+          data.status === "VERIFIED" ||
+          data.result?.finalPolicyResult === "ACCEPTED"
+        );
+
+        const status: "VERIFIED" | "REJECTED" = isValid ? "VERIFIED" : "REJECTED";
+        const errors: string[] = Array.isArray(data.errors)
+          ? data.errors
+          : Array.isArray(data.rejection_codes)
+          ? data.rejection_codes
+          : (!isValid ? ["Cryptographic or policy verification failed."] : []);
+
+        return {
+          verified: isValid,
+          status,
+          signature_valid: data.result?.signatureValid ?? (data.signature_valid ?? (isValid ? true : false)),
+          challenge_valid: data.result?.challengeValid ?? (data.challenge_valid ?? (isValid ? true : false)),
+          claims: data.claims || data.disclosedClaims || payload.disclosed_claims || {},
+          details: data,
+          errors
+        };
+      }
+
+      if (!res.ok) {
+        const errors: string[] = [];
+        if (data && data.detail) {
+          errors.push(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+        } else if (data && Array.isArray(data.errors)) {
+          errors.push(...data.errors);
+        } else {
+          errors.push(`Verification service responded with HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        if (res.status >= 400 && res.status < 500) {
+          return {
+            verified: false,
+            status: "REJECTED",
+            claims: payload.disclosed_claims || {},
+            details: data || { status: res.status, statusText: res.statusText },
+            errors
+          };
+        }
+
+        lastHttpError = { status: res.status, statusText: res.statusText, body: data };
+      }
+    } catch (err: any) {
+      lastNetworkError = err;
     }
-  } catch {
-    // Continue to next fallback
   }
 
-  // 2. Direct Identity Service v1 route
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/presentations/verify`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        verified: data.valid ?? data.verified ?? true,
-        claims: data.claims || payload.disclosed_claims || {},
-        details: data,
-        errors: data.errors || data.rejection_codes || []
-      };
-    }
-  } catch {
-    // Continue to legacy prototype fallback
-  }
-
-  // 3. Legacy prototype route
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/verify_presentation`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        verified: data.verified ?? true,
-        claims: data.claims || payload.disclosed_claims || {},
-        details: data,
-        errors: []
-      };
-    }
-  } catch (err) {
-    console.warn("verifyPresentation fallback:", err);
+  // Network transport failure or internal server error: fail closed with explicit UNAVAILABLE / ERROR
+  if (lastHttpError) {
+    return {
+      verified: false,
+      status: "ERROR",
+      claims: payload.disclosed_claims || {},
+      details: lastHttpError,
+      errors: [
+        `Verification service error (HTTP ${lastHttpError.status}): ${lastHttpError.statusText || "Internal Server Error"}`
+      ]
+    };
   }
 
   return {
-    verified: true,
+    verified: false,
+    status: "UNAVAILABLE",
     claims: payload.disclosed_claims || {},
-    details: { message: "Verified via local cryptographic verification" },
-    errors: []
+    details: { error: lastNetworkError?.message || "Connection refused" },
+    errors: [
+      `Verification service unreachable: ${lastNetworkError?.message || "Network/Transport connection failed"}`
+    ]
   };
 }
 

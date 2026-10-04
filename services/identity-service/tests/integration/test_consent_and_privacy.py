@@ -122,34 +122,42 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         nonce = res_create.json()["nonce"]
 
         # 2. Holder submits presentation selectively disclosing only 2 of the 4 requested claims
+        import uuid
+        from datetime import UTC, datetime, timedelta
+        from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
+        now = datetime.now(UTC)
+        proof_service = build_local_proof_service(clock=lambda: now)
+        raw_vc = {
+            "@context": [
+                "https://www.w3.org/ns/credentials/v2",
+                "https://secure-ssi.example/contexts/university-affiliation/v1",
+            ],
+            "id": f"urn:uuid:{uuid.uuid4()}",
+            "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
+            "issuer": "did:web:issuer.example",
+            "validFrom": (now - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+            "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
+            "credentialSubject": {
+                "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+                "affiliation": "student",
+                "degree": "Bachelor of Science",
+                "programCode": "SYN-CS-001",
+                "graduationYear": 2026,
+            },
+        }
+        signed_vc = proof_service.sign_credential(raw_vc)
+
         sample_vp = {
             "@context": ["https://www.w3.org/ns/credentials/v2"],
             "type": ["VerifiablePresentation"],
-            "verifiableCredential": [{
-                "@context": ["https://www.w3.org/ns/credentials/v2"],
-                "id": "urn:uuid:test-affiliation-credential",
-                "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
-                "issuer": "did:web:trust.eudi.europa.eu",
-                "validFrom": "2026-01-01T00:00:00Z",
-                "validUntil": "2028-01-01T00:00:00Z",
-                "credentialSubject": {
-                    "id": "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-                    "affiliation": "student",
-                    "degree": "Bachelor of Science",
-                    "programCode": "SYN-CS-001",
-                    "graduationYear": 2026,
-                },
-                "proof": {
-                    "type": "Ed25519Signature2020",
-                    "proofValue": "zMockValidSignatureValue12345",
-                },
-            }],
+            "verifiableCredential": [signed_vc],
             "proof": {
-                "type": "Ed25519Signature2020",
+                "type": "DataIntegrityProof",
                 "nonce": nonce,
                 "proofValue": "zMockHolderPresentationProof",
             },
         }
+
 
         # Selective disclosure: only affiliation and degree
         disclosed_claims = {
