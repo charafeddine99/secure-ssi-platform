@@ -10,7 +10,23 @@
  * 6. Valid positive verification response returns status: "VERIFIED" with verified: true.
  */
 
-import assert from "node:assert/strict";
+const assert = {
+  strictEqual<T>(actual: T, expected: T, message?: string): void {
+    if (actual !== expected) {
+      throw new Error(message || `Assertion failed: expected ${String(expected)}, got ${String(actual)}`);
+    }
+  },
+  ok(value: unknown, message?: string): asserts value {
+    if (!value) {
+      throw new Error(message || `Assertion failed: value is not truthy: ${String(value)}`);
+    }
+  },
+  match(value: string, pattern: RegExp, message?: string): void {
+    if (!pattern.test(value)) {
+      throw new Error(message || `Assertion failed: "${value}" does not match pattern ${pattern}`);
+    }
+  }
+};
 
 // We mock globalThis.localStorage for Node environment
 const mockStorage: Record<string, string> = {
@@ -188,5 +204,5 @@ async function runTests() {
 
 runTests().catch((err) => {
   console.error("TEST FAILED:", err);
-  process.exit(1);
+  throw err;
 });

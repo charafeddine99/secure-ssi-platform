@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
@@ -50,7 +51,7 @@ def _create_mock_vp_token(
     expired: bool = False,
     invalid_signature: bool = False,
     nonce: str = "fresh-session-nonce-12345",
-) -> dict:
+) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     valid_from = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
     valid_until = (
@@ -59,7 +60,7 @@ def _create_mock_vp_token(
         else (now + timedelta(days=365)).isoformat().replace("+00:00", "Z")
     )
 
-    unsigned_vc = {
+    unsigned_vc: dict[str, Any] = {
         "@context": [
             "https://www.w3.org/ns/credentials/v2",
             "https://secure-ssi.example/contexts/university-affiliation/v1",
@@ -80,9 +81,9 @@ def _create_mock_vp_token(
     }
 
     if invalid_signature:
-        signed_vc = dict(unsigned_vc)
-        signed_vc["proof"] = {
-            "@context": unsigned_vc["@context"],
+        signed_vc: dict[str, Any] = dict(unsigned_vc)
+        proof_payload: dict[str, Any] = {
+            "@context": list(unsigned_vc["@context"]),
             "type": "DataIntegrityProof",
             "cryptosuite": "eddsa-jcs-2022",
             "created": now.isoformat().replace("+00:00", "Z"),
@@ -90,6 +91,7 @@ def _create_mock_vp_token(
             "proofPurpose": "assertionMethod",
             "proofValue": "zInvalidSignatureValueThatFailsCryptoVerification1234567890",
         }
+        signed_vc["proof"] = proof_payload
     else:
         from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
         proof_service = build_local_proof_service(clock=lambda: now)
