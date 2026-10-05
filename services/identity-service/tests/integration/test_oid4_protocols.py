@@ -109,6 +109,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
         now = datetime.now(UTC)
         proof_service = build_local_proof_service(clock=lambda: now)
+        from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
         raw_vc = {
             "@context": [
                 "https://www.w3.org/ns/credentials/v2",
@@ -120,7 +121,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
             "validFrom": (now - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
             "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
             "credentialSubject": {
-                "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+                "id": SYNTHETIC_HOLDER_DID,
                 "Sertifika Sahibi": "Charaf Eddine Bessanane",
                 "Unvan": "Senior Distributed Systems & SSI Security Architect",
                 "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine"
@@ -129,16 +130,13 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         signed_vc = proof_service.sign_credential(raw_vc)
 
         # 3. Holder submits presentation via Direct Post
-        sample_vp = {
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "type": ["VerifiablePresentation"],
-            "verifiableCredential": [signed_vc],
-            "proof": {
-                "type": "DataIntegrityProof",
-                "nonce": nonce,
-                "proofValue": "zMockHolderPresentationProof"
-            }
-        }
+        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+        sample_vp = build_signed_presentation(
+            signed_vc,
+            nonce=nonce,
+            domain="http://testserver/verifier",
+        )
+
 
         dp_payload = {
             "sessionId": session_id,
@@ -152,6 +150,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         res_dp = client.post("/api/v1/oid4vp/response", json=dp_payload)
         assert res_dp.status_code == 200, f"Direct post failed: {res_dp.text}"
         dp_res = res_dp.json()["result"]
+        print("DP RESULT DETAILS:", dp_res.get("details"))
         
         # Verify 9-point checklist
         assert dp_res["credentialValid"] is True

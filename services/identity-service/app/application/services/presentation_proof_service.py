@@ -122,8 +122,14 @@ class PresentationBuilder:
             key = self._keys.get_signing_key(holder_did)
             verification_method = key.verification_method
         else:
-            metadata_provider = self._key_metadata or self._keys
-            metadata = metadata_provider.get_metadata(key_reference)
+            if self._key_metadata is not None:
+                metadata = self._key_metadata.get_metadata(key_reference)
+            elif isinstance(self._keys, HolderKeyMetadataProvider):
+                metadata = self._keys.get_metadata(key_reference)
+            else:
+                raise InvalidPresentationError(
+                    "No key metadata provider configured."
+                )
             if metadata.holder_did != holder_did:
                 raise InvalidPresentationError(
                     "The wallet key does not control the holder DID."
@@ -159,14 +165,17 @@ class PresentationBuilder:
             presentation,
             proof,
         )
-        signature = (
-            self._holder_signer.sign(
+        if key_reference is not None:
+            if self._holder_signer is None:
+                raise InvalidPresentationError("No holder signer configured.")
+            signature = self._holder_signer.sign(
                 signing_input,
                 key_reference=key_reference,
             )
-            if key_reference is not None
-            else self._signer.sign(signing_input, key)
-        )
+        else:
+            if key is None:
+                raise InvalidPresentationError("No signing key found.")
+            signature = self._signer.sign(signing_input, key)
         proof["proofValue"] = encode_base58_btc(signature)
         presentation["proof"] = proof
         if (
@@ -382,11 +391,24 @@ class PresentationValidator:
                 holder_did,
                 verification_method,
             )
-            trusted_key = self._keys.get_verification_key(
-                verification_method
+            if self._keys is not None and getattr(self._keys, "supports_holder", lambda _: False)(holder_did):
+                trusted_key = self._keys.get_verification_key(
+                    verification_method
+                )
+                if resolved_key != trusted_key:
+                    errors.append("HOLDER_KEY_MISMATCH")
+        except ValueError as err:
+            if "not authorized for authentication" in str(err):
+                errors.append("HOLDER_NOT_AUTHORIZED_FOR_AUTHENTICATION")
+            else:
+                errors.append("INVALID_HOLDER_VERIFICATION_METHOD")
+            return _result(
+                checked_at,
+                presentation_id,
+                holder_did,
+                credential_ids,
+                errors,
             )
-            if resolved_key != trusted_key:
-                errors.append("HOLDER_KEY_MISMATCH")
         except Exception:
             errors.append("HOLDER_RESOLUTION_FAILED")
             return _result(
@@ -398,6 +420,15 @@ class PresentationValidator:
             )
 
         proof_value = proof.get("proofValue")
+        if not isinstance(proof_value, str):
+            errors.append("MALFORMED_PRESENTATION_SIGNATURE")
+            return _result(
+                checked_at,
+                presentation_id,
+                holder_did,
+                credential_ids,
+                errors,
+            )
         try:
             signature = decode_base58_btc(proof_value)
         except (TypeError, ValueError):

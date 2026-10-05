@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 import pytest
@@ -17,6 +18,11 @@ from app.infrastructure.persistence.oid4vp_repository import (
     MongoVerificationSessionRepository,
 )
 from app.application.services.oid4vp_service import Oid4vpService
+from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+from app.infrastructure.fixtures.signed_credentials import (
+    build_local_proof_service,
+    build_signed_presentation,
+)
 from tests.support.fake_mongo import FakeCollection
 
 
@@ -222,32 +228,43 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     )
     session_repo.add(session)
 
+    now = datetime.now(UTC)
+    raw_vc = {
+        "@context": [
+            "https://www.w3.org/ns/credentials/v2",
+            "https://secure-ssi.example/contexts/university-affiliation/v1",
+        ],
+        "id": f"urn:uuid:{uuid.uuid4()}",
+        "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
+        "issuer": "did:web:issuer.example",
+        "validFrom": (now - timedelta(days=30)).isoformat().replace("+00:00", "Z"),
+        "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
+        "credentialSubject": {
+            "id": SYNTHETIC_HOLDER_DID,
+            "affiliation": "student",
+            "degree": "Bachelor of Science",
+            "programCode": "SYN-CS-2024",
+            "graduationYear": 2025,
+        },
+    }
+    proof_service = build_local_proof_service(clock=lambda: now)
+    signed_vc = proof_service.sign_credential(raw_vc)
+    signed_vp = build_signed_presentation(
+        signed_vc,
+        nonce=session.nonce,
+        domain=session.client_id,
+        holder_did=SYNTHETIC_HOLDER_DID,
+    )
+
     # Disclose only 2 of the 4 requested fields
     disclosed_claims = {
         "affiliation": "student",
-        "degree": "BSc Computer Science",
+        "degree": "Bachelor of Science",
     }
 
     result = service.process_direct_post(
         session_id="session_dp_minimization_0001",
-        vp_token={
-            "type": ["VerifiablePresentation"],
-            "proof": {
-                "type": "DataIntegrityProof",
-                "nonce": "challenge_nonce_xyz123",
-                "proofValue": "zMockProof",
-            },
-            "verifiableCredential": [{
-                "id": "urn:uuid:test-cred-001",
-                "issuer": "did:web:issuer.example.com",
-                "credentialSubject": {"id": "did:key:z6MkuHolder123"},
-                "proof": {
-                    "type": "DataIntegrityProof",
-                    "cryptosuite": "eddsa-jcs-2022",
-                    "proofValue": "mock_proof_val",
-                },
-            }]
-        },
+        vp_token=signed_vp,
         disclosed_claims=disclosed_claims,
         ai_risk_score=10,
     )

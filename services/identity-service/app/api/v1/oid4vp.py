@@ -22,6 +22,8 @@ from app.schemas.oid4_api import (
     DirectPostResponse,
     RejectVerificationSessionRequest,
     RejectVerificationSessionResponse,
+    CreateOid4vpPresentationRequest,
+    CreateOid4vpPresentationResponse,
 )
 
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
@@ -180,3 +182,35 @@ def submit_direct_post(
         status="PROCESSED",
         result=result.to_dict(),
     )
+
+
+@router.post(
+    "/presentation",
+    response_model=CreateOid4vpPresentationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Create Signed OID4VP Verifiable Presentation",
+    description="Holder wallet requests cryptographic signing of a Verifiable Presentation bound to an active session nonce and verifier audience."
+)
+def create_oid4vp_presentation(
+    payload: CreateOid4vpPresentationRequest,
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> CreateOid4vpPresentationResponse:
+    try:
+        vp_token = service.create_presentation_for_session(
+            session_id=payload.session_id,
+            verifiable_credentials=payload.verifiable_credentials,
+            disclosed_claims=payload.disclosed_claims,
+            holder_did=payload.holder_did,
+        )
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except SessionExpiredError as e:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
+    except SessionAlreadyConsumedError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+
+    return CreateOid4vpPresentationResponse(
+        session_id=payload.session_id,
+        vp_token=vp_token,
+    )
+

@@ -60,3 +60,86 @@ def build_signed_credential() -> dict[str, Any]:
     return build_local_proof_service().sign_credential(
         load_unsigned_credential()
     )
+
+
+def build_signed_presentation(
+    vc: dict[str, Any] | list[dict[str, Any]],
+    *,
+    nonce: str,
+    domain: str = "http://testserver/verifier",
+    holder_did: str | None = None,
+    private_key: Any | None = None,
+    verification_method: str | None = None,
+    proof_purpose: str = "authentication",
+    audience: str | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> dict[str, Any]:
+    import copy
+    import uuid
+    from datetime import timedelta, timezone
+    from cryptography.hazmat.primitives import serialization
+    from app.infrastructure.crypto.local_holder_key_provider import (
+        LocalHolderKeyProvider,
+        SYNTHETIC_HOLDER_KEY_REFERENCE,
+        ED25519_MULTICODEC_PREFIX,
+    )
+    from app.infrastructure.crypto.multibase import encode_base58_btc
+
+    vcs = [copy.deepcopy(vc)] if isinstance(vc, dict) else [copy.deepcopy(x) for x in vc]
+
+    if private_key is None:
+        key_prov = LocalHolderKeyProvider()
+        signing_key = key_prov._private_key(SYNTHETIC_HOLDER_KEY_REFERENCE)
+        effective_holder_did = holder_did or key_prov.holder_did
+        effective_vm = verification_method or key_prov.verification_method
+    else:
+        signing_key = private_key
+        pub_bytes = signing_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        multibase = encode_base58_btc(ED25519_MULTICODEC_PREFIX + pub_bytes)
+        computed_did = f"did:key:{multibase}"
+        effective_holder_did = holder_did or computed_did
+        effective_vm = verification_method or f"{effective_holder_did}#{multibase}"
+
+    # Synchronize credentialSubject.id with holder_did for unsigned credentials
+    for c in vcs:
+        if "proof" not in c:
+            subj = c.get("credentialSubject")
+            if isinstance(subj, dict):
+                subj["id"] = effective_holder_did
+
+    now = (clock() if clock else datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+    now_str = now.isoformat().replace("+00:00", "Z")
+    exp_str = (now + timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+
+    vp: dict[str, Any] = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "id": f"urn:uuid:{uuid.uuid4()}",
+        "type": ["VerifiablePresentation"],
+        "holder": effective_holder_did,
+        "verifiableCredential": vcs,
+        "validFrom": now_str,
+        "validUntil": exp_str,
+    }
+
+    proof: dict[str, Any] = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "type": "DataIntegrityProof",
+        "cryptosuite": "eddsa-jcs-2022",
+        "created": now_str,
+        "verificationMethod": effective_vm,
+        "proofPurpose": proof_purpose,
+        "challenge": nonce,
+        "domain": domain,
+    }
+    if audience is not None:
+        proof["audience"] = audience
+
+    canonicalizer = JcsCanonicalizer()
+    signing_input = canonicalizer.create_signing_input(vp, proof)
+    signature_bytes = signing_key.sign(signing_input)
+    proof["proofValue"] = encode_base58_btc(signature_bytes)
+    vp["proof"] = proof
+    return vp

@@ -124,7 +124,11 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         # 2. Holder submits presentation selectively disclosing only 2 of the 4 requested claims
         import uuid
         from datetime import UTC, datetime, timedelta
-        from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
+        from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+        from app.infrastructure.fixtures.signed_credentials import (
+            build_local_proof_service,
+            build_signed_presentation,
+        )
         now = datetime.now(UTC)
         proof_service = build_local_proof_service(clock=lambda: now)
         raw_vc = {
@@ -138,7 +142,7 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
             "validFrom": (now - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
             "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
             "credentialSubject": {
-                "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+                "id": SYNTHETIC_HOLDER_DID,
                 "affiliation": "student",
                 "degree": "Bachelor of Science",
                 "programCode": "SYN-CS-001",
@@ -147,16 +151,11 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         }
         signed_vc = proof_service.sign_credential(raw_vc)
 
-        sample_vp = {
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "type": ["VerifiablePresentation"],
-            "verifiableCredential": [signed_vc],
-            "proof": {
-                "type": "DataIntegrityProof",
-                "nonce": nonce,
-                "proofValue": "zMockHolderPresentationProof",
-            },
-        }
+        sample_vp = build_signed_presentation(
+            signed_vc,
+            nonce=nonce,
+            domain="http://testserver/verifier",
+        )
 
 
         # Selective disclosure: only affiliation and degree

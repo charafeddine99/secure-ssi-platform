@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.domain.crypto import SigningKeyHandle, VerificationKey
 from app.domain.holder_wallet import HolderKeyMetadata
@@ -31,6 +31,7 @@ class HolderSigner(Protocol):
     ) -> bytes: ...
 
 
+@runtime_checkable
 class HolderKeyMetadataProvider(Protocol):
     def get_metadata(self, key_reference: str) -> HolderKeyMetadata: ...
 

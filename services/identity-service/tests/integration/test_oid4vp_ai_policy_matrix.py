@@ -46,12 +46,20 @@ def clean_state():
 
 def _create_mock_vp_token(
     *,
-    subject_did: str = "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+    subject_did: str | None = None,
     issuer_did: str = "did:web:issuer.example",
     expired: bool = False,
     invalid_signature: bool = False,
     nonce: str = "fresh-session-nonce-12345",
+    private_key: Any | None = None,
 ) -> dict[str, Any]:
+    from app.infrastructure.fixtures.signed_credentials import (
+        build_local_proof_service,
+        build_signed_presentation,
+    )
+    from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+
+    effective_subject_did = subject_did or SYNTHETIC_HOLDER_DID
     now = datetime.now(timezone.utc)
     valid_from = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
     valid_until = (
@@ -74,7 +82,7 @@ def _create_mock_vp_token(
         "validFrom": valid_from,
         "validUntil": valid_until,
         "credentialSubject": {
-            "id": subject_did,
+            "id": effective_subject_did,
             "degree": "MSc Computer Science",
             "gpa": "3.95",
         },
@@ -93,19 +101,16 @@ def _create_mock_vp_token(
         }
         signed_vc["proof"] = proof_payload
     else:
-        from app.infrastructure.fixtures.signed_credentials import build_local_proof_service
         proof_service = build_local_proof_service(clock=lambda: now)
         signed_vc = proof_service.sign_credential(unsigned_vc)
 
-    return {
-        "type": ["VerifiablePresentation"],
-        "proof": {
-            "type": "DataIntegrityProof",
-            "nonce": nonce,
-            "proofValue": "zMockVPProof",
-        },
-        "verifiableCredential": [signed_vc],
-    }
+    return build_signed_presentation(
+        signed_vc,
+        nonce=nonce,
+        domain="http://testserver/verifier",
+        holder_did=effective_subject_did,
+        private_key=private_key,
+    )
 
 
 
@@ -241,7 +246,18 @@ def test_adaptive_policy_medium_risk_step_up_required():
 
 def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     """Valid cryptographic checks + CRITICAL AI risk (>= 85) => REJECTED + Auto-Quarantine."""
-    subject_did = "did:key:z6MkuAttackerQuarantine99"
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+    from app.infrastructure.crypto.multibase import encode_base58_btc
+    from app.infrastructure.crypto.local_holder_key_provider import ED25519_MULTICODEC_PREFIX
+
+    attacker_priv = Ed25519PrivateKey.generate()
+    pub_bytes = attacker_priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    multibase = encode_base58_btc(ED25519_MULTICODEC_PREFIX + pub_bytes)
+    subject_did = f"did:key:{multibase}"
 
     verifier_hdrs = _get_headers(client, "verifier")
     # Step 1: Attempt presentation with critical attack telemetry
@@ -253,7 +269,7 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     session_id = req_res.json()["sessionId"]
     nonce = req_res.json()["nonce"]
 
-    vp_token = _create_mock_vp_token(subject_did=subject_did, nonce=nonce)
+    vp_token = _create_mock_vp_token(subject_did=subject_did, nonce=nonce, private_key=attacker_priv)
     post_res = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id,
         "vpToken": vp_token,
@@ -278,7 +294,7 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     session_id2 = req_res2.json()["sessionId"]
     nonce2 = req_res2.json()["nonce"]
 
-    vp_token2 = _create_mock_vp_token(subject_did=subject_did, nonce=nonce2)
+    vp_token2 = _create_mock_vp_token(subject_did=subject_did, nonce=nonce2, private_key=attacker_priv)
     post_res2 = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id2,
         "vpToken": vp_token2,

@@ -38,7 +38,9 @@ PASSWORDS = {
     "holder": "Holder-Prototype-2026!",
 }
 
-HOLDER_DID = "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+
+HOLDER_DID = SYNTHETIC_HOLDER_DID
 OTHER_HOLDER_DID = "did:key:z6MkuBesnaSecureHolderOther2026Ed25519"
 
 
@@ -161,17 +163,13 @@ def test_golden_path_complete_lifecycle():
         # =========================================================================
         # 7. Holder approves presentation & builds VP bound to nonce
         # =========================================================================
-        verifiable_presentation = {
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "id": f"urn:uuid:golden-path-vp-{session_id}",
-            "type": ["VerifiablePresentation"],
-            "verifiableCredential": [signed_vc],
-            "proof": {
-                "type": "Ed25519Signature2020",
-                "nonce": nonce,
-                "proofValue": "zMockHolderProofBoundToNonce12345",
-            },
-        }
+        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+        verifiable_presentation = build_signed_presentation(
+            signed_vc,
+            nonce=nonce,
+            domain="http://testserver/verifier",
+            holder_did=HOLDER_DID,
+        )
 
         # =========================================================================
         # 8 & 9. OID4VP presentation is submitted & Direct Post is processed
@@ -232,18 +230,18 @@ def test_golden_path_replay_protection():
         session_id = res_session.json()["sessionId"]
         nonce = res_session.json()["nonce"]
 
-        sample_vp = {
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "type": ["VerifiablePresentation"],
-            "verifiableCredential": [{
+        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+        sample_vp = build_signed_presentation(
+            {
                 "id": "urn:uuid:replay-test-vc",
                 "type": ["VerifiableCredential"],
                 "issuer": "did:web:issuer.example",
                 "credentialSubject": {"id": HOLDER_DID},
-                "proof": {"type": "Ed25519Signature2020", "proofValue": "zSig"}
-            }],
-            "proof": {"type": "Ed25519Signature2020", "nonce": nonce, "proofValue": "zProof"}
-        }
+            },
+            nonce=nonce,
+            domain="http://testserver/verifier",
+            holder_did=HOLDER_DID,
+        )
 
         # First post succeeds
         res_first = client.post(
@@ -407,17 +405,13 @@ def test_golden_path_revoked_credential_rejection():
         nonce = res_session.json()["nonce"]
 
         # 4. Holder builds presentation bound to nonce
-        verifiable_presentation = {
-            "@context": ["https://www.w3.org/ns/credentials/v2"],
-            "id": f"urn:uuid:revoked-path-vp-{session_id}",
-            "type": ["VerifiablePresentation"],
-            "verifiableCredential": [signed_vc],
-            "proof": {
-                "type": "Ed25519Signature2020",
-                "nonce": nonce,
-                "proofValue": "zMockHolderProofBoundToNonceRevokedPath",
-            },
-        }
+        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+        verifiable_presentation = build_signed_presentation(
+            signed_vc,
+            nonce=nonce,
+            domain="http://testserver/verifier",
+            holder_did=HOLDER_DID,
+        )
 
         # 5. Authoritative Revocation: Issuer revokes the credential
         res_revoke = client.post(

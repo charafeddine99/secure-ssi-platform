@@ -64,6 +64,7 @@ def _build_valid_signed_vc(*, expired: bool = False) -> dict:
     else:
         valid_until = (now + timedelta(days=365)).isoformat().replace("+00:00", "Z")
 
+    from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
     raw_vc = {
         "@context": [
             "https://www.w3.org/ns/credentials/v2",
@@ -75,7 +76,7 @@ def _build_valid_signed_vc(*, expired: bool = False) -> dict:
         "validFrom": valid_from,
         "validUntil": valid_until,
         "credentialSubject": {
-            "id": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
+            "id": SYNTHETIC_HOLDER_DID,
             "degree": "MSc Computer Science",
             "gpa": "3.95",
         },
@@ -184,6 +185,8 @@ def test_gap01_expired_session_fails_verification():
     # Set created_at and expires_at in the past
     past_created = datetime.now(UTC) - timedelta(minutes=10)
     past_expires = datetime.now(UTC) - timedelta(minutes=5)
+    from app.infrastructure.persistence.oid4vp_repository import MongoVerificationSessionRepository
+    assert isinstance(session_repo, MongoVerificationSessionRepository)
     session_repo._collection.update_one(
         {"sessionId": session_id},
         {"$set": {"createdAt": past_created, "expiresAt": past_expires}},
@@ -209,15 +212,12 @@ def test_gap01_replayed_presentation_fails_closed():
     session_id, nonce = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc()
 
-    vp_token = {
-        "type": ["VerifiablePresentation"],
-        "verifiableCredential": [vc],
-        "proof": {
-            "type": "DataIntegrityProof",
-            "nonce": nonce,
-            "proofValue": "zMockProof",
-        },
-    }
+    from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+    vp_token = build_signed_presentation(
+        vc,
+        nonce=nonce,
+        domain="http://testserver/verifier",
+    )
     # First submission: success
     res1 = client.post("/api/v1/oid4vp/response", json={"sessionId": session_id, "vpToken": vp_token, "aiRiskScore": 10})
     assert res1.status_code == 200
@@ -442,15 +442,12 @@ def test_positive_golden_path_verification_succeeds():
     session_id, nonce = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc(expired=False)
 
-    vp_token = {
-        "type": ["VerifiablePresentation"],
-        "verifiableCredential": [vc],
-        "proof": {
-            "type": "DataIntegrityProof",
-            "nonce": nonce,
-            "proofValue": "zMockProof",
-        },
-    }
+    from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
+    vp_token = build_signed_presentation(
+        vc,
+        nonce=nonce,
+        domain="http://testserver/verifier",
+    )
     res = client.post(
         "/api/v1/oid4vp/response",
         json={

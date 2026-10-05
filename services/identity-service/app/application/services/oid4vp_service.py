@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import copy
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 from bson import ObjectId
+from urllib.parse import urlparse
 
 from app.application.ports.oid4vp_repository import VerificationSessionRepository
 from app.application.ports.repositories import CredentialRepository
 from app.application.services.presentation_service import VerifierPresentationService
 from app.application.services.status_list_service import StatusListService
+from app.application.ports.canonicalizer import CredentialCanonicalizer
+from app.services.did_resolver import DidResolver
 from app.domain.oid4vp import (
     VerificationSession,
     VerificationSessionStatus,
@@ -36,6 +40,8 @@ class Oid4vpService:
         verifier_presentation_service: VerifierPresentationService,
         status_list_service: StatusListService | None = None,
         base_verifier_url: str = "http://localhost:8001",
+        did_resolver: DidResolver | None = None,
+        canonicalizer: CredentialCanonicalizer | None = None,
     ) -> None:
         self._sessions = session_repository
         self._credentials = credential_repository
@@ -43,6 +49,16 @@ class Oid4vpService:
         self._verifier = verifier_presentation_service
         self._status_lists = status_list_service
         self._base_verifier_url = base_verifier_url.rstrip("/")
+        if did_resolver is not None:
+            self._did_resolver = did_resolver
+        else:
+            from app.services.did_resolver import DidKeyResolver
+            self._did_resolver = DidKeyResolver()
+        if canonicalizer is not None:
+            self._canonicalizer = canonicalizer
+        else:
+            from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
+            self._canonicalizer = JcsCanonicalizer()
 
     def create_session(
         self,
@@ -161,6 +177,242 @@ class Oid4vpService:
         )
         return updated
 
+    @staticmethod
+    def _is_audience_matched(
+        *,
+        bound_audience: str | None,
+        bound_domain: str | None,
+        session: VerificationSession,
+    ) -> bool:
+        if not bound_audience and not bound_domain:
+            return False
+
+        candidates: set[str] = set()
+        for raw in (session.client_id, session.verifier_did, session.response_uri):
+            if not raw:
+                continue
+            cleaned = str(raw).strip()
+            if cleaned:
+                candidates.add(cleaned)
+                candidates.add(cleaned.rstrip("/"))
+                try:
+                    parsed = urlparse(cleaned)
+                    if parsed.netloc:
+                        candidates.add(parsed.netloc)
+                        if ":" in parsed.netloc:
+                            candidates.add(parsed.netloc.split(":")[0])
+                    if parsed.hostname:
+                        candidates.add(parsed.hostname)
+                except Exception:
+                    pass
+                if cleaned.startswith("did:web:"):
+                    domain_part = cleaned.removeprefix("did:web:").split(":")[0]
+                    candidates.add(domain_part)
+
+        for value in (bound_audience, bound_domain):
+            if not value:
+                continue
+            val_clean = str(value).strip().rstrip("/")
+            if val_clean in candidates:
+                return True
+            try:
+                val_parsed = urlparse(val_clean)
+                if val_parsed.netloc and val_parsed.netloc in candidates:
+                    return True
+                if val_parsed.hostname and val_parsed.hostname in candidates:
+                    return True
+            except Exception:
+                pass
+
+        return False
+
+    def _verify_holder_binding(
+        self,
+        *,
+        vp_token: dict[str, Any],
+        target_vc: dict[str, Any],
+        session: VerificationSession,
+        now: datetime,
+    ) -> tuple[bool, str | None]:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.exceptions import InvalidSignature
+        from app.infrastructure.crypto.multibase import decode_base58_btc
+
+        if not isinstance(vp_token, dict):
+            return False, "HOLDER_BINDING_MISSING"
+
+        raw_proof = vp_token.get("proof")
+        if not isinstance(raw_proof, dict) or not raw_proof:
+            return False, "HOLDER_BINDING_MISSING"
+        proof = dict(raw_proof)
+
+        # 1. Proof structure and type
+        proof_type = proof.get("type")
+        cryptosuite = proof.get("cryptosuite")
+        if proof_type != "DataIntegrityProof" or cryptosuite != "eddsa-jcs-2022":
+            return False, "HOLDER_BINDING_INVALID_PROOF_STRUCTURE"
+
+        # 2. Proof Purpose: strictly authentication
+        if proof.get("proofPurpose") != "authentication":
+            return False, "HOLDER_BINDING_INVALID_PROOF_PURPOSE"
+
+        # 3. Nonce / Challenge binding
+        proof_nonce = proof.get("challenge") or proof.get("nonce")
+        if not proof_nonce:
+            return False, "HOLDER_BINDING_MISSING_NONCE"
+        if proof_nonce != session.nonce:
+            return False, "HOLDER_BINDING_WRONG_NONCE"
+
+        # 4. Audience / Domain binding
+        bound_audience = proof.get("audience")
+        bound_domain = proof.get("domain")
+        if not bound_audience and not bound_domain:
+            return False, "HOLDER_BINDING_MISSING_AUDIENCE"
+        if not self._is_audience_matched(
+            bound_audience=bound_audience,
+            bound_domain=bound_domain,
+            session=session,
+        ):
+            return False, "HOLDER_BINDING_WRONG_AUDIENCE"
+
+        # 5. Holder DID & Verification Method binding
+        raw_subject = target_vc.get("credentialSubject")
+        subject_dict = raw_subject if isinstance(raw_subject, dict) else {}
+        subject_id = str(subject_dict.get("id") or "").strip()
+        holder_did = str(vp_token.get("holder") or subject_id).strip()
+        if not holder_did:
+            return False, "HOLDER_BINDING_MISSING_HOLDER_DID"
+        if subject_id and holder_did != subject_id:
+            return False, "HOLDER_BINDING_HOLDER_MISMATCH"
+
+        vm_id = str(proof.get("verificationMethod") or "").strip()
+        if not vm_id or not (vm_id.startswith(f"{holder_did}#") or vm_id == holder_did):
+            return False, "HOLDER_BINDING_HOLDER_MISMATCH"
+
+        # 6. Resolve Holder DID & enforce DID verification relationship
+        try:
+            res = self._did_resolver.resolve(holder_did)
+            did_doc = res.did_document
+        except Exception:
+            return False, "HOLDER_BINDING_UNKNOWN_KEY"
+
+        auth_methods = did_doc.get("authentication")
+        if not isinstance(auth_methods, list):
+            return False, "HOLDER_NOT_AUTHORIZED_FOR_AUTHENTICATION"
+
+        authorized_ids: set[str] = set()
+        for item in auth_methods:
+            if isinstance(item, str):
+                authorized_ids.add(item)
+                if item.startswith("#"):
+                    authorized_ids.add(f"{holder_did}{item}")
+            elif isinstance(item, dict) and "id" in item:
+                authorized_ids.add(item["id"])
+
+        if vm_id not in authorized_ids and holder_did not in authorized_ids:
+            return False, "HOLDER_NOT_AUTHORIZED_FOR_AUTHENTICATION"
+
+        # Locate verificationMethod object
+        vm_list = did_doc.get("verificationMethod", [])
+        all_methods = list(vm_list) if isinstance(vm_list, list) else []
+        for item in auth_methods:
+            if isinstance(item, dict) and item not in all_methods:
+                all_methods.append(item)
+
+        vm_obj = next(
+            (
+                m for m in all_methods
+                if isinstance(m, dict) and (
+                    m.get("id") == vm_id
+                    or m.get("id") == f"{holder_did}#{vm_id.split('#')[-1]}"
+                    or (vm_id.startswith(f"{holder_did}#") and m.get("id") == f"#{vm_id.split('#')[-1]}")
+                )
+            ),
+            None,
+        )
+        if vm_obj is None:
+            return False, "HOLDER_BINDING_UNKNOWN_KEY"
+
+        if vm_obj.get("controller") != holder_did:
+            return False, "HOLDER_BINDING_HOLDER_MISMATCH"
+
+        pk_multibase = vm_obj.get("publicKeyMultibase")
+        if not pk_multibase or not isinstance(pk_multibase, str):
+            return False, "HOLDER_BINDING_MALFORMED_KEY"
+
+        try:
+            raw_key_bytes = decode_base58_btc(pk_multibase)
+        except Exception:
+            return False, "HOLDER_BINDING_MALFORMED_KEY"
+
+        # Multicodec prefix for Ed25519 is 0xed01 (2 bytes), total 34 bytes
+        if not raw_key_bytes.startswith(b"\xed\x01") or len(raw_key_bytes) != 34:
+            return False, "HOLDER_BINDING_MALFORMED_KEY"
+
+        pub_bytes = raw_key_bytes[2:]
+        try:
+            public_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
+        except Exception:
+            return False, "HOLDER_BINDING_MALFORMED_KEY"
+
+        # 7. Proof Value & Cryptographic Signature Verification
+        proof_value = proof.get("proofValue")
+        if not proof_value or not isinstance(proof_value, str):
+            return False, "HOLDER_BINDING_MALFORMED_PROOF_VALUE"
+
+        try:
+            sig_bytes = decode_base58_btc(proof_value)
+        except Exception:
+            return False, "HOLDER_BINDING_MALFORMED_PROOF_VALUE"
+
+        unsecured_vp = copy.deepcopy(vp_token)
+        unsecured_vp.pop("proof", None)
+        proof_config = copy.deepcopy(proof)
+        proof_config.pop("proofValue", None)
+
+        try:
+            signing_input = self._canonicalizer.create_signing_input(unsecured_vp, proof_config)
+        except Exception:
+            return False, "HOLDER_BINDING_CANONICALIZATION_FAILED"
+
+        try:
+            public_key.verify(sig_bytes, signing_input)
+        except InvalidSignature:
+            return False, "HOLDER_BINDING_INVALID_SIGNATURE"
+        except Exception:
+            return False, "HOLDER_BINDING_VERIFICATION_FAILED"
+
+        return True, None
+
+    def create_presentation_for_session(
+        self,
+        *,
+        session_id: str,
+        verifiable_credentials: list[dict[str, Any]] | None = None,
+        disclosed_claims: dict[str, Any] | None = None,
+        holder_did: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.get_session(session_id)
+        from app.infrastructure.fixtures.signed_credentials import (
+            build_signed_presentation,
+            build_signed_credential,
+        )
+        vcs = list(verifiable_credentials) if verifiable_credentials else [build_signed_credential()]
+        effective_holder_did = holder_did or "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+        if disclosed_claims:
+            for c in vcs:
+                if isinstance(c.get("credentialSubject"), dict):
+                    c["credentialSubject"].update(disclosed_claims)
+                    c["credentialSubject"]["id"] = effective_holder_did
+
+        domain = session.client_id or "http://testserver/verifier"
+        return build_signed_presentation(
+            vcs,
+            nonce=session.nonce,
+            domain=domain,
+            holder_did=effective_holder_did,
+        )
+
     def process_direct_post(
         self,
         *,
@@ -217,11 +469,16 @@ class Oid4vpService:
         else:
             sig_valid = False
 
-        # Holder Binding
+        # Holder Binding (Fail-Closed: cryptographic proof-of-possession verification)
         raw_subject = target_vc.get("credentialSubject")
         subject_dict: dict[str, Any] = raw_subject if isinstance(raw_subject, dict) else {}
         subject_id = str(subject_dict.get("id") or "")
-        holder_binding_valid = bool(subject_id and (subject_id.startswith("did:key:") or subject_id.startswith("0x")))
+        holder_binding_valid, holder_binding_reason = self._verify_holder_binding(
+            vp_token=vp_token,
+            target_vc=target_vc,
+            session=session,
+            now=now,
+        )
 
         # Expiration Check (Fail-closed: malformed timestamps must not pass)
         valid_until = target_vc.get("validUntil") or target_vc.get("expirationDate")
@@ -404,13 +661,15 @@ class Oid4vpService:
                     "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
                     "issuer": "Verified trusted issuer DID document" if issuer_trusted else "Issuer untrusted",
                     "signature": "Cryptographic proof mathematically valid" if sig_valid else "Cryptographic signature invalid or unverified",
-                    "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else "Holder mismatch",
+                    "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else (holder_binding_reason or "Holder mismatch"),
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
                     "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
                 },
+                "holderBindingValid": holder_binding_valid,
+                "holderBindingReason": holder_binding_reason if not holder_binding_valid else "VALID",
             }
         )
 
@@ -449,6 +708,7 @@ class Oid4vpService:
                         "hidden_fields_count": str(len(hidden_keys)),
                         "purpose": session.purpose,
                         "protocol": "OID4VP-1.0",
+                        "holder_binding_valid": str(holder_binding_valid),
                     },
                     created_at=now,
                     updated_at=now,
@@ -493,7 +753,9 @@ class Oid4vpService:
                     "ai_risk_score": str(ai_risk_score),
                     "ai_risk_level": ai_risk_level,
                     "quarantine_triggered": str(quarantine_triggered),
-                    "protocol": "OID4VP-1.0"
+                    "protocol": "OID4VP-1.0",
+                    "holder_binding_valid": str(holder_binding_valid),
+                    "holder_binding_reason": holder_binding_reason or "",
                 },
                 created_at=now,
                 updated_at=now,

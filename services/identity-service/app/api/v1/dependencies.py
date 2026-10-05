@@ -1127,6 +1127,8 @@ def get_oid4vp_service(
         audit_repository=audit_repo,
         verifier_presentation_service=verifier_service,
         status_list_service=status_list_service,
+        did_resolver=_HOLDER_DID_RESOLVER,
+        canonicalizer=_CANONICALIZER,
     )
 
 

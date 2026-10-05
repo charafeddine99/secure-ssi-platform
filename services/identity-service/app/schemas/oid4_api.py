@@ -113,3 +113,25 @@ class RejectVerificationSessionResponse(Oid4ApiModel):
     consent_status: str = "REJECTED"
     reason: str
     rejection_reason: str | None = None
+
+class CreateOid4vpPresentationRequest(Oid4ApiModel):
+    session_id: str = Field(
+        validation_alias=AliasChoices("session_id", "sessionId"),
+    )
+    verifiable_credentials: list[dict[str, Any]] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("verifiable_credentials", "verifiableCredentials"),
+    )
+    disclosed_claims: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("disclosed_claims", "disclosedClaims"),
+    )
+    holder_did: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("holder_did", "holderDid"),
+    )
+
+class CreateOid4vpPresentationResponse(Oid4ApiModel):
+    session_id: str
+    vp_token: dict[str, Any]
+
