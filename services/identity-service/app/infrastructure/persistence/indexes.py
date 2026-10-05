@@ -20,6 +20,7 @@ MANAGED_KEYS_COLLECTION = "managed_keys"
 CREDENTIAL_OFFERS_COLLECTION = "credential_offers"
 VERIFICATION_SESSIONS_COLLECTION = "verification_sessions"
 BLOCKCHAIN_ANCHORS_COLLECTION = "blockchain_anchors"
+TRUST_REGISTRY_COLLECTION = "trust_registry"
 
 USER_INDEXES = (
     IndexModel(
@@ -379,6 +380,26 @@ BLOCKCHAIN_ANCHOR_INDEXES = (
     ),
 )
 
+TRUST_REGISTRY_INDEXES = (
+    IndexModel(
+        [("issuerDid", ASCENDING)],
+        unique=True,
+        name="uq_trust_registry_issuer_did",
+    ),
+    IndexModel(
+        [("trustStatus", ASCENDING)],
+        name="ix_trust_registry_status",
+    ),
+    IndexModel(
+        [("validUntil", ASCENDING)],
+        name="ix_trust_registry_valid_until",
+    ),
+    IndexModel(
+        [("createdAt", DESCENDING)],
+        name="ix_trust_registry_created_at",
+    ),
+)
+
 
 def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
     try:
@@ -422,6 +443,9 @@ def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
         )
         database[BLOCKCHAIN_ANCHORS_COLLECTION].create_indexes(
             list(BLOCKCHAIN_ANCHOR_INDEXES)
+        )
+        database[TRUST_REGISTRY_COLLECTION].create_indexes(
+            list(TRUST_REGISTRY_INDEXES)
         )
     except PyMongoError as error:
         raise PersistenceUnavailableError(

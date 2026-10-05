@@ -135,6 +135,7 @@ from app.infrastructure.persistence.indexes import (
     CREDENTIAL_OFFERS_COLLECTION,
     VERIFICATION_SESSIONS_COLLECTION,
     BLOCKCHAIN_ANCHORS_COLLECTION,
+    TRUST_REGISTRY_COLLECTION,
 )
 from app.application.ports.oid4vci_repository import CredentialOfferRepository
 from app.application.ports.oid4vp_repository import VerificationSessionRepository
@@ -146,6 +147,10 @@ from app.infrastructure.blockchain.web3_bridge import BlockchainBridge
 from app.infrastructure.persistence.oid4vp_repository import MongoVerificationSessionRepository
 from app.application.services.oid4vci_service import Oid4vciService
 from app.application.services.oid4vp_service import Oid4vpService
+from app.application.services.trust_registry_service import TrustRegistryService
+from app.infrastructure.persistence.trust_registry_repository import (
+    MongoTrustRegistryRepository,
+)
 from app.infrastructure.persistence.mongo_user_provider import (
     MongoUserProvider,
 )
@@ -1114,12 +1119,40 @@ def get_oid4vci_service(
     )
 
 
+def get_trust_registry_repository(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+) -> MongoTrustRegistryRepository:
+    return MongoTrustRegistryRepository(
+        manager.database[TRUST_REGISTRY_COLLECTION]
+    )
+
+
+def get_trust_registry_service(
+    repository: MongoTrustRegistryRepository = Depends(
+        get_trust_registry_repository
+    ),
+    audit_repo: MongoAuditEventRepository = Depends(
+        get_audit_event_repository
+    ),
+) -> TrustRegistryService:
+    from fastapi.params import Depends as DependsParam
+    effective_audit = audit_repo if (audit_repo is not None and not isinstance(audit_repo, DependsParam)) else None
+    service = TrustRegistryService(
+        repository=repository,
+        audit_repository=effective_audit,
+        clock=get_clock(),
+    )
+    service.seed_default_demo_issuers()
+    return service
+
+
 def get_oid4vp_service(
     session_repo: VerificationSessionRepository = Depends(get_verification_session_repository),
     credential_repo: CredentialRepository = Depends(get_credential_repository),
     audit_repo: MongoAuditEventRepository = Depends(get_audit_event_repository),
     verifier_service: VerifierPresentationService = Depends(get_verifier_presentation_service),
     status_list_service: StatusListService = Depends(get_status_list_service),
+    trust_registry_service: TrustRegistryService = Depends(get_trust_registry_service),
 ) -> Oid4vpService:
     return Oid4vpService(
         session_repository=session_repo,
@@ -1127,6 +1160,7 @@ def get_oid4vp_service(
         audit_repository=audit_repo,
         verifier_presentation_service=verifier_service,
         status_list_service=status_list_service,
+        trust_registry_service=trust_registry_service,
         did_resolver=_HOLDER_DID_RESOLVER,
         canonicalizer=_CANONICALIZER,
     )

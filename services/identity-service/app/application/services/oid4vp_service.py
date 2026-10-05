@@ -29,6 +29,7 @@ from app.domain.persistence import (
 from app.infrastructure.persistence.repositories import MongoAuditEventRepository
 from app.infrastructure.persistence.mappers import new_object_id
 from app.infrastructure.clients.fraud_client import fraud_client
+from app.application.services.trust_registry_service import TrustRegistryService
 
 class Oid4vpService:
     def __init__(
@@ -39,6 +40,7 @@ class Oid4vpService:
         audit_repository: MongoAuditEventRepository,
         verifier_presentation_service: VerifierPresentationService,
         status_list_service: StatusListService | None = None,
+        trust_registry_service: TrustRegistryService | None = None,
         base_verifier_url: str = "http://localhost:8001",
         did_resolver: DidResolver | None = None,
         canonicalizer: CredentialCanonicalizer | None = None,
@@ -48,6 +50,15 @@ class Oid4vpService:
         self._audits = audit_repository
         self._verifier = verifier_presentation_service
         self._status_lists = status_list_service
+        if trust_registry_service is not None:
+            self._trust_registry = trust_registry_service
+        else:
+            from app.infrastructure.persistence.trust_registry_repository import (
+                InMemoryTrustRegistryRepository,
+            )
+            in_memory_repo = InMemoryTrustRegistryRepository()
+            self._trust_registry = TrustRegistryService(repository=in_memory_repo)
+            self._trust_registry.seed_default_demo_issuers()
         self._base_verifier_url = base_verifier_url.rstrip("/")
         if did_resolver is not None:
             self._did_resolver = did_resolver
@@ -447,7 +458,39 @@ class Oid4vpService:
         cred_valid = len(vcs) > 0 and isinstance(vcs[0], dict)
         target_vc: dict[str, Any] = dict(vcs[0]) if cred_valid else {}
         issuer_did = str(target_vc.get("issuer") or "")
-        issuer_trusted = issuer_did.startswith("did:web:") or issuer_did.startswith("did:key:")
+        
+        # Authoritative Trust Registry evaluation (Fail-closed: no prefix shortcuts)
+        target_types = target_vc.get("type", [])
+        if isinstance(target_types, str):
+            types_list = [target_types]
+        elif isinstance(target_types, (list, tuple)):
+            types_list = [str(t) for t in target_types]
+        else:
+            types_list = []
+
+        trust_status_val = "UNKNOWN"
+        trust_reason_val = "TRUST_REGISTRY_NOT_EVALUATED"
+        trust_source_val = "LOCAL_TRUST_REGISTRY"
+        trust_record_id_val = None
+
+        if self._trust_registry is not None:
+            trust_result = self._trust_registry.evaluate_issuer_trust(
+                issuer_did=issuer_did,
+                credential_types=types_list,
+                at_time=now,
+            )
+            issuer_trusted = trust_result.is_trusted
+            trust_status_val = trust_result.status.value if trust_result.status else "UNKNOWN"
+            trust_reason_val = trust_result.reason
+            trust_source_val = trust_result.trust_source or "LOCAL_TRUST_REGISTRY"
+            trust_record_id_val = trust_result.trust_record_id
+        else:
+            # Fail-closed: unconfigured trust registry MUST NOT pass
+            issuer_trusted = False
+            trust_status_val = "UNCONFIGURED"
+            trust_reason_val = "TRUST_REGISTRY_NOT_CONFIGURED"
+            trust_source_val = "NONE"
+            trust_record_id_val = None
         
         # Proof & Signature (Fail-Closed: explicit cryptographic verification required)
         raw_proof = target_vc.get("proof")
@@ -659,7 +702,7 @@ class Oid4vpService:
                 },
                 "evaluations": {
                     "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
-                    "issuer": "Verified trusted issuer DID document" if issuer_trusted else "Issuer untrusted",
+                    "issuer": f"Trusted in local registry: {issuer_did}" if issuer_trusted else f"Issuer untrusted: {trust_reason_val}",
                     "signature": "Cryptographic proof mathematically valid" if sig_valid else "Cryptographic signature invalid or unverified",
                     "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else (holder_binding_reason or "Holder mismatch"),
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
@@ -667,6 +710,14 @@ class Oid4vpService:
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
+                },
+                "trust": {
+                    "issuerDid": issuer_did,
+                    "trusted": issuer_trusted,
+                    "status": trust_status_val,
+                    "reason": trust_reason_val,
+                    "source": trust_source_val,
+                    "recordId": trust_record_id_val,
                 },
                 "holderBindingValid": holder_binding_valid,
                 "holderBindingReason": holder_binding_reason if not holder_binding_valid else "VALID",
@@ -754,6 +805,8 @@ class Oid4vpService:
                     "ai_risk_level": ai_risk_level,
                     "quarantine_triggered": str(quarantine_triggered),
                     "protocol": "OID4VP-1.0",
+                    "issuer_trusted": str(issuer_trusted),
+                    "trust_reason": trust_reason_val,
                     "holder_binding_valid": str(holder_binding_valid),
                     "holder_binding_reason": holder_binding_reason or "",
                 },

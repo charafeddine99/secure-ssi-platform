@@ -30,11 +30,11 @@ export const NinePointVerificationMatrix: React.FC<NinePointVerificationMatrixPr
     },
     {
       num: 2,
-      title: "Issuer Trust & DID Resolution",
-      desc: "Resolves issuer DID and validates trust anchor accreditation.",
+      title: "Issuer Trust & Registry Verification",
+      desc: "Evaluates issuer DID against local authoritative Trust Registry.",
       valid: result.issuerTrusted,
       icon: <Lock size={16} />,
-      detail: result.evaluations?.issuer || "Verified trusted issuer DID document",
+      detail: result.evaluations?.issuer || "Verified trusted issuer in local Trust Registry",
     },
     {
       num: 3,
