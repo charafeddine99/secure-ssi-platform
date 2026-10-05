@@ -80,10 +80,11 @@ class VerificationSession:
     client_id: str
     response_uri: str
     nonce: str
-    presentation_definition: Mapping[str, Any]
-    status: VerificationSessionStatus
-    created_at: datetime
-    expires_at: datetime
+    dcql_query: Mapping[str, Any] = field(default_factory=dict)
+    presentation_definition: Mapping[str, Any] = field(default_factory=dict)
+    status: VerificationSessionStatus = VerificationSessionStatus.PENDING
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    expires_at: datetime = field(default_factory=datetime.utcnow)
     purpose: str = "Verification of digital credentials"
     presentation_id: str | None = None
     verification_result: NinePointVerificationResult | None = None
@@ -106,19 +107,25 @@ class VerificationSession:
     def is_expired(self, now: datetime) -> bool:
         return now >= self.expires_at
 
-    def to_authorization_request_uri(self) -> str:
+    def to_authorization_request_uri(self, *, include_legacy_pe: bool = False) -> str:
         """
-        Builds standard openid4vp:// authorization request URI.
+        Builds standard openid4vp:// authorization request URI conforming to OpenID4VP 1.0 Final.
+        Canonical path utilizes 'dcql_query'. Legacy PE is optional and strictly isolated.
         """
         import urllib.parse
         import json
-        params = {
+        params: dict[str, str] = {
             "client_id": self.client_id,
             "response_uri": self.response_uri,
             "response_type": "vp_token",
             "response_mode": "direct_post",
             "nonce": self.nonce,
-            "presentation_definition": json.dumps(self.presentation_definition),
+            "state": self.session_id,
         }
+        if self.dcql_query:
+            params["dcql_query"] = json.dumps(dict(self.dcql_query))
+        if include_legacy_pe and self.presentation_definition:
+            params["presentation_definition"] = json.dumps(dict(self.presentation_definition))
         query = urllib.parse.urlencode(params)
         return f"openid4vp://?{query}"
+

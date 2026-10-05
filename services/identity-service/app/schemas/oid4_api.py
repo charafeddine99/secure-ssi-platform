@@ -59,6 +59,10 @@ class CreateVerificationSessionRequest(Oid4ApiModel):
         default_factory=lambda: ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"]
     )
     ttl_seconds: int = 600
+    dcql_query: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional explicit OpenID4VP 1.0 DCQL query. If omitted, built dynamically.",
+    )
 
 class VerificationSessionResponse(Oid4ApiModel):
     session_id: str
@@ -66,7 +70,11 @@ class VerificationSessionResponse(Oid4ApiModel):
     client_id: str
     response_uri: str
     nonce: str
-    presentation_definition: dict[str, Any]
+    dcql_query: dict[str, Any] = Field(default_factory=dict, description="Canonical OpenID4VP 1.0 DCQL query")
+    presentation_definition: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Legacy DIF Presentation Exchange v2 compatibility representation",
+    )
     status: str
     deep_link_uri: str
     qr_payload: str
@@ -77,6 +85,18 @@ class VerificationSessionResponse(Oid4ApiModel):
     requested_fields: list[str] = Field(default_factory=list)
     verification_result: dict[str, Any] | None = None
     disclosed_claims: dict[str, Any] | None = None
+
+class EvaluateDcqlRequest(Oid4ApiModel):
+    candidate_credentials: list[dict[str, Any]] = Field(
+        description="Candidate credentials from holder wallet to evaluate against the session's DCQL query"
+    )
+
+class EvaluateDcqlResponse(Oid4ApiModel):
+    is_satisfied: bool
+    matched_credentials: list[dict[str, Any]] = Field(default_factory=list)
+    unsatisfied_reason: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
 
 class DirectPostRequest(Oid4ApiModel):
     session_id: str

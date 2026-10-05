@@ -4,7 +4,7 @@ import copy
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from bson import ObjectId
 from urllib.parse import urlparse
 
@@ -21,6 +21,16 @@ from app.domain.oid4vp import (
     SessionNotFoundError,
     SessionExpiredError,
     SessionAlreadyConsumedError,
+)
+from app.domain.dcql import (
+    DcqlQuery,
+    MalformedDcqlQueryError,
+    UnsupportedDcqlFeatureError,
+    DcqlEvaluationResult,
+)
+from app.application.services.dcql_engine import (
+    DcqlEngine,
+    build_dcql_query_from_types_and_fields,
 )
 from app.domain.persistence import (
     AuditEvent,
@@ -79,6 +89,7 @@ class Oid4vpService:
         purpose: str = "Verification of digital identity and qualifications",
         requested_credential_types: tuple[str, ...] = ("QualifiedElectronicAttestationCredential",),
         requested_fields: tuple[str, ...] = ("Sertifika Sahibi", "Unvan", "Yetki Kapsami"),
+        dcql_query: Mapping[str, Any] | None = None,
         ttl_seconds: int = 600,
     ) -> VerificationSession:
         now = datetime.now(timezone.utc)
@@ -87,7 +98,26 @@ class Oid4vpService:
         nonce = secrets.token_hex(16)
         response_uri = f"{self._base_verifier_url}/api/v1/oid4vp/response"
 
-        # Build DIF Presentation Exchange v2 compliant presentation definition
+        # Validate or build canonical OpenID4VP 1.0 DCQL query
+        if dcql_query is not None:
+            # Validate input DCQL query structure and ensure fail-closed on malformed DCQL
+            DcqlQuery.from_dict(dcql_query)
+            canonical_dcql = dict(dcql_query)
+        else:
+            types_to_query = list(requested_credential_types)
+            if any(f in requested_fields for f in ("degree", "gpa")):
+                if "UniversityAffiliationCredential" not in types_to_query:
+                    types_to_query.append("UniversityAffiliationCredential")
+            if any(f in requested_fields for f in ("Sertifika Sahibi", "Unvan", "Yetki Kapsami")):
+                if "UniversityAffiliationCredential" not in types_to_query:
+                    types_to_query.append("UniversityAffiliationCredential")
+
+            canonical_dcql = build_dcql_query_from_types_and_fields(
+                requested_types=types_to_query,
+                requested_fields=requested_fields,
+            ).to_dict()
+
+        # Build DIF Presentation Exchange v2 compatibility presentation definition (marked legacy)
         input_descriptors = []
         for cred_type in requested_credential_types:
             fields = [
@@ -128,6 +158,7 @@ class Oid4vpService:
             client_id=client_id,
             response_uri=response_uri,
             nonce=nonce,
+            dcql_query=canonical_dcql,
             presentation_definition=presentation_definition,
             purpose=purpose,
             status=VerificationSessionStatus.PENDING,
@@ -146,6 +177,17 @@ class Oid4vpService:
         if session.status == VerificationSessionStatus.PENDING and session.is_expired(now):
             raise SessionExpiredError(f"Verification session {session_id} has expired.")
         return session
+
+    def evaluate_wallet_credentials(
+        self,
+        session_id: str,
+        candidate_credentials: Sequence[Mapping[str, Any]],
+    ) -> DcqlEvaluationResult:
+        session = self.get_session(session_id)
+        if not session.dcql_query:
+            raise MalformedDcqlQueryError(f"Verification session {session_id} does not contain a dcql_query.")
+        dcql = DcqlQuery.from_dict(session.dcql_query)
+        return DcqlEngine.evaluate(dcql, candidate_credentials)
 
     def reject_session(
         self,
@@ -458,6 +500,31 @@ class Oid4vpService:
         cred_valid = len(vcs) > 0 and isinstance(vcs[0], dict)
         target_vc: dict[str, Any] = dict(vcs[0]) if cred_valid else {}
         issuer_did = str(target_vc.get("issuer") or "")
+
+        # OpenID4VP 1.0 DCQL Evaluation (Fail-Closed: submitted VCs must satisfy session.dcql_query)
+        dcql_satisfied = False
+        dcql_reason: str | None = None
+        dcql_eval_dict: dict[str, Any] = {}
+        if session.dcql_query:
+            try:
+                dcql_model = DcqlQuery.from_dict(session.dcql_query)
+                dcql_result = DcqlEngine.evaluate(dcql_model, vcs)
+                dcql_satisfied = dcql_result.is_satisfied
+                dcql_reason = dcql_result.unsatisfied_reason or ("Satisfied" if dcql_satisfied else "Credentials do not satisfy DCQL query")
+                dcql_eval_dict = {
+                    "satisfied": dcql_result.is_satisfied,
+                    "matchedQueries": [m.query_id for m in dcql_result.matched_credentials],
+                    "details": dict(dcql_result.details),
+                    "error": dcql_result.unsatisfied_reason,
+                }
+            except Exception as ex:
+                dcql_satisfied = False
+                dcql_reason = f"DCQL evaluation failed: {ex}"
+                dcql_eval_dict = {"satisfied": False, "error": str(ex)}
+        else:
+            dcql_satisfied = False
+            dcql_reason = "No DCQL query found in verification session"
+            dcql_eval_dict = {"satisfied": False, "error": dcql_reason}
         
         # Authoritative Trust Registry evaluation (Fail-closed: no prefix shortcuts)
         target_types = target_vc.get("type", [])
@@ -625,7 +692,7 @@ class Oid4vpService:
             blockchain_anchored = True
 
         # STRICT INVARIANT: Cryptographic Failure Hierarchy (Section 15)
-        # Under NO circumstance can AI override cryptographic, expiration, or revocation failure.
+        # Under NO circumstance can AI override cryptographic, expiration, revocation, or DCQL query failure.
         crypto_valid = (
             cred_valid
             and issuer_trusted
@@ -634,6 +701,7 @@ class Oid4vpService:
             and expiry_valid
             and revocation_status_clear
             and challenge_valid
+            and dcql_satisfied
             and not is_already_quarantined
         )
 
@@ -708,8 +776,14 @@ class Oid4vpService:
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
                     "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
+                    "dcql": "DCQL query criteria fully satisfied" if dcql_satisfied else (dcql_reason or "DCQL satisfaction failed"),
                     "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
+                },
+                "dcql": {
+                    "satisfied": dcql_satisfied,
+                    "reason": dcql_reason,
+                    "evaluation": dcql_eval_dict,
                 },
                 "trust": {
                     "issuerDid": issuer_did,

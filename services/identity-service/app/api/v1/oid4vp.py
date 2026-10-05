@@ -15,6 +15,10 @@ from app.domain.oid4vp import (
     SessionExpiredError,
     SessionAlreadyConsumedError,
 )
+from app.domain.dcql import (
+    MalformedDcqlQueryError,
+    UnsupportedDcqlFeatureError,
+)
 from app.schemas.oid4_api import (
     CreateVerificationSessionRequest,
     VerificationSessionResponse,
@@ -24,6 +28,8 @@ from app.schemas.oid4_api import (
     RejectVerificationSessionResponse,
     CreateOid4vpPresentationRequest,
     CreateOid4vpPresentationResponse,
+    EvaluateDcqlRequest,
+    EvaluateDcqlResponse,
 )
 
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
@@ -33,7 +39,7 @@ router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
     response_model=VerificationSessionResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create OID4VP Verification Session",
-    description="Verifier creates a presentation definition with challenge nonce and openid4vp:// URI."
+    description="Verifier creates an OpenID4VP 1.0 session with DCQL query, challenge nonce, and openid4vp:// URI."
 )
 def create_verification_session(
     payload: CreateVerificationSessionRequest,
@@ -44,14 +50,18 @@ def create_verification_session(
     service: Oid4vpService = Depends(get_oid4vp_service),
 ) -> VerificationSessionResponse:
     base_url = str(request.base_url).rstrip("/")
-    session = service.create_session(
-        verifier_did=principal.id if principal.id.startswith("did:") else "did:web:verifier.platform.eudi",
-        client_id=f"{base_url}/verifier",
-        purpose=payload.purpose,
-        requested_credential_types=tuple(payload.requested_credential_types),
-        requested_fields=tuple(payload.requested_fields),
-        ttl_seconds=payload.ttl_seconds,
-    )
+    try:
+        session = service.create_session(
+            verifier_did=principal.id if principal.id.startswith("did:") else "did:web:verifier.platform.eudi",
+            client_id=f"{base_url}/verifier",
+            purpose=payload.purpose,
+            requested_credential_types=tuple(payload.requested_credential_types),
+            requested_fields=tuple(payload.requested_fields),
+            dcql_query=payload.dcql_query,
+            ttl_seconds=payload.ttl_seconds,
+        )
+    except (MalformedDcqlQueryError, UnsupportedDcqlFeatureError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     auth_uri = session.to_authorization_request_uri()
     return VerificationSessionResponse(
         session_id=session.session_id,
@@ -59,6 +69,7 @@ def create_verification_session(
         client_id=session.client_id,
         response_uri=session.response_uri,
         nonce=session.nonce,
+        dcql_query=dict(session.dcql_query),
         presentation_definition=dict(session.presentation_definition),
         status=session.status.value,
         deep_link_uri=auth_uri,
@@ -96,6 +107,7 @@ def get_verification_session(
         client_id=session.client_id,
         response_uri=session.response_uri,
         nonce=session.nonce,
+        dcql_query=dict(session.dcql_query),
         presentation_definition=dict(session.presentation_definition),
         status=session.status.value,
         deep_link_uri=auth_uri,
@@ -107,6 +119,44 @@ def get_verification_session(
         requested_fields=list(session.requested_fields),
         verification_result=session.verification_result.to_dict() if session.verification_result else None,
         disclosed_claims=dict(session.disclosed_claims) if session.disclosed_claims else None,
+    )
+
+@router.post(
+    "/requests/{session_id}/evaluate-dcql",
+    response_model=EvaluateDcqlResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Evaluate Wallet Credentials Against Session DCQL Query",
+    description="Holder wallet evaluates candidate credentials against the session DCQL query to identify matches for consent."
+)
+def evaluate_session_dcql(
+    session_id: str,
+    payload: EvaluateDcqlRequest,
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> EvaluateDcqlResponse:
+    try:
+        eval_result = service.evaluate_wallet_credentials(
+            session_id=session_id,
+            candidate_credentials=payload.candidate_credentials,
+        )
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except SessionExpiredError as e:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
+    except (MalformedDcqlQueryError, UnsupportedDcqlFeatureError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    return EvaluateDcqlResponse(
+        is_satisfied=eval_result.is_satisfied,
+        matched_credentials=[
+            {
+                "query_id": m.query_id,
+                "credential_id": m.credential_id,
+                "matched_claims": dict(m.matched_claims),
+            }
+            for m in eval_result.matched_credentials
+        ],
+        unsatisfied_reason=eval_result.unsatisfied_reason,
+        details=dict(eval_result.details),
     )
 
 @router.post(

@@ -14,7 +14,21 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
   const [aiRiskScore, setAiRiskScore] = useState<number>(0.04);
   const [simulatedAttack, setSimulatedAttack] = useState<boolean>(false);
 
-  const qrUri = `openid4vp://authorize?client_id=did:web:enterprise-verifier.eu&response_uri=http://localhost:8000/api/v1/identity/presentations/verify&nonce=n-88a91c7f&presentation_definition={"id":"eudi_verify_req","input_descriptors":[{"id":"id_token","purpose":"Enterprise KYC","constraints":{"fields":[{"path":["$.type"],"filter":{"const":"${targetCredential}"}}]}}]}`;
+  const dcqlQueryObj = {
+    credentials: [
+      {
+        id: "cred_query_1",
+        format: "ldp_vc",
+        meta: {
+          type_values: [targetCredential]
+        },
+        claims: [
+          { id: "claim_subject", path: ["credentialSubject"] }
+        ]
+      }
+    ]
+  };
+  const qrUri = `openid4vp://authorize?client_id=did:web:enterprise-verifier.eu&response_uri=http://localhost:8000/api/v1/identity/presentations/verify&response_type=vp_token&response_mode=direct_post&nonce=n-88a91c7f&dcql_query=${encodeURIComponent(JSON.stringify(dcqlQueryObj))}`;
 
   const toggleAttackSimulation = () => {
     if (!simulatedAttack) {
@@ -271,7 +285,7 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
                 </span>
               </div>
               <span style={{ fontSize: "11px", color: "#64748b", marginTop: "8px", fontWeight: "600" }}>
-                EUDI Wallet Uyumlu
+                OID4VP 1.0 / DCQL Uyumlu
               </span>
             </div>
 

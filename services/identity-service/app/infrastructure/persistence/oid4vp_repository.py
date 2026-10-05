@@ -33,6 +33,7 @@ class VerificationSessionDocumentMapper:
             "clientId": session.client_id,
             "responseUri": session.response_uri,
             "nonce": session.nonce,
+            "dcqlQuery": deepcopy(dict(session.dcql_query)),
             "presentationDefinition": deepcopy(dict(session.presentation_definition)),
             "purpose": session.purpose,
             "status": session.status.value,
@@ -67,6 +68,15 @@ class VerificationSessionDocumentMapper:
                 details=deepcopy(raw_res.get("details", {})),
             )
 
+        dcql_data = doc.get("dcqlQuery")
+        legacy_pe = doc.get("presentationDefinition", {})
+        if not dcql_data and legacy_pe:
+            from app.application.services.dcql_engine import convert_legacy_presentation_definition_to_dcql
+            try:
+                dcql_data = convert_legacy_presentation_definition_to_dcql(legacy_pe).to_dict()
+            except Exception:
+                dcql_data = {}
+
         return VerificationSession(
             id=str(doc["_id"]),
             session_id=doc["sessionId"],
@@ -74,7 +84,8 @@ class VerificationSessionDocumentMapper:
             client_id=doc["clientId"],
             response_uri=doc["responseUri"],
             nonce=doc["nonce"],
-            presentation_definition=deepcopy(doc.get("presentationDefinition", {})),
+            dcql_query=deepcopy(dcql_data or {}),
+            presentation_definition=deepcopy(legacy_pe),
             purpose=doc.get("purpose", "Verification of digital credentials"),
             status=VerificationSessionStatus(doc["status"]),
             created_at=doc["createdAt"],
