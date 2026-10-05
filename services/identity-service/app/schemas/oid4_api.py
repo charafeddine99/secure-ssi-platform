@@ -48,6 +48,57 @@ class ClaimOfferResponse(Oid4ApiModel):
     credential_id: str
     status: str
 
+class TokenRequestSchema(Oid4ApiModel):
+    grant_type: str = Field(
+        default="urn:ietf:params:oauth:grant-type:pre-authorized_code",
+        validation_alias=AliasChoices("grant_type", "grantType"),
+    )
+    pre_authorized_code: str = Field(
+        ...,
+        validation_alias=AliasChoices("pre-authorized_code", "pre_authorized_code", "preAuthorizedCode"),
+    )
+    user_pin: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("user_pin", "tx_code", "userPin"),
+    )
+    client_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("client_id", "clientId"),
+    )
+
+class TokenResponseSchema(Oid4ApiModel):
+    access_token: str = Field(..., serialization_alias="access_token")
+    token_type: str = Field(default="bearer", serialization_alias="token_type")
+    expires_in: int = Field(default=3600, serialization_alias="expires_in")
+    c_nonce: str | None = Field(default=None, serialization_alias="c_nonce")
+    c_nonce_expires_in: int | None = Field(default=None, serialization_alias="c_nonce_expires_in")
+    scope: str | None = None
+    authorization_details: list[dict[str, Any]] | None = Field(default=None, serialization_alias="authorization_details")
+
+class NonceResponse(Oid4ApiModel):
+    c_nonce: str = Field(..., serialization_alias="c_nonce")
+    c_nonce_expires_in: int = Field(default=600, serialization_alias="c_nonce_expires_in")
+
+class HolderProofSchema(Oid4ApiModel):
+    proof_type: str = Field(..., validation_alias=AliasChoices("proof_type", "proofType"))
+    jwt: str | None = None
+    ldp_vp: dict[str, Any] | None = Field(default=None, validation_alias=AliasChoices("ldp_vp", "ldpVp"))
+
+class CredentialRequestSchema(Oid4ApiModel):
+    credential_configuration_id: str = Field(
+        ...,
+        validation_alias=AliasChoices("credential_configuration_id", "credentialConfigurationId", "format"),
+    )
+    proof: HolderProofSchema | dict[str, Any] | None = None
+    wallet_id: str | None = Field(default=None, validation_alias=AliasChoices("wallet_id", "walletId"))
+    owner_user_id: str | None = Field(default=None, validation_alias=AliasChoices("owner_user_id", "ownerUserId"))
+
+class CredentialResponseSchema(Oid4ApiModel):
+    credential: dict[str, Any]
+    c_nonce: str | None = Field(default=None, serialization_alias="c_nonce")
+    c_nonce_expires_in: int | None = Field(default=None, serialization_alias="c_nonce_expires_in")
+    status: str = "ACTIVE"
+
 # --- OID4VP Schemas ---
 
 class CreateVerificationSessionRequest(Oid4ApiModel):

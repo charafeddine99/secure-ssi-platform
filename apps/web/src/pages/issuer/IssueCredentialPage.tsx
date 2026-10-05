@@ -185,7 +185,7 @@ export const IssueCredentialPage: React.FC = () => {
           Credential Issuance Engine
         </h1>
         <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-          Standards-aligned OID4VCI Draft 13 issuance with QR deep links & W3C Bitstring status anchoring.
+          Standards-aligned OpenID4VCI 1.0 (Pre-Authorized Code Flow) with QR deep links & W3C Bitstring status anchoring.
         </p>
       </div>
 

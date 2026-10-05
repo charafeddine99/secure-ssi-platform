@@ -27,6 +27,87 @@ class OfferAlreadyClaimedError(Oid4vciError):
 class InvalidProofOfPossessionError(Oid4vciError):
     """Holder's Proof of Possession (PoP) signature is invalid."""
 
+class InvalidGrantError(Oid4vciError):
+    """Invalid, expired, or replayed grant (pre-authorized code or user pin)."""
+
+class InvalidTokenError(Oid4vciError):
+    """Missing, invalid, expired, or malformed bearer access token."""
+
+class InvalidProofError(Oid4vciError):
+    """Missing, invalid, expired, tampered, or mismatched holder proof-of-possession."""
+
+class InvalidNonceError(Oid4vciError):
+    """Missing, expired, unknown, or replayed issuer c_nonce."""
+
+class UnsupportedProofTypeError(Oid4vciError):
+    """Requested proof type is unsupported by the credential issuer."""
+
+class UnsupportedCredentialConfigurationError(Oid4vciError):
+    """Requested credential configuration ID is unsupported or not permitted by grant."""
+
+class IssuanceState(StrEnum):
+    OFFER_CREATED = "OFFER_CREATED"
+    OFFER_RETRIEVED = "OFFER_RETRIEVED"
+    OFFER_VALIDATED = "OFFER_VALIDATED"
+    PREAUTH_CODE_AVAILABLE = "PREAUTH_CODE_AVAILABLE"
+    TOKEN_REQUESTED = "TOKEN_REQUESTED"
+    ACCESS_TOKEN_ISSUED = "ACCESS_TOKEN_ISSUED"
+    NONCE_AVAILABLE = "NONCE_AVAILABLE"
+    CREDENTIAL_PROOF_CREATED = "CREDENTIAL_PROOF_CREATED"
+    CREDENTIAL_REQUEST_SUBMITTED = "CREDENTIAL_REQUEST_SUBMITTED"
+    HOLDER_PROOF_VALIDATED = "HOLDER_PROOF_VALIDATED"
+    CREDENTIAL_ISSUED = "CREDENTIAL_ISSUED"
+    CREDENTIAL_PERSISTED = "CREDENTIAL_PERSISTED"
+    ISSUANCE_COMPLETE = "ISSUANCE_COMPLETE"
+
+    # Terminal failure states
+    OFFER_EXPIRED = "OFFER_EXPIRED"
+    PREAUTH_CODE_INVALID = "PREAUTH_CODE_INVALID"
+    PREAUTH_CODE_REPLAYED = "PREAUTH_CODE_REPLAYED"
+    TOKEN_DENIED = "TOKEN_DENIED"
+    NONCE_INVALID = "NONCE_INVALID"
+    PROOF_INVALID = "PROOF_INVALID"
+    PROOF_EXPIRED = "PROOF_EXPIRED"
+    WRONG_AUDIENCE = "WRONG_AUDIENCE"
+    WRONG_HOLDER_KEY = "WRONG_HOLDER_KEY"
+    CREDENTIAL_REQUEST_REJECTED = "CREDENTIAL_REQUEST_REJECTED"
+    ISSUANCE_FAILED = "ISSUANCE_FAILED"
+
+@dataclass(frozen=True)
+class HolderProof:
+    proof_type: str
+    jwt: str | None = None
+    ldp_vp: Mapping[str, Any] | None = None
+
+@dataclass(frozen=True)
+class TokenRequest:
+    grant_type: str
+    pre_authorized_code: str
+    user_pin: str | None = None
+    client_id: str | None = None
+
+@dataclass(frozen=True)
+class TokenResponse:
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int = 3600
+    c_nonce: str | None = None
+    c_nonce_expires_in: int | None = None
+    scope: str | None = None
+    authorization_details: tuple[Mapping[str, Any], ...] | None = None
+
+@dataclass(frozen=True)
+class NonceResponse:
+    c_nonce: str
+    c_nonce_expires_in: int = 600
+
+@dataclass(frozen=True)
+class CredentialRequest:
+    credential_configuration_id: str
+    proof: HolderProof | None = None
+    wallet_id: str | None = None
+    owner_user_id: str | None = None
+
 @dataclass(frozen=True)
 class CredentialOffer:
     id: str
