@@ -35,7 +35,7 @@ from app.services.credential_validator import CredentialProfileValidator  # type
 from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
 from app.services.did_resolver import (  # type: ignore[import-not-found]
     CompositeDidResolver,
-    DidWebFixtureResolver,
+    DidWebResolver,
 )
 _APP_ROOT = ROOT_DIR / "services" / "identity-service"
 _ISSUER_DID_FIXTURE = _APP_ROOT / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
@@ -48,7 +48,7 @@ def ssi_proof_engine():
     signer = Ed25519CredentialSigner()
     key_provider = LocalIssuerKeyProvider()
     did_resolver = CompositeDidResolver(
-        {"web": DidWebFixtureResolver({SYNTHETIC_ISSUER_DID: _ISSUER_DID_FIXTURE})}
+        {"web": DidWebResolver(allow_insecure_http=True)}
     )
     proof_service = CredentialProofService(
         validator=validator,

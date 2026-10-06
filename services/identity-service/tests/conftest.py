@@ -9,8 +9,14 @@ if "ckzg" not in sys.modules:
 
 from typing import Any, Generator
 import pytest
+from pathlib import Path
 from app.api.v1 import dependencies
 from tests.support.fake_mongo import FakeDatabase
+
+from app.services.did_resolver import CompositeDidResolver
+from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
+from app.infrastructure.crypto.local_issuer_key_provider import SYNTHETIC_ISSUER_DID
+from app.main import app
 
 
 class FakeMongoConnectionManager:
@@ -43,3 +49,17 @@ def test_persistence_manager(monkeypatch: pytest.MonkeyPatch) -> Generator[Any, 
         yield fake_manager
     else:
         yield dependencies._MONGO_MANAGER
+
+
+@pytest.fixture(autouse=True)
+def test_did_resolver(monkeypatch: pytest.MonkeyPatch) -> Generator[Any, None, None]:
+    fixture_path = Path(__file__).parent.parent / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
+    fake_resolver = CompositeDidResolver(
+        {
+            "web": DidWebTestFixtureResolver(
+                {SYNTHETIC_ISSUER_DID: fixture_path}
+            )
+        }
+    )
+    monkeypatch.setattr(dependencies, "_DID_RESOLVER", fake_resolver)
+    yield fake_resolver

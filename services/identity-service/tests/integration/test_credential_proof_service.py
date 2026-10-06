@@ -34,7 +34,8 @@ from app.infrastructure.fixtures.tampered_credentials import (
 )
 from app.main import app
 from app.services.credential_validator import CredentialProfileValidator
-from app.services.did_resolver import CompositeDidResolver, DidWebFixtureResolver
+from app.services.did_resolver import CompositeDidResolver
+from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
 
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures"
@@ -227,7 +228,7 @@ def test_key_substitution_via_did_document_is_rejected(
     substituted_path.write_text(json.dumps(document), encoding="utf-8")
     resolver = CompositeDidResolver(
         {
-            "web": DidWebFixtureResolver(
+            "web": DidWebTestFixtureResolver(
                 {SYNTHETIC_ISSUER_DID: substituted_path}
             )
         }
@@ -257,7 +258,7 @@ def test_non_ed25519_did_verification_method_is_rejected(
     invalid_path = tmp_path / "wrong-key-type.did.json"
     invalid_path.write_text(json.dumps(document), encoding="utf-8")
     resolver = CompositeDidResolver(
-        {"web": DidWebFixtureResolver({SYNTHETIC_ISSUER_DID: invalid_path})}
+        {"web": DidWebTestFixtureResolver({SYNTHETIC_ISSUER_DID: invalid_path})}
     )
     service = CredentialProofService(
         validator=CredentialProfileValidator(),

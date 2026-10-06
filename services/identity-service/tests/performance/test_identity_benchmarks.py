@@ -24,10 +24,8 @@ from app.infrastructure.status_list_document_generator import (
 )
 from app.services.credential_validator import CredentialProfileValidator
 from app.application.services.credential_proof_service import CredentialProofService
-from app.services.did_resolver import (
-    CompositeDidResolver,
-    DidWebFixtureResolver,
-)
+from app.services.did_resolver import CompositeDidResolver
+from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
 
 from datetime import UTC, datetime
 
@@ -41,7 +39,7 @@ def identity_crypto_engine():
     signer = Ed25519CredentialSigner()
     key_provider = LocalIssuerKeyProvider()
     did_resolver = CompositeDidResolver(
-        {"web": DidWebFixtureResolver({SYNTHETIC_ISSUER_DID: _FIXTURE_PATH})}
+        {"web": DidWebTestFixtureResolver({SYNTHETIC_ISSUER_DID: _FIXTURE_PATH})}
     )
     proof_service = CredentialProofService(
         validator=validator,

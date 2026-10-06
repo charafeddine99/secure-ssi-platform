@@ -6,8 +6,8 @@ from app.domain.did import DidResolutionError, DidResolutionErrorCode
 from app.services.did_resolver import (
     CompositeDidResolver,
     DidKeyResolver,
-    DidWebFixtureResolver,
 )
+from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
 
 
 ISSUER_DID = "did:web:issuer.example"
@@ -19,7 +19,7 @@ def resolver() -> CompositeDidResolver:
     return CompositeDidResolver(
         {
             "key": DidKeyResolver(),
-            "web": DidWebFixtureResolver({ISSUER_DID: FIXTURE_PATH}),
+            "web": DidWebTestFixtureResolver({ISSUER_DID: FIXTURE_PATH}),
         }
     )
 

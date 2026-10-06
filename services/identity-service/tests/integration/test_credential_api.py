@@ -34,7 +34,8 @@ from app.infrastructure.fixtures.tampered_credentials import (
 )
 from app.main import app
 from app.services.credential_validator import CredentialProfileValidator
-from app.services.did_resolver import CompositeDidResolver, DidWebFixtureResolver
+from app.services.did_resolver import CompositeDidResolver
+from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
 from tests.support.fake_mongo import FakeDatabase
 
 
@@ -407,7 +408,7 @@ def test_verify_rejects_key_substitution_through_http(
         key_provider=LocalIssuerKeyProvider(),
         did_resolver=CompositeDidResolver(
             {
-                "web": DidWebFixtureResolver(
+                "web": DidWebTestFixtureResolver(
                     {SYNTHETIC_ISSUER_DID: substituted_path}
                 )
             }

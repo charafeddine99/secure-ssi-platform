@@ -188,7 +188,7 @@ from app.services.credential_validator import CredentialProfileValidator
 from app.services.did_resolver import (
     CompositeDidResolver,
     DidKeyResolver,
-    DidWebFixtureResolver,
+    DidWebResolver,
 )
 
 
@@ -206,9 +206,7 @@ _HOLDER_KEY_PROVIDER = LocalHolderKeyProvider()
 _HOLDER_SIGNER = LocalDevelopmentHolderSigner(_HOLDER_KEY_PROVIDER)
 _DID_RESOLVER = CompositeDidResolver(
     {
-        "web": DidWebFixtureResolver(
-            {SYNTHETIC_ISSUER_DID: _ISSUER_DID_FIXTURE}
-        )
+        "web": DidWebResolver(allow_insecure_http=True)
     }
 )
 _HOLDER_DID_RESOLVER = CompositeDidResolver({"key": DidKeyResolver()})

@@ -117,7 +117,7 @@ def test_golden_path_complete_lifecycle():
         # 4. Credential is persisted (Gap A verification)
         # =========================================================================
         assert claim_data["status"] == "ACTIVE"
-        cred_uuid = claim_data["credentialId"]
+        cred_uuid = claim_data["credential_id"]
         signed_vc = claim_data["credential"]
         assert signed_vc["id"] == cred_uuid
         assert signed_vc["issuer"] is not None
@@ -381,7 +381,7 @@ def test_golden_path_revoked_credential_rejection():
         res_claim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
         assert res_claim.status_code == 201
         claim_data = res_claim.json()
-        cred_uuid = claim_data["credentialId"]
+        cred_uuid = claim_data["credential_id"]
         signed_vc = claim_data["credential"]
         assert claim_data["status"] == "ACTIVE"
 

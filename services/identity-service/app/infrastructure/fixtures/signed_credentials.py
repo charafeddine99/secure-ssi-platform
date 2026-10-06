@@ -17,7 +17,7 @@ from app.infrastructure.crypto.local_issuer_key_provider import (
     SYNTHETIC_ISSUER_DID,
 )
 from app.services.credential_validator import CredentialProfileValidator
-from app.services.did_resolver import CompositeDidResolver, DidWebFixtureResolver
+from app.services.did_resolver import CompositeDidResolver, DidWebResolver
 
 
 IDENTITY_SERVICE_ROOT = Path(__file__).resolve().parents[3]
@@ -37,15 +37,19 @@ def build_local_proof_service(
     *,
     key_provider: KeyProvider | None = None,
     clock: Callable[[], datetime] | None = None,
+    did_resolver: Any = None,
 ) -> CredentialProofService:
     provider = key_provider or LocalIssuerKeyProvider()
-    resolver = CompositeDidResolver(
-        {
-            "web": DidWebFixtureResolver(
-                {SYNTHETIC_ISSUER_DID: ISSUER_DID_DOCUMENT_PATH}
-            )
-        }
-    )
+    if did_resolver is None:
+        try:
+            from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
+            web_resolver = DidWebTestFixtureResolver({SYNTHETIC_ISSUER_DID: ISSUER_DID_DOCUMENT_PATH})
+        except ImportError:
+            web_resolver = DidWebResolver(allow_insecure_http=True)
+        resolver = CompositeDidResolver({"web": web_resolver})
+    else:
+        resolver = did_resolver
+    
     return CredentialProofService(
         validator=CredentialProfileValidator(),
         canonicalizer=JcsCanonicalizer(),

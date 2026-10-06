@@ -128,15 +128,15 @@ def run_vc_issuance_benchmark() -> Dict[str, Any]:
     from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
     from app.services.did_resolver import (  # type: ignore[import-not-found]
         CompositeDidResolver,
-        DidWebFixtureResolver,
     )
+    from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
 
     fixture_path = REPO_ROOT / "services" / "identity-service" / "app" / "infrastructure" / "fixtures" / "issuer.did.json"
     validator = CredentialProfileValidator()
     canonicalizer = JcsCanonicalizer()
     signer = Ed25519CredentialSigner()
     key_provider = LocalIssuerKeyProvider()
-    resolver = CompositeDidResolver({"web": DidWebFixtureResolver({SYNTHETIC_ISSUER_DID: fixture_path})})
+    resolver = CompositeDidResolver({"web": DidWebTestFixtureResolver({SYNTHETIC_ISSUER_DID: fixture_path})})
     proof_service = CredentialProofService(
         validator=validator,
         canonicalizer=canonicalizer,
@@ -245,8 +245,8 @@ def run_oid4vp_benchmark() -> Dict[str, Any]:
     from app.application.services.credential_proof_service import CredentialProofService  # type: ignore[import-not-found]
     from app.services.did_resolver import (  # type: ignore[import-not-found]
         CompositeDidResolver,
-        DidWebFixtureResolver,
     )
+    from tests.support.did_web_test_fixture import DidWebTestFixtureResolver
     from app.infrastructure.status_list_document_generator import (  # type: ignore[import-not-found]
         encode_status_list,
         decode_status_list_bit,
@@ -258,7 +258,7 @@ def run_oid4vp_benchmark() -> Dict[str, Any]:
         canonicalizer=JcsCanonicalizer(),
         signer=Ed25519CredentialSigner(),
         key_provider=LocalIssuerKeyProvider(),
-        did_resolver=CompositeDidResolver({"web": DidWebFixtureResolver({SYNTHETIC_ISSUER_DID: fixture_path})}),
+        did_resolver=CompositeDidResolver({"web": DidWebTestFixtureResolver({SYNTHETIC_ISSUER_DID: fixture_path})}),
         clock=lambda: datetime.now(UTC),
     )
 

@@ -106,16 +106,16 @@ class DidKeyResolver:
         return b"\x00" * leading_zeroes + decoded
 
 
-class DidWebFixtureResolver:
+class DidWebResolver:
     method = "web"
 
     def __init__(
         self,
-        fixtures: Mapping[str, Path],
         validator: DidDocumentValidator | None = None,
+        allow_insecure_http: bool = False,
     ) -> None:
-        self.fixtures = {did: path.resolve() for did, path in fixtures.items()}
         self.validator = validator or DidDocumentValidator()
+        self.allow_insecure_http = allow_insecure_http
 
     def resolve(self, did: str) -> DidResolutionResult:
         if not DID_WEB_PATTERN.fullmatch(did):
@@ -124,21 +124,54 @@ class DidWebFixtureResolver:
                 "The did:web identifier is malformed.",
                 did=did,
             )
-        fixture_path = self.fixtures.get(did)
-        if fixture_path is None or not fixture_path.is_file():
+
+        import urllib.parse
+        import httpx
+        import socket
+        import ipaddress
+
+        domain_path = did[len("did:web:"):]
+        parts = domain_path.split(":")
+        domain = urllib.parse.unquote(parts[0])
+        
+        if len(parts) == 1:
+            path = "/.well-known/did.json"
+        else:
+            path_parts = [urllib.parse.unquote(p) for p in parts[1:]]
+            path = "/" + "/".join(path_parts) + "/did.json"
+            
+        scheme = "http" if self.allow_insecure_http else "https"
+        url = f"{scheme}://{domain}{path}"
+        
+        if not self.allow_insecure_http:
+            self._validate_ssrf(domain.split(":")[0], did)
+
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                with client.stream("GET", url) as response:
+                    if response.status_code != 200:
+                        raise DidResolutionError(
+                            DidResolutionErrorCode.NOT_FOUND,
+                            "The did:web document could not be retrieved.",
+                            did=did,
+                        )
+                    
+                    raw = bytearray()
+                    for chunk in response.iter_bytes():
+                        raw.extend(chunk)
+                        if len(raw) > self.validator.max_document_bytes:
+                            raise DidResolutionError(
+                                DidResolutionErrorCode.DOCUMENT_TOO_LARGE,
+                                "DID document exceeds the configured size limit.",
+                                did=did,
+                            )
+        except httpx.RequestError as error:
             raise DidResolutionError(
                 DidResolutionErrorCode.NOT_FOUND,
-                "No local fixture is registered for this did:web identifier.",
+                "Network error during did:web resolution.",
                 did=did,
-            )
-
-        raw = fixture_path.read_bytes()
-        if len(raw) > self.validator.max_document_bytes:
-            raise DidResolutionError(
-                DidResolutionErrorCode.DOCUMENT_TOO_LARGE,
-                "DID document exceeds the configured size limit.",
-                did=did,
-            )
+            ) from error
+            
         try:
             document = json.loads(
                 raw.decode("utf-8"),
@@ -147,9 +180,10 @@ class DidWebFixtureResolver:
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             raise DidResolutionError(
                 DidResolutionErrorCode.INVALID_DID_DOCUMENT,
-                "The local did:web fixture is not valid unambiguous UTF-8 JSON.",
+                "The did:web document is not valid unambiguous UTF-8 JSON.",
                 did=did,
             ) from error
+            
         if not isinstance(document, dict):
             raise DidResolutionError(
                 DidResolutionErrorCode.INVALID_DID_DOCUMENT,
@@ -165,8 +199,29 @@ class DidWebFixtureResolver:
         return DidResolutionResult(
             did=did,
             did_document=validated,
-            metadata=DidResolutionMetadata(method=self.method, source="local-fixture"),
+            metadata=DidResolutionMetadata(method=self.method, source="network"),
         )
+        
+    def _validate_ssrf(self, hostname: str, did: str) -> None:
+        import socket
+        import ipaddress
+        try:
+            ip = socket.gethostbyname(hostname)
+            ip_obj = ipaddress.ip_address(ip)
+            if not ip_obj.is_global:
+                raise DidResolutionError(
+                    DidResolutionErrorCode.NOT_FOUND,
+                    "did:web resolution blocked due to SSRF protection.",
+                    did=did,
+                )
+        except Exception as e:
+            if isinstance(e, DidResolutionError):
+                raise
+            raise DidResolutionError(
+                DidResolutionErrorCode.NOT_FOUND,
+                "did:web domain resolution failed.",
+                did=did,
+            ) from e
 
     @staticmethod
     def _reject_duplicate_properties(
