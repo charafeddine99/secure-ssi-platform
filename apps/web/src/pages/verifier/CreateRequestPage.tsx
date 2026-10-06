@@ -513,7 +513,7 @@ export const CreateRequestPage: React.FC = () => {
           {/* Requested Claims Selector */}
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "6px" }}>
-              Requested Claims (Selective Disclosure Policy)
+              Requested Claims (Claim Minimization Policy)
             </label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
               {availableClaims.map((c) => {

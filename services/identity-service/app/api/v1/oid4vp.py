@@ -301,6 +301,7 @@ def create_oid4vp_presentation(
             verifiable_credentials=payload.verifiable_credentials,
             disclosed_claims=payload.disclosed_claims,
             holder_did=payload.holder_did,
+            allow_unconsented_test_mode=payload.allow_unconsented_test_mode,
         )
     except SessionNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

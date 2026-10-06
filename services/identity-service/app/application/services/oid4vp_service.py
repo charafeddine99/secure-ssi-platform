@@ -599,6 +599,7 @@ class Oid4vpService:
         verifiable_credentials: list[dict[str, Any]] | None = None,
         disclosed_claims: dict[str, Any] | None = None,
         holder_did: str | None = None,
+        allow_unconsented_test_mode: bool = False,
     ) -> dict[str, Any]:
         session = self.get_session(session_id)
         if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
@@ -609,67 +610,68 @@ class Oid4vpService:
         if session.consent_status == "REJECTED":
             raise SessionAlreadyConsumedError(f"Session {session_id} consent was rejected by holder.")
 
-        effective_holder_did = (
-            holder_did
-            or (session.consent_decision.holder_did if session.consent_decision else None)
-            or "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+        from app.infrastructure.fixtures.signed_credentials import (
+            build_signed_presentation,
+            build_signed_credential,
         )
+        from app.infrastructure.crypto.jcs_canonicalizer import canonicalize_document
+        import hashlib
 
-        # Validate against recorded consent decision if present
-        if session.consent_decision is not None:
+        # Invariant: Consent must control credential / presentation eligibility
+        if session.consent_decision is None:
+            if not allow_unconsented_test_mode:
+                raise ValueError("Consent decision is required before creating a presentation for an active session.")
+            effective_holder_did = (
+                holder_did
+                or "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+            )
+            selected_vcs = [copy.deepcopy(c) for c in verifiable_credentials] if verifiable_credentials else [build_signed_credential()]
+        else:
+            if session.consent_decision.session_id != session.session_id:
+                raise ValueError("Cross-session consent decision cannot authorize another session.")
+            if not session.consent_decision.user_approved:
+                raise ValueError("Cannot create presentation for a session with rejected consent.")
             if holder_did and holder_did != session.consent_decision.holder_did:
                 raise ValueError("Holder DID does not match the authorized consent decision.")
             if disclosed_claims:
                 unauthorized = [k for k in disclosed_claims.keys() if k not in session.consent_decision.approved_claims]
                 if unauthorized:
                     raise ValueError(f"Presentation contains claims not authorized by holder consent: {unauthorized}")
-            effective_approved_claims = dict(session.consent_decision.approved_claims)
-        elif disclosed_claims is not None:
-            effective_approved_claims = dict(disclosed_claims)
-        else:
-            effective_approved_claims = {}
 
-        from app.infrastructure.fixtures.signed_credentials import (
-            build_signed_presentation,
-            build_signed_credential,
-            build_local_proof_service,
-        )
+            effective_holder_did = session.consent_decision.holder_did
 
-        vcs = [copy.deepcopy(c) for c in verifiable_credentials] if verifiable_credentials else [build_signed_credential()]
-
-        # Section 8: Presentation data subset P must satisfy P <= A (claim minimization / claim omission)
-        for c in vcs:
-            if isinstance(c.get("credentialSubject"), dict):
-                orig_subj = dict(c["credentialSubject"])
-                new_subj: dict[str, Any] = {"id": effective_holder_did}
-                if session.consent_decision is not None:
-                    for k, v in effective_approved_claims.items():
-                        new_subj[k] = v
+            candidate_vcs = [copy.deepcopy(c) for c in verifiable_credentials] if verifiable_credentials else [build_signed_credential()]
+            approved_ids = set(session.consent_decision.approved_credentials)
+            selected_vcs = [c for c in candidate_vcs if c.get("id") in approved_ids]
+            if not selected_vcs:
+                if not verifiable_credentials and "cred_1" in approved_ids:
+                    selected_vcs = candidate_vcs
                 else:
-                    new_subj.update(orig_subj)
-                    if effective_approved_claims:
-                        new_subj.update(effective_approved_claims)
-                    new_subj["id"] = effective_holder_did
-                c["credentialSubject"] = new_subj
+                    raise ValueError("No approved credentials match the available wallet credentials for this session.")
 
-                if "proof" in c:
-                    raw_vc = copy.deepcopy(c)
-                    raw_vc.pop("proof", None)
-                    try:
-                        proof_svc = build_local_proof_service()
-                        signed_vc = proof_svc.sign_credential(raw_vc)
-                        c.clear()
-                        c.update(signed_vc)
-                    except Exception:
-                        pass
+        # Invariant: Preserve issuer-signed VC integrity. NEVER mutate credentialSubject, NEVER strip proof,
+        # NEVER re-sign using synthetic issuer key. Compute pre-presentation SHA-256 canonical fingerprints.
+        pre_fingerprints = [
+            hashlib.sha256(canonicalize_document(vc)).hexdigest()
+            for vc in selected_vcs
+        ]
 
         domain = session.client_id or "http://testserver/verifier"
         vp_token = build_signed_presentation(
-            vcs,
+            selected_vcs,
             nonce=session.nonce,
             domain=domain,
             holder_did=effective_holder_did,
         )
+
+        # Integrity assertion: ensure every embedded VC remains byte-for-byte identical to original
+        post_vcs = vp_token.get("verifiableCredential", [])
+        if len(post_vcs) != len(pre_fingerprints):
+            raise ValueError("Integrity violation: presented credential count does not match selected credentials.")
+        for idx, post_vc in enumerate(post_vcs):
+            post_fp = hashlib.sha256(canonicalize_document(post_vc)).hexdigest()
+            if post_fp != pre_fingerprints[idx]:
+                raise ValueError(f"Integrity violation: embedded credential at index {idx} was mutated during presentation.")
 
         self._audits.append(
             AuditEvent(
@@ -682,7 +684,7 @@ class Oid4vpService:
                     "session_id": session.session_id,
                     "verifier_did": session.verifier_did,
                     "holder_did": effective_holder_did,
-                    "presented_count": str(len(vcs)),
+                    "presented_count": str(len(selected_vcs)),
                     "protocol": "OID4VP-1.0",
                 },
                 created_at=now,
@@ -787,25 +789,35 @@ class Oid4vpService:
             trust_source_val = "NONE"
             trust_record_id_val = None
         
-        # Proof & Signature (Fail-Closed: explicit cryptographic verification required)
-        raw_proof = target_vc.get("proof")
-        proof: dict[str, Any] = raw_proof if isinstance(raw_proof, dict) else {}
-        sig_valid = False
-        if (
-            isinstance(raw_proof, dict)
-            and proof.get("type") == "DataIntegrityProof"
-            and proof.get("cryptosuite") == "eddsa-jcs-2022"
-            and bool(proof.get("proofValue"))
-            and hasattr(self._verifier, "_credentials")
-            and hasattr(self._verifier._credentials, "_proofs")
-        ):
-            try:
-                vc_res = self._verifier._credentials._proofs.verify_credential(target_vc, verified_at=now)
-                sig_valid = bool(vc_res and vc_res.is_valid)
-            except Exception:
-                sig_valid = False
-        else:
+        # Proof & Signature (Fail-Closed: verify DataIntegrityProof on every embedded VC)
+        all_vcs_sig_valid = True
+        if not vcs or not isinstance(vcs, list):
             sig_valid = False
+        else:
+            for embedded_vc in vcs:
+                if not isinstance(embedded_vc, dict):
+                    all_vcs_sig_valid = False
+                    break
+                raw_proof = embedded_vc.get("proof")
+                proof: dict[str, Any] = raw_proof if isinstance(raw_proof, dict) else {}
+                emb_sig_valid = False
+                if (
+                    isinstance(raw_proof, dict)
+                    and proof.get("type") == "DataIntegrityProof"
+                    and proof.get("cryptosuite") == "eddsa-jcs-2022"
+                    and bool(proof.get("proofValue"))
+                    and hasattr(self._verifier, "_credentials")
+                    and hasattr(self._verifier._credentials, "_proofs")
+                ):
+                    try:
+                        vc_res = self._verifier._credentials._proofs.verify_credential(embedded_vc, verified_at=now)
+                        emb_sig_valid = bool(vc_res and vc_res.is_valid)
+                    except Exception:
+                        emb_sig_valid = False
+                if not emb_sig_valid:
+                    all_vcs_sig_valid = False
+                    break
+            sig_valid = all_vcs_sig_valid
 
         # Holder Binding (Fail-Closed: cryptographic proof-of-possession verification)
         raw_subject = target_vc.get("credentialSubject")
@@ -921,17 +933,18 @@ class Oid4vpService:
         consent_violation = False
         consent_violation_reason = None
         if session.consent_decision is not None:
-            if disclosed_claims:
+            # Check credential-level consent
+            presented_vc_id = target_vc.get("id")
+            if presented_vc_id and session.consent_decision.approved_credentials:
+                if presented_vc_id not in session.consent_decision.approved_credentials:
+                    consent_violation = True
+                    consent_violation_reason = f"Presented credential '{presented_vc_id}' was not approved by holder consent."
+            # Check claim minimization intent authorization record (disclosed_claims)
+            if not consent_violation and disclosed_claims:
                 for k in disclosed_claims:
                     if k in session.consent_decision.rejected_claims:
                         consent_violation = True
                         consent_violation_reason = f"Disclosed claim '{k}' was rejected by holder consent."
-                        break
-            if not consent_violation and isinstance(target_vc.get("credentialSubject"), dict):
-                for k in target_vc["credentialSubject"]:
-                    if k != "id" and k in session.consent_decision.rejected_claims:
-                        consent_violation = True
-                        consent_violation_reason = f"Presented credential contains claim '{k}' rejected by holder consent."
                         break
 
         # STRICT INVARIANT: Cryptographic Failure Hierarchy (Section 15)
@@ -978,7 +991,7 @@ class Oid4vpService:
                     except Exception:
                         pass
 
-        # Data minimization / selective disclosure breakdown
+        # Data minimization / claim minimization intent breakdown
         disclosed_dict = dict(disclosed_claims or target_vc.get("credentialSubject", {}))
         disclosed_keys = [k for k in disclosed_dict.keys() if k != "id"]
         req_keys = list(session.requested_fields)
@@ -1009,7 +1022,9 @@ class Oid4vpService:
                     "requestedFields": req_keys,
                     "disclosedFields": disclosed_keys,
                     "hiddenFields": hidden_keys,
-                    "selectiveDisclosureActive": len(hidden_keys) > 0,
+                    "selectiveDisclosureActive": False,
+                    "cryptographicSelectiveDisclosure": False,
+                    "limitation": "Claim-level cryptographic selective disclosure is not implemented in the current eddsa-jcs-2022 profile.",
                     "disclosureRatio": disclosure_ratio,
                 },
                 "evaluations": {

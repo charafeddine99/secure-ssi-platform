@@ -259,6 +259,11 @@ class CreateOid4vpPresentationRequest(Oid4ApiModel):
         default=None,
         validation_alias=AliasChoices("holder_did", "holderDid"),
     )
+    allow_unconsented_test_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("allow_unconsented_test_mode", "allowUnconsentedTestMode"),
+        description="Non-canonical test/fixture bypass. Canonical Golden Path strictly requires recorded consent.",
+    )
 
 class CreateOid4vpPresentationResponse(Oid4ApiModel):
     session_id: str

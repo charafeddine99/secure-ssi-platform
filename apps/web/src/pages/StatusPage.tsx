@@ -452,7 +452,7 @@ export function StatusPage() {
             <div>
               <div className="page-header">
                 <h1>Doğrulayıcı Portal (Verifier)</h1>
-                <p>Adayın veya çalışanın sunduğu W3C Diplomasını ve Sıfır Bilgi Kanıtını (ZKP) test edin.</p>
+                <p>Adayın veya çalışanın sunduğu W3C Diplomasını ve Doğrulama Durumunu test edin.</p>
               </div>
 
               <div className="grid-2">
@@ -471,7 +471,7 @@ export function StatusPage() {
                       <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-color)" }}>
                         <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: "var(--accent-cyan)" }}>
                           <input type="checkbox" checked={zkpMasked} onChange={e => setZkpMasked(e.target.checked)} />
-                          Zero-Knowledge Proof (ZKP) ile Kişisel Verileri Gizle (Yalnızca GPA &gt;= 3.0 Kanıtla)
+                          Veri Minimizasyonu: Yalnızca GPA Doğrula
                         </label>
                       </div>
                     </div>
@@ -510,7 +510,7 @@ export function StatusPage() {
                           <div>• <strong>Revocation Durumu:</strong> Bitstring Status List üzerinde aktif.</div>
                           {zkpMasked && (
                             <div style={{ marginTop: "10px", padding: "10px", background: "#0b192c", borderRadius: "8px", border: "1px solid #1d4ed8" }}>
-                              <strong style={{ color: "var(--accent-cyan)" }}>🛡️ ZKP Range Predicate Kanıtı:</strong>
+                              <strong style={{ color: "var(--accent-cyan)" }}>🛡️ Veri Minimizasyonu Talebi:</strong>
                               <div style={{ color: "#fff", fontSize: "0.82rem" }}>{verifierResult.zkpPredicate}</div>
                               <div style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginTop: "2px" }}>Öğrencinin TC Kimlik No ve İsim alanları ifşa edilmedi (Gizlilik Korundu).</div>
                             </div>

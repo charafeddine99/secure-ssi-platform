@@ -39,8 +39,8 @@ export const LandingPage: React.FC = () => {
     },
     {
       title: "Privacy-Preserving Credentials",
-      tagline: "Selective Disclosure",
-      description: "Holders share only what is strictly required. Unrevealed subject claims are cryptographically blinded using salted SHA-256 commitments with root Merkle anchors.",
+      tagline: "Holder Consent & Minimization",
+      description: "Holders control presentation authorization and credential selection. Verified via Data Integrity eddsa-jcs-2022 proofs with tamper-evident issuer credential preservation.",
       icon: Lock,
       color: "#34d399"
     },
@@ -89,7 +89,7 @@ export const LandingPage: React.FC = () => {
       step: "04",
       actor: "Relying Party",
       title: "OID4VP Verification",
-      desc: "Verifier requests claims; holder selectively discloses data; 9-point trust matrix audits proof in ~0.3 ms.",
+      desc: "Verifier requests claims; holder authorizes credential selection; 9-point trust matrix audits proof in ~0.3 ms.",
       icon: Search,
       accent: "#8b5cf6"
     }
@@ -100,7 +100,7 @@ export const LandingPage: React.FC = () => {
       role: "HOLDER" as const,
       title: "Holder Wallet",
       subtitle: "Personal Sovereign Identity & Credential Vault",
-      desc: "Tactile digital credential cards, QR presentation, and granular selective disclosure consent.",
+      desc: "Tactile digital credential cards, QR presentation, and granular holder presentation consent.",
       icon: ShieldCheck,
       path: "/wallet",
       accent: "#2563eb",
@@ -120,7 +120,7 @@ export const LandingPage: React.FC = () => {
       role: "VERIFIER" as const,
       title: "Verifier Service",
       subtitle: "Presentation Request & Cryptographic Audit",
-      desc: "Validate Ed25519 signatures, revocation bitstrings, and selective disclosure claims in sub-millisecond speeds.",
+      desc: "Validate Ed25519 signatures, revocation bitstrings, and DCQL requested claims in sub-millisecond speeds.",
       icon: Search,
       path: "/verifier",
       accent: "#059669",
@@ -160,7 +160,7 @@ export const LandingPage: React.FC = () => {
     { step: 3, title: "Holder Receives Credential", role: "HOLDER", path: "/wallet/scan", desc: "Scan or ingest OID4VCI credential offer via deep-link protocol trigger." },
     { step: 4, title: "Credential Appears in Wallet", role: "HOLDER", path: "/wallet", desc: "Inspect newly anchored credential card, claims, and cryptographic proof." },
     { step: 5, title: "Verifier Creates Verification Request", role: "VERIFIER", path: "/verifier/request", desc: "Generate OID4VP presentation definition with challenge nonce and required claims." },
-    { step: 6, title: "Holder Approves Sharing", role: "HOLDER", path: "/wallet/consent", desc: "Review request purpose, toggle selective disclosure, and sign salted blinded presentation." },
+    { step: 6, title: "Holder Approves Sharing", role: "HOLDER", path: "/wallet/consent", desc: "Review request purpose, authorize credential selection, and sign holder presentation proof." },
     { step: 7, title: "Verifier Receives Verification Result", role: "VERIFIER", path: "/verifier/verify", desc: "9-point trust audit confirms signature, validity, non-revocation, and zero-leakage." },
     { step: 8, title: "Audit Log Records Event", role: "ADMIN", path: "/admin/audit", desc: "Inspect append-only tamper-proof audit trail and Hardhat EVM anchored event." }
   ];
@@ -386,7 +386,7 @@ export const LandingPage: React.FC = () => {
             </p>
             <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.82rem", color: "#e2e8f0", lineHeight: 1.7 }}>
               <li>Private keys remain strictly in sovereign holder custody.</li>
-              <li>Selective disclosure hides unrequested claims via cryptographic salt commitments.</li>
+              <li>Holder consent determines credential presentation and claim minimization authorization.</li>
               <li>Decentralized trust anchors (smart contracts) guarantee tamper-evident status tracking with zero PII.</li>
             </ul>
           </div>

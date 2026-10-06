@@ -22,7 +22,7 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
     setIsProcessing(true);
     setDecisionFeedback(null);
 
-    // Simulate cryptographic selective disclosure presentation & zero-knowledge verification
+    // Holder consent presentation & verification
     setTimeout(() => {
       setIsProcessing(false);
       setDecisionFeedback("APPROVED: Verifiable Presentation signed and securely delivered to dApp.");

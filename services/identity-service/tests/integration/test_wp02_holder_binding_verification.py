@@ -115,6 +115,17 @@ def test_wp02_positive_presentation_endpoint_lifecycle():
     session_id, nonce, client_id = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc()
 
+    # Record consent before presentation generation
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [vc["id"]],
+            "approvedClaims": {"degree": "MSc Computer Science"},
+        },
+    )
+
     # Call presentation generator endpoint
     res_pres = client.post(
         "/api/v1/oid4vp/presentation",

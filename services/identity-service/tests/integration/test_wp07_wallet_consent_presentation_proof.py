@@ -159,13 +159,16 @@ def test_wp07_golden_path_consent_claim_minimization_and_real_presentation_proof
     assert pres_res.status_code == 200, f"Presentation creation failed: {pres_res.text}"
     vp_token = pres_res.json()["vpToken"]
 
-    # Invariant: Unapproved claims MUST NOT appear in the presented credentialSubject
+    # Invariant: Original issuer-signed VC is preserved byte-for-byte and unchanged
     vc_in_vp = vp_token["verifiableCredential"][0]
-    subject = vc_in_vp["credentialSubject"]
-    assert "degree" in subject
-    assert "affiliation" in subject
-    assert "graduationYear" not in subject, "Unapproved claim 'graduationYear' leaked into payload!"
-    assert "programCode" not in subject, "Unapproved claim 'programCode' leaked into payload!"
+    assert vc_in_vp == stored_vc, "Issuer VC was mutated during presentation construction!"
+    assert vc_in_vp["proof"] == stored_vc["proof"], "Issuer proof was modified or stripped!"
+
+    # Verify original issuer proof is valid on the embedded VC
+    now_ts = datetime.now(UTC)
+    proof_service = build_local_proof_service(clock=lambda: now_ts)
+    vc_verify_res = proof_service.verify_credential(vc_in_vp, verified_at=now_ts)
+    assert vc_verify_res.is_valid is True, f"Issuer proof failed verification: {vc_verify_res}"
 
     # Real presentation proof exists
     vp_proof = vp_token["proof"]
@@ -454,6 +457,7 @@ def test_wp07_security_negative_reused_consent_after_consumption():
         "/api/v1/oid4vp/presentation",
         json={
             "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
             "disclosedClaims": {"affiliation": "student"},
             "holderDid": SYNTHETIC_HOLDER_DID,
         },
@@ -486,13 +490,15 @@ def test_wp07_security_negative_tampered_holder_presentation_proof_fails():
     session_id = session_data["sessionId"]
     nonce = session_data["nonce"]
 
+    stored_vc = _build_signed_vc()
+
     # Record consent
     client.post(
         f"/api/v1/oid4vp/requests/{session_id}/consent",
         json={
             "decision": "APPROVE",
             "holderDid": SYNTHETIC_HOLDER_DID,
-            "approvedCredentials": ["cred_1"],
+            "approvedCredentials": [stored_vc["id"]],
             "approvedClaims": {"affiliation": "student"},
         },
     )
@@ -501,6 +507,7 @@ def test_wp07_security_negative_tampered_holder_presentation_proof_fails():
         "/api/v1/oid4vp/presentation",
         json={
             "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
             "disclosedClaims": {"affiliation": "student"},
             "holderDid": SYNTHETIC_HOLDER_DID,
         },
@@ -588,3 +595,568 @@ def test_wp07_privacy_audit_log_contains_no_raw_claims_or_private_keys():
         assert "Confidential Degree Data" not in meta_str, f"Audit event leaked raw claim value: {meta_str}"
         assert "private_key" not in meta_str.lower()
         assert "d_multibase" not in meta_str.lower()
+
+
+# ==============================================================================
+# SECTION C: CORRECTIVE REGRESSION SUITE (WP-07 VC PRESERVATION & SEMANTIC INTEGRITY)
+# ==============================================================================
+
+
+def test_wp07_regression_01_issuer_vc_remains_unchanged_after_presentation_creation():
+    """1. issuer-signed VC remains unchanged after presentation creation."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student", "degree": "Master of Science"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "disclosedClaims": {"affiliation": "student", "degree": "Master of Science"},
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 200
+    vp_token = pres_res.json()["vpToken"]
+    embedded_vc = vp_token["verifiableCredential"][0]
+
+    # Exact byte-for-byte / semantic identity
+    assert embedded_vc == stored_vc
+    assert embedded_vc["credentialSubject"] == stored_vc["credentialSubject"]
+
+
+def test_wp07_regression_02_original_issuer_proof_remains_present():
+    """2. original issuer proof remains present."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 200
+    vp_token = pres_res.json()["vpToken"]
+    embedded_vc = vp_token["verifiableCredential"][0]
+
+    assert "proof" in embedded_vc
+    assert embedded_vc["proof"] == stored_vc["proof"]
+    assert embedded_vc["proof"]["cryptosuite"] == "eddsa-jcs-2022"
+
+
+def test_wp07_regression_03_issuer_proof_still_verifies_after_presentation_creation():
+    """3. issuer proof still verifies after presentation creation."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    vp_token = pres_res.json()["vpToken"]
+    embedded_vc = vp_token["verifiableCredential"][0]
+
+    now_ts = datetime.now(UTC)
+    proof_service = build_local_proof_service(clock=lambda: now_ts)
+    verify_result = proof_service.verify_credential(embedded_vc, verified_at=now_ts)
+    assert verify_result.is_valid is True
+
+
+def test_wp07_regression_04_holder_proof_verifies_independently():
+    """4. holder proof verifies independently."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    vp_token = pres_res.json()["vpToken"]
+
+    # Holder proof structure
+    vp_proof = vp_token["proof"]
+    assert vp_proof["type"] == "DataIntegrityProof"
+    assert vp_proof["cryptosuite"] == "eddsa-jcs-2022"
+    assert vp_proof["proofPurpose"] == "authentication"
+    assert vp_proof["challenge"] == session_data["nonce"]
+    assert vp_proof["domain"] == session_data.get("clientId", "http://testserver/verifier")
+    assert vp_proof["verificationMethod"].startswith(f"{SYNTHETIC_HOLDER_DID}#")
+
+    # Cryptographic independence verification
+    from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
+    from app.infrastructure.crypto.multibase import decode_base58_btc
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    unsecured_vp = copy.deepcopy(vp_token)
+    unsecured_vp.pop("proof")
+    proof_config = copy.deepcopy(vp_proof)
+    proof_config.pop("proofValue")
+
+    canonicalizer = JcsCanonicalizer()
+    signing_input = canonicalizer.create_signing_input(unsecured_vp, proof_config)
+    sig_bytes = decode_base58_btc(vp_proof["proofValue"])
+
+    # Holder public key extracted from DID
+    pub_bytes = decode_base58_btc(SYNTHETIC_HOLDER_DID.split("did:key:")[1])[2:]
+    holder_public_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
+    holder_public_key.verify(sig_bytes, signing_input)
+
+
+def test_wp07_regression_05_mutating_issuer_credential_after_issuance_causes_verification_failure():
+    """5. mutating an issuer-signed credential after issuance causes issuer verification failure."""
+    stored_vc = _build_signed_vc()
+    now_ts = datetime.now(UTC)
+    proof_service = build_local_proof_service(clock=lambda: now_ts)
+
+    # Initial credential is valid
+    assert proof_service.verify_credential(stored_vc, verified_at=now_ts).is_valid is True
+
+    # Mutate a claim in credentialSubject
+    tampered_vc = copy.deepcopy(stored_vc)
+    tampered_vc["credentialSubject"]["degree"] = "Forged Ph.D."
+    tampered_res = proof_service.verify_credential(tampered_vc, verified_at=now_ts)
+    assert tampered_res.is_valid is False
+
+    # Mutate credentialSubject id
+    tampered_id_vc = copy.deepcopy(stored_vc)
+    tampered_id_vc["credentialSubject"]["id"] = "did:key:z6MktamperedHolderDID99999999999999999"
+    tampered_id_res = proof_service.verify_credential(tampered_id_vc, verified_at=now_ts)
+    assert tampered_id_res.is_valid is False
+
+
+def test_wp07_regression_06_no_consent_decision_presentation_generation_rejected():
+    """6. no consent decision => presentation generation rejected."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    # Attempt to generate presentation without recorded consent
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 400
+    assert "Consent decision is required" in pres_res.text
+
+
+def test_wp07_regression_07_rejected_consent_presentation_generation_rejected():
+    """7. rejected consent => presentation generation rejected."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    # Explicitly reject consent
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "REJECT",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "rejectionReason": "User explicitly declined",
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 409
+
+
+def test_wp07_regression_08_cross_session_consent_cannot_authorize_another_session():
+    """8. cross-session consent cannot authorize another session."""
+    session_a = _create_oid4vp_session()
+    session_b = _create_oid4vp_session()
+    stored_vc = _build_signed_vc()
+
+    # Record consent for Session A
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_a['sessionId']}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    # Attempt to generate presentation for Session B (which has no consent)
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_b["sessionId"],
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 400
+    assert "Consent decision is required" in pres_res.text
+
+
+def test_wp07_regression_09_unauthorized_credential_cannot_be_inserted_into_vp():
+    """9. unauthorized credential cannot be inserted into the VP."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    approved_vc = _build_signed_vc()
+    unauthorized_vc = _build_signed_vc()
+
+    # Consent only approves approved_vc
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [approved_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    # Attempt to present ONLY the unauthorized credential -> fails closed
+    pres_res_bad = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [unauthorized_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res_bad.status_code == 400
+    assert "No approved credentials match" in pres_res_bad.text
+
+    # Passing both: presentation generator filters out unauthorized credential
+    pres_res_both = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [approved_vc, unauthorized_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res_both.status_code == 200
+    presented_ids = [c["id"] for c in pres_res_both.json()["vpToken"]["verifiableCredential"]]
+    assert approved_vc["id"] in presented_ids
+    assert unauthorized_vc["id"] not in presented_ids
+
+
+def test_wp07_regression_10_unauthorized_claims_cannot_be_represented_as_disclosed_claims():
+    """10. unauthorized claims cannot be represented as cryptographically disclosed claims."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+            "rejectedClaims": ["degree"],
+        },
+    )
+
+    # Disclosed claims requesting unapproved claim 'degree' is rejected at presentation creation
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "disclosedClaims": {"affiliation": "student", "degree": "Master of Science"},
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 400
+    assert "not authorized by holder consent" in pres_res.text
+
+
+def test_wp07_regression_11_canonical_golden_path_uses_only_issuer_signed_credentials():
+    """11. canonical Golden Path uses only issuer-signed credentials."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 200
+    vp_token = pres_res.json()["vpToken"]
+    embedded_vc = vp_token["verifiableCredential"][0]
+
+    assert embedded_vc["issuer"] == stored_vc["issuer"]
+    assert embedded_vc["proof"]["verificationMethod"].startswith(stored_vc["issuer"])
+    assert embedded_vc["proof"]["proofValue"] == stored_vc["proof"]["proofValue"]
+
+
+def test_wp07_regression_12_no_synthetic_issuer_private_key_used_during_presentation():
+    """12. no synthetic issuer private key is used during presentation generation."""
+    from unittest.mock import patch
+
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    with patch("app.application.services.credential_proof_service.CredentialProofService.sign_credential") as mock_sign:
+        pres_res = client.post(
+            "/api/v1/oid4vp/presentation",
+            json={
+                "sessionId": session_id,
+                "verifiableCredentials": [stored_vc],
+                "holderDid": SYNTHETIC_HOLDER_DID,
+            },
+        )
+        assert pres_res.status_code == 200
+        # Assert sign_credential was NEVER called during presentation generation
+        mock_sign.assert_not_called()
+
+
+def test_wp07_regression_13_no_private_keys_or_signatures_in_audit_logs():
+    """13. no private keys/signatures/raw sensitive claim payloads are written to audit logs."""
+    from app.api.v1.dependencies import get_mongo_connection_manager, get_audit_event_repository
+
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"degree": "Master of Science", "affiliation": "student"},
+        },
+    )
+
+    client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+
+    manager = get_mongo_connection_manager()
+    audit_repo = get_audit_event_repository(manager=manager)
+    events = audit_repo.list_by_subject(session_id)
+    assert len(events) >= 2
+
+    for ev in events:
+        meta_str = str(ev.metadata).lower()
+        assert "private_key" not in meta_str
+        assert "d_multibase" not in meta_str
+        assert "proofvalue" not in meta_str
+
+
+def test_wp07_regression_14_verifier_rejects_vp_with_tampered_issuer_vc_even_with_valid_holder_proof():
+    """14. verifier rejects a VP containing a tampered issuer VC even when the holder proof is valid."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    nonce = session_data["nonce"]
+    client_id = session_data.get("clientId", "http://testserver/verifier")
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    # Tamper the issuer credential's degree
+    tampered_vc = copy.deepcopy(stored_vc)
+    tampered_vc["credentialSubject"]["degree"] = "Forged Degree"
+
+    # Wrap tampered VC in a FRESH, cryptographically valid holder presentation proof
+    vp = build_signed_presentation(
+        tampered_vc,
+        nonce=nonce,
+        domain=client_id,
+        holder_did=SYNTHETIC_HOLDER_DID,
+    )
+
+    post_res = client.post(
+        "/api/v1/oid4vp/response",
+        json={
+            "sessionId": session_id,
+            "vpToken": vp,
+            "aiRiskScore": 10,
+        },
+    )
+    assert post_res.status_code == 200
+    res = post_res.json()["result"]
+    assert res["signatureValid"] is False, "Verifier accepted a tampered issuer signature!"
+    assert res["finalPolicyResult"] == "REJECTED"
+
+
+def test_wp07_regression_15_verifier_accepts_unchanged_issuer_vc_with_valid_holder_proof():
+    """15. verifier accepts the unchanged issuer VC + valid holder-bound VP proof when all trust/status/expiry/session checks pass."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    nonce = session_data["nonce"]
+    client_id = session_data.get("clientId", "http://testserver/verifier")
+    stored_vc = _build_signed_vc()
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student", "degree": "Master of Science"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 200
+    vp_token = pres_res.json()["vpToken"]
+
+    post_res = client.post(
+        "/api/v1/oid4vp/response",
+        json={
+            "sessionId": session_id,
+            "vpToken": vp_token,
+            "disclosedClaims": {"affiliation": "student", "degree": "Master of Science"},
+            "aiRiskScore": 10,
+        },
+    )
+    assert post_res.status_code == 200
+    res = post_res.json()["result"]
+    assert res["signatureValid"] is True
+    assert res["holderBindingValid"] is True
+    assert res["challengeValid"] is True
+    assert res["issuerTrusted"] is True
+    assert res["finalPolicyResult"] == "ACCEPTED"
+
+
+def test_wp07_regression_old_behavior_removed_proof_and_re_signing_impossible():
+    """Explicit regression against old defect: proof is never stripped and issuer re-signing is never performed."""
+    session_data = _create_oid4vp_session()
+    session_id = session_data["sessionId"]
+    stored_vc = _build_signed_vc()
+    original_proof = copy.deepcopy(stored_vc["proof"])
+
+    client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/consent",
+        json={
+            "decision": "APPROVE",
+            "holderDid": SYNTHETIC_HOLDER_DID,
+            "approvedCredentials": [stored_vc["id"]],
+            "approvedClaims": {"affiliation": "student"},
+        },
+    )
+
+    pres_res = client.post(
+        "/api/v1/oid4vp/presentation",
+        json={
+            "sessionId": session_id,
+            "verifiableCredentials": [stored_vc],
+            "holderDid": SYNTHETIC_HOLDER_DID,
+        },
+    )
+    assert pres_res.status_code == 200
+    vp_token = pres_res.json()["vpToken"]
+
+    embedded_vc = vp_token["verifiableCredential"][0]
+    # Proof was NEVER stripped or re-signed
+    assert embedded_vc["proof"] == original_proof
+    assert embedded_vc["proof"]["proofValue"] == original_proof["proofValue"]
+    assert embedded_vc["credentialSubject"] == stored_vc["credentialSubject"]
+

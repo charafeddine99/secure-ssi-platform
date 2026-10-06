@@ -102,6 +102,10 @@ class ConsentDecision:
         return self.decision
 
     @property
+    def user_approved(self) -> bool:
+        return self.decision == ConsentAction.APPROVE
+
+    @property
     def timestamp(self) -> datetime:
         return self.created_at
 
