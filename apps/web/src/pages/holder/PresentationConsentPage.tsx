@@ -6,6 +6,8 @@ import {
   getOid4vpSession,
   submitOid4vpDirectPost,
   rejectOid4vpSession,
+  recordOid4vpConsent,
+  createOid4vpPresentation,
   fetchCredentials,
   Oid4vpSession,
   BackendCredential,
@@ -125,9 +127,12 @@ export const PresentationConsentPage: React.FC = () => {
     setStatusMessage(null);
 
     const disclosedValues: Record<string, any> = {};
+    const rejectedList: string[] = [];
     Object.entries(selectedClaims).forEach(([k, isSelected]) => {
       if (isSelected && claimsData[k] !== undefined) {
         disclosedValues[k] = claimsData[k];
+      } else {
+        rejectedList.push(k);
       }
     });
 
@@ -135,48 +140,36 @@ export const PresentationConsentPage: React.FC = () => {
       localStorage.getItem("ssi_user_did") ||
       "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP";
 
-    const targetSessionId = stateSessionId || session?.sessionId || "demo_session_12345";
-    const nonce = session?.nonce || "mock_challenge_nonce_2026";
-
-    // Build standard W3C VP token
-    const vpToken = {
-      "@context": ["https://www.w3.org/ns/credentials/v2"],
-      type: ["VerifiablePresentation"],
-      verifiableCredential: [
-        {
-          "@context": [
-            "https://www.w3.org/ns/credentials/v2",
-            "https://secure-ssi.example/contexts/university-affiliation/v1",
-          ],
-          id: stateCred?.id || "urn:uuid:00000000-0000-4000-8000-000000000001",
-          type: ["VerifiableCredential", stateCred?.credential_type || "UniversityAffiliationCredential"],
-          issuer: stateCred?.issuer || "did:web:issuer.example",
-          validFrom: stateCred?.issued_date ? `${stateCred.issued_date}T00:00:00Z` : "2026-01-01T00:00:00Z",
-          validUntil: stateCred?.expiry_date ? `${stateCred.expiry_date}T00:00:00Z` : "2028-01-01T00:00:00Z",
-          credentialSubject: {
-            id: holderDid,
-            ...disclosedValues,
-          },
-          proof: {
-            type: "DataIntegrityProof",
-            cryptosuite: "eddsa-jcs-2022",
-            proofValue: stateCred?.proof_value || "z2DBDjSRR4iBwcgJBJ4FCnRphCVJULnHK19J7wwM9VfWoUpt5kgQBoMZNt91gV3ckUVrsJdDf22xpxo1PPXQ2JmYx",
-          },
-        },
-      ],
-      proof: {
-        type: "DataIntegrityProof",
-        cryptosuite: "eddsa-jcs-2022",
-        nonce: nonce,
-        proofValue: "zMockHolderPresentationProofValue2026",
-      },
-    };
+    const targetSessionId = stateSessionId || session?.sessionId;
+    const credId = stateCred?.id || "urn:uuid:00000000-0000-4000-8000-000000000001";
 
     try {
-      if (stateSessionId || session?.sessionId) {
+      if (targetSessionId) {
+        // Step 1: Record authoritative domain consent decision bound to session, claims, and nonce
+        await recordOid4vpConsent({
+          sessionId: targetSessionId,
+          action: "APPROVE",
+          holderDid,
+          approvedCredentials: [credId],
+          approvedClaims: disclosedValues,
+          rejectedClaims: rejectedList,
+          verifierDid: session?.verifierDid,
+          clientId: session?.clientId,
+          nonce: session?.nonce,
+          purpose: session?.purpose,
+        });
+
+        // Step 2: Request real cryptographic presentation proof with DataIntegrityProof eddsa-jcs-2022
+        const presentationRes = await createOid4vpPresentation({
+          sessionId: targetSessionId,
+          disclosedClaims: disclosedValues,
+          holderDid,
+        });
+
+        // Step 3: Direct Post submission to verifier
         await submitOid4vpDirectPost({
           sessionId: targetSessionId,
-          vpToken,
+          vpToken: presentationRes.vpToken,
           disclosedClaims: disclosedValues,
           aiRiskScore: 12,
         });
@@ -203,10 +196,15 @@ export const PresentationConsentPage: React.FC = () => {
 
     try {
       if (targetSessionId) {
-        await rejectOid4vpSession({
+        await recordOid4vpConsent({
           sessionId: targetSessionId,
-          reason: "Holder declined presentation consent",
+          action: "REJECT",
           holderDid,
+          rejectedClaims: Object.keys(claimsData),
+          verifierDid: session?.verifierDid,
+          clientId: session?.clientId,
+          nonce: session?.nonce,
+          purpose: session?.purpose,
         });
       }
       setStatusMessage({ type: "rejected", text: "Verification request declined. Session terminated and audited." });
@@ -260,10 +258,10 @@ export const PresentationConsentPage: React.FC = () => {
             <TrustBadge level="DEMO_TRUST_LEVEL" size="sm" />
           </div>
           <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Consent Sheet & Selective Disclosure
+            Consent Review & Claim Minimization
           </h2>
           <p style={{ fontSize: "0.82rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Review the verifier's identity, stated purpose, and choose which attributes to disclose. Unselected claims remain cryptographically withheld.
+            Review the verifier's identity, stated purpose, and choose which claims to share. Unapproved claims are omitted from the constructed presentation via claim minimization.
           </p>
         </div>
 
@@ -358,17 +356,17 @@ export const PresentationConsentPage: React.FC = () => {
           }}
         >
           <span style={{ color: "#93c5fd" }}>
-            <strong>{revealedCount}</strong> attributes selectively disclosed
+            <strong>{revealedCount}</strong> claims approved to share
           </span>
           <span style={{ color: "#34d399", fontWeight: 600 }}>
-            🔒 {hiddenCount} attributes strictly minimized & withheld
+            🔒 {hiddenCount} claims omitted via claim minimization
           </span>
         </div>
 
         {/* Claims Disclosure Selection */}
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#f8fafc" }}>
-            Granular Attribute Disclosure (Click to Toggle):
+            Requested Claims (Click to Approve or Omit):
           </span>
 
           {Object.entries(claimsData).map(([key, val]) => {
@@ -394,7 +392,7 @@ export const PresentationConsentPage: React.FC = () => {
                     {key}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: isRevealed ? "#93c5fd" : "#475569", marginTop: "2px" }}>
-                    {isRevealed ? String(val) : "•••••••••••• (Withheld / Minimized)"}
+                    {isRevealed ? String(val) : "•••••••••••• (Omitted / Minimized)"}
                   </div>
                 </div>
 
@@ -409,7 +407,7 @@ export const PresentationConsentPage: React.FC = () => {
                       color: isRevealed ? "#34d399" : "#64748b",
                     }}
                   >
-                    {isRevealed ? "DISCLOSED" : "HIDDEN"}
+                    {isRevealed ? "APPROVED" : "OMITTED"}
                   </span>
                   {isRevealed ? <Eye size={16} color="#60a5fa" /> : <EyeOff size={16} color="#475569" />}
                 </div>
@@ -441,7 +439,7 @@ export const PresentationConsentPage: React.FC = () => {
             style={{ marginTop: "2px", accentColor: "#2563eb", cursor: "pointer" }}
           />
           <span>
-            I explicitly grant consent to transmit the selected <strong>{revealedCount} attributes</strong> to <strong>{verifierName}</strong> for the verified purpose. Minimized attributes will remain withheld.
+            I explicitly grant consent to transmit the selected <strong>{revealedCount} claims</strong> to <strong>{verifierName}</strong> for the verified purpose. Unapproved claims will be omitted.
           </span>
         </label>
 
@@ -468,7 +466,7 @@ export const PresentationConsentPage: React.FC = () => {
             }}
           >
             <XCircle size={16} />
-            {rejecting ? "Declining..." : "Decline Request"}
+            {rejecting ? "Rejecting..." : "Reject Request"}
           </button>
 
           <button
@@ -493,7 +491,7 @@ export const PresentationConsentPage: React.FC = () => {
             }}
           >
             <Send size={16} />
-            {presenting ? "Delivering VP via Direct Post..." : `Approve & Disclose (${revealedCount} Claims)`}
+            {presenting ? "Constructing Proof & Submitting..." : `Share These Claims (${revealedCount} Approved)`}
           </button>
         </div>
       </div>

@@ -32,6 +32,15 @@ class VerificationSessionRepository(Protocol):
     ) -> VerificationSession:
         ...
 
+    def record_consent(
+        self,
+        session_id: str,
+        *,
+        consent_decision: Any,
+        expected_version: int,
+    ) -> VerificationSession:
+        ...
+
     def list_by_verifier(
         self,
         verifier_did: str,

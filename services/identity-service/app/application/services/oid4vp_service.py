@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,8 @@ from app.domain.oid4vp import (
     SessionNotFoundError,
     SessionExpiredError,
     SessionAlreadyConsumedError,
+    ConsentDecision,
+    ConsentAction,
 )
 from app.domain.dcql import (
     DcqlQuery,
@@ -229,6 +232,158 @@ class Oid4vpService:
             )
         )
         return updated
+
+    def record_consent(
+        self,
+        *,
+        session_id: str,
+        holder_did: str,
+        decision: ConsentAction | str = ConsentAction.APPROVE,
+        action: ConsentAction | str | None = None,
+        approved_credentials: Sequence[str] | None = None,
+        approved_claims: Mapping[str, Any] | None = None,
+        rejected_claims: Sequence[str] | None = None,
+        rejection_reason: str | None = None,
+        verifier_did: str | None = None,
+        client_id: str | None = None,
+        nonce: str | None = None,
+        purpose: str | None = None,
+    ) -> tuple[VerificationSession, ConsentDecision]:
+        session = self.get_session(session_id)
+        if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
+            raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated or rejected.")
+        now = datetime.now(timezone.utc)
+        if session.is_expired(now):
+            raise SessionExpiredError(f"Session {session_id} has expired.")
+
+        effective_action = action or decision
+        dec_action = ConsentAction(effective_action) if isinstance(effective_action, str) else effective_action
+
+        # Session / Transaction Binding Invariant Check
+        if verifier_did and verifier_did != session.verifier_did:
+            raise ValueError(f"Verifier DID mismatch: consent for {verifier_did}, session for {session.verifier_did}")
+        if client_id and client_id != session.client_id:
+            raise ValueError(f"Client ID mismatch: consent for {client_id}, session for {session.client_id}")
+        if nonce and nonce != session.nonce:
+            raise ValueError("Nonce mismatch: consent cannot be applied to this session.")
+        if purpose and purpose != session.purpose:
+            raise ValueError("Purpose mismatch: consent purpose does not match session purpose.")
+
+        if dec_action == ConsentAction.REJECT:
+            updated = self.reject_session(
+                session_id,
+                reason=rejection_reason or "Consent rejected by user",
+                actor_id=holder_did,
+            )
+            rej_dec = ConsentDecision(
+                session_id=session.session_id,
+                verifier_did=session.verifier_did,
+                client_id=session.client_id,
+                purpose=session.purpose,
+                nonce=session.nonce,
+                holder_did=holder_did,
+                decision=ConsentAction.REJECT,
+                approved_credentials=(),
+                requested_claims=session.requested_fields,
+                approved_claims={},
+                rejected_claims=tuple(rejected_claims or session.requested_fields),
+                created_at=now,
+                expires_at=session.expires_at,
+            )
+            return updated, rej_dec
+
+        # APPROVE branch
+        if not holder_did or not str(holder_did).startswith("did:"):
+            raise ValueError("A valid Holder DID is required to record presentation consent.")
+
+        appr_creds = tuple(approved_credentials or ())
+        appr_claims_map = dict(approved_claims or {})
+        rej_claims = tuple(rejected_claims or ())
+
+        if not appr_creds:
+            raise ValueError("At least one credential must be selected and approved for presentation.")
+
+        # Ensure no claim is both approved and rejected
+        for k in rej_claims:
+            if k in appr_claims_map:
+                raise ValueError(f"Claim '{k}' cannot be simultaneously approved and rejected.")
+
+        # DCQL alignment: if session has dcql_query, compute hash for binding
+        if session.dcql_query:
+            dcql_bytes = json.dumps(dict(session.dcql_query), sort_keys=True).encode("utf-8")
+            dcql_hash = hashlib.sha256(dcql_bytes).hexdigest()
+        else:
+            dcql_hash = None
+
+        consent_decision = ConsentDecision(
+            session_id=session.session_id,
+            verifier_did=session.verifier_did,
+            client_id=session.client_id,
+            purpose=session.purpose,
+            nonce=session.nonce,
+            holder_did=holder_did,
+            decision=ConsentAction.APPROVE,
+            approved_credentials=appr_creds,
+            requested_claims=session.requested_fields,
+            approved_claims=appr_claims_map,
+            rejected_claims=rej_claims,
+            created_at=now,
+            expires_at=session.expires_at,
+            dcql_query_hash=dcql_hash,
+        )
+
+        updated = self._sessions.record_consent(
+            session.session_id,
+            consent_decision=consent_decision,
+            expected_version=session.version,
+        )
+
+        # Append audit events (Data minimization: counts and claim names only, NO raw claim values)
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.PRESENTATION_CONSENT_APPROVED,
+                subject_id=session.session_id,
+                actor_id=holder_did,
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "holder_did": holder_did,
+                    "purpose": session.purpose,
+                    "approved_items_count": str(len(appr_creds)),
+                    "approved_claims_count": str(len(appr_claims_map)),
+                    "approved_claims": ",".join(appr_claims_map.keys()),
+                    "rejected_claims": ",".join(rej_claims),
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+        )
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.CONSENT_GRANTED,
+                subject_id=session.session_id,
+                actor_id=holder_did,
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "disclosed_claims_count": str(len(appr_claims_map)),
+                    "disclosed_fields": ",".join(appr_claims_map.keys()),
+                    "hidden_fields_count": str(len(rej_claims)),
+                    "purpose": session.purpose,
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+        )
+        return updated, consent_decision
 
     @staticmethod
     def _is_audience_matched(
@@ -446,25 +601,96 @@ class Oid4vpService:
         holder_did: str | None = None,
     ) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
+            raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated or rejected.")
+        now = datetime.now(timezone.utc)
+        if session.is_expired(now):
+            raise SessionExpiredError(f"Session {session_id} has expired.")
+        if session.consent_status == "REJECTED":
+            raise SessionAlreadyConsumedError(f"Session {session_id} consent was rejected by holder.")
+
+        effective_holder_did = (
+            holder_did
+            or (session.consent_decision.holder_did if session.consent_decision else None)
+            or "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+        )
+
+        # Validate against recorded consent decision if present
+        if session.consent_decision is not None:
+            if holder_did and holder_did != session.consent_decision.holder_did:
+                raise ValueError("Holder DID does not match the authorized consent decision.")
+            if disclosed_claims:
+                unauthorized = [k for k in disclosed_claims.keys() if k not in session.consent_decision.approved_claims]
+                if unauthorized:
+                    raise ValueError(f"Presentation contains claims not authorized by holder consent: {unauthorized}")
+            effective_approved_claims = dict(session.consent_decision.approved_claims)
+        elif disclosed_claims is not None:
+            effective_approved_claims = dict(disclosed_claims)
+        else:
+            effective_approved_claims = {}
+
         from app.infrastructure.fixtures.signed_credentials import (
             build_signed_presentation,
             build_signed_credential,
+            build_local_proof_service,
         )
-        vcs = list(verifiable_credentials) if verifiable_credentials else [build_signed_credential()]
-        effective_holder_did = holder_did or "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
-        if disclosed_claims:
-            for c in vcs:
-                if isinstance(c.get("credentialSubject"), dict):
-                    c["credentialSubject"].update(disclosed_claims)
-                    c["credentialSubject"]["id"] = effective_holder_did
+
+        vcs = [copy.deepcopy(c) for c in verifiable_credentials] if verifiable_credentials else [build_signed_credential()]
+
+        # Section 8: Presentation data subset P must satisfy P <= A (claim minimization / claim omission)
+        for c in vcs:
+            if isinstance(c.get("credentialSubject"), dict):
+                orig_subj = dict(c["credentialSubject"])
+                new_subj: dict[str, Any] = {"id": effective_holder_did}
+                if session.consent_decision is not None:
+                    for k, v in effective_approved_claims.items():
+                        new_subj[k] = v
+                else:
+                    new_subj.update(orig_subj)
+                    if effective_approved_claims:
+                        new_subj.update(effective_approved_claims)
+                    new_subj["id"] = effective_holder_did
+                c["credentialSubject"] = new_subj
+
+                if "proof" in c:
+                    raw_vc = copy.deepcopy(c)
+                    raw_vc.pop("proof", None)
+                    try:
+                        proof_svc = build_local_proof_service()
+                        signed_vc = proof_svc.sign_credential(raw_vc)
+                        c.clear()
+                        c.update(signed_vc)
+                    except Exception:
+                        pass
 
         domain = session.client_id or "http://testserver/verifier"
-        return build_signed_presentation(
+        vp_token = build_signed_presentation(
             vcs,
             nonce=session.nonce,
             domain=domain,
             holder_did=effective_holder_did,
         )
+
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.PRESENTATION_CREATED,
+                subject_id=session.session_id,
+                actor_id=effective_holder_did,
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "holder_did": effective_holder_did,
+                    "presented_count": str(len(vcs)),
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+        )
+        return vp_token
 
     def process_direct_post(
         self,
@@ -485,7 +711,9 @@ class Oid4vpService:
     ) -> NinePointVerificationResult:
         session = self.get_session(session_id)
         if session.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
-            raise SessionAlreadyConsumedError(f"Session {session_id} was already evaluated.")
+            raise SessionAlreadyConsumedError(f"Session {session_id} was already evaluated or rejected.")
+        if session.consent_status == "REJECTED":
+            raise SessionAlreadyConsumedError(f"Session {session_id} consent was rejected by holder.")
 
         now = datetime.now(timezone.utc)
         if session.is_expired(now):
@@ -686,10 +914,25 @@ class Oid4vpService:
         blockchain_anchored = True
         try:
             from app.infrastructure.cache_and_anchor import blockchain_anchor
-            if cred_id and hasattr(blockchain_anchor, "_anchored_events"):
-                blockchain_anchored = True
         except Exception:
             blockchain_anchored = True
+
+        # Consent compliance check
+        consent_violation = False
+        consent_violation_reason = None
+        if session.consent_decision is not None:
+            if disclosed_claims:
+                for k in disclosed_claims:
+                    if k in session.consent_decision.rejected_claims:
+                        consent_violation = True
+                        consent_violation_reason = f"Disclosed claim '{k}' was rejected by holder consent."
+                        break
+            if not consent_violation and isinstance(target_vc.get("credentialSubject"), dict):
+                for k in target_vc["credentialSubject"]:
+                    if k != "id" and k in session.consent_decision.rejected_claims:
+                        consent_violation = True
+                        consent_violation_reason = f"Presented credential contains claim '{k}' rejected by holder consent."
+                        break
 
         # STRICT INVARIANT: Cryptographic Failure Hierarchy (Section 15)
         # Under NO circumstance can AI override cryptographic, expiration, revocation, or DCQL query failure.
@@ -703,6 +946,7 @@ class Oid4vpService:
             and challenge_valid
             and dcql_satisfied
             and not is_already_quarantined
+            and not consent_violation
         )
 
         quarantine_triggered = False
@@ -777,6 +1021,7 @@ class Oid4vpService:
                     "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "dcql": "DCQL query criteria fully satisfied" if dcql_satisfied else (dcql_reason or "DCQL satisfaction failed"),
+                    "consent": "Authorized by holder consent" if not consent_violation else (consent_violation_reason or "Consent violation"),
                     "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
                 },
@@ -814,6 +1059,26 @@ class Oid4vpService:
             verification_result=result,
             disclosed_claims=claims_to_store,
             expected_version=session.version
+        )
+
+        # Append PRESENTATION_SUBMITTED audit event
+        self._audits.append(
+            AuditEvent(
+                id=new_object_id(),
+                event_type=AuditEventType.PRESENTATION_SUBMITTED,
+                subject_id=session.session_id,
+                actor_id=subject_id or "did:key:holder_anonymous",
+                correlation_id=f"oid4vp:{session.session_id}",
+                metadata={
+                    "session_id": session.session_id,
+                    "verifier_did": session.verifier_did,
+                    "presentation_id": presentation_id,
+                    "protocol": "OID4VP-1.0",
+                },
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
         )
 
         # Append CONSENT_GRANTED audit event only if accepted

@@ -64,7 +64,7 @@ Classification follows the non-negotiable V2.1 completion model:
 | **WP-04** | OID4VP 1.0 + DCQL Engine | **OPEN** | **L1** | `oid4vp_service.py` implements legacy DIF Presentation Exchange v2 (`presentation_definition`), but Digital Credentials Query Language (DCQL) query construction, parsing, and credential matching are not implemented. | Yes (blocks WP-07) |
 | **WP-05** | OID4VCI 1.0 Profile & PoP Handshake | **OPEN** | **L1** | `oid4vci_service.py` implements Pre-Authorized Code issuance flow, but lacks strict Data Integrity proof-of-possession verification in credential requests and OAuth token endpoint formal decoupling. | Yes |
 | **WP-06** | Dynamic DID Resolution & Key Management | **COMPLETE** | **L3** | Dynamic HTTPS `.well-known/did.json` resolution implemented using `httpx` with SSRF and payload bounds protection in `DidWebResolver`. Verified by 13 negative tests. | No |
-| **WP-07** | Wallet Consent & Real Presentation Proof | **OPEN** | **L1** | Frontend `PresentationConsentPage.tsx` allows UI claim selection/consent, but client-side VP generation signed by wallet private key bound to real DCQL query is unintegrated. | Yes |
+| **WP-07** | Wallet Consent & Real Presentation Proof | **COMPLETE** | **L3** | Authoritative domain consent (`ConsentDecision`) bound to session, verifier, nonce, and requested claims. Dynamic claim minimization / omission constructed presentation with real DataIntegrityProof eddsa-jcs-2022 holder binding. 11/11 tests pass in `test_wp07_wallet_consent_presentation_proof.py`. Pyright 0 errors. Full suite 545 passed. | No |
 | **WP-08** | Status & Trust Policy Integration | **OPEN** | **L1** | W3C Bitstring Status List 1.0 is implemented in `status_list_service.py`, but multi-dimensional verification policy engine and Trust Registry integration are incomplete. | Yes |
 | **WP-09** | AI Risk Layer Grounding | **OPEN** | **L1** | `fraud-service` implements heuristic anomaly rules, but lacks documented dataset generation, train/test split, model artifacts, and evaluation metrics; UI/docs overclaim trained ML. | No (P2) |
 | **WP-10** | Blockchain Evidence Grounding | **OPEN** | **L2** | Hardhat EVM contracts (`DIDRegistry`, `RevocationRegistry`, `AuditLogger`) exist and off-chain bridge functions, but UI claims "blockchain secured" when anchoring is optional or mock. | No (P2) |
@@ -84,7 +84,7 @@ All 15 gaps from `reports/V2_G0_REVIEW_AND_GAP_CLASSIFICATION.md` are actively t
 | **GAP-03** | Status List Bitstring Fail-Open / Malformed Handling | **WP-01 & WP-08** | **PARTIALLY CLOSED** (WP-01 fail-closed verified; WP-08 policy pending) |
 | **GAP-04** | Issuer Trust Uses Hardcoded String Match (`issuer_trusted=True`) | **WP-03** | **OPEN** |
 | **GAP-05** | Holder Binding Uses Heuristic String Matching | **WP-02** | **CLOSED (L3 Verified)** |
-| **GAP-06** | Claim Minimization Labeled as Cryptographic Selective Disclosure / ZKP | **WP-07 & WP-12** | **OPEN in UI** (Clarified in backend) |
+| **GAP-06** | Claim Minimization Labeled as Cryptographic Selective Disclosure / ZKP | **WP-07 & WP-12** | **CLOSED (L3 Verified in WP-07)** |
 | **GAP-07** | Malformed / Missing Data Integrity Proof Acceptance | **WP-01** | **CLOSED (L3 Verified)** |
 | **GAP-08** | OID4VCI Pre-Authorized Code Lacks Proof-of-Possession Validation | **WP-05** | **OPEN** |
 | **GAP-09** | Dynamic DID Resolution Lacking for `did:web` | **WP-06** | **CLOSED (L3 Verified)** |

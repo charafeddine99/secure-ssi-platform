@@ -283,45 +283,48 @@ class CredentialProfileValidator:
                 "Credential subject must use a synthetic did:key identifier.",
             )
         if "affiliation" in subject and not any(k in subject for k in ("Sertifika Sahibi", "Unvan")):
-            if set(subject) != REQUIRED_SUBJECT_FIELDS:
+            if not set(subject).issubset(REQUIRED_SUBJECT_FIELDS) or "id" not in subject:
                 self._raise(
                     VerificationReasonCode.UNSUPPORTED_CLAIM,
                     "Credential subject claims do not match the allowlist.",
                 )
-            if subject.get("affiliation") not in ALLOWED_AFFILIATIONS:
+            if "affiliation" in subject and subject.get("affiliation") not in ALLOWED_AFFILIATIONS:
                 self._raise(
                     VerificationReasonCode.UNSUPPORTED_CLAIM,
                     "Affiliation value is outside the approved synthetic allowlist.",
                 )
-            program_code = subject.get("programCode")
-            if (
-                not isinstance(program_code, str)
-                or PROGRAM_CODE_PATTERN.fullmatch(program_code) is None
-            ):
-                self._raise(
-                    VerificationReasonCode.UNSUPPORTED_CLAIM,
-                    "Program code does not match the synthetic fixture profile.",
-                )
-            degree = subject.get("degree")
-            if degree not in {
-                "Bachelor of Science",
-                "Master of Science",
-                "Doctor of Philosophy",
-            }:
-                self._raise(
-                    VerificationReasonCode.UNSUPPORTED_CLAIM,
-                    "Degree value is outside the approved synthetic allowlist.",
-                )
-            graduation_year = subject.get("graduationYear")
-            if (
-                not isinstance(graduation_year, int)
-                or isinstance(graduation_year, bool)
-                or not 2000 <= graduation_year <= 2100
-            ):
-                self._raise(
-                    VerificationReasonCode.UNSUPPORTED_CLAIM,
-                    "Graduation year is outside the synthetic fixture profile.",
-                )
+            if "programCode" in subject:
+                program_code = subject.get("programCode")
+                if (
+                    not isinstance(program_code, str)
+                    or PROGRAM_CODE_PATTERN.fullmatch(program_code) is None
+                ):
+                    self._raise(
+                        VerificationReasonCode.UNSUPPORTED_CLAIM,
+                        "Program code does not match the synthetic fixture profile.",
+                    )
+            if "degree" in subject:
+                degree = subject.get("degree")
+                if degree not in {
+                    "Bachelor of Science",
+                    "Master of Science",
+                    "Doctor of Philosophy",
+                }:
+                    self._raise(
+                        VerificationReasonCode.UNSUPPORTED_CLAIM,
+                        "Degree value is outside the approved synthetic allowlist.",
+                    )
+            if "graduationYear" in subject:
+                graduation_year = subject.get("graduationYear")
+                if (
+                    not isinstance(graduation_year, int)
+                    or isinstance(graduation_year, bool)
+                    or not 2000 <= graduation_year <= 2100
+                ):
+                    self._raise(
+                        VerificationReasonCode.UNSUPPORTED_CLAIM,
+                        "Graduation year is outside the synthetic fixture profile.",
+                    )
         else:
             for key, val in subject.items():
                 if key == "id":

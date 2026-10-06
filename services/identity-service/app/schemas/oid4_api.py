@@ -136,6 +136,64 @@ class VerificationSessionResponse(Oid4ApiModel):
     requested_fields: list[str] = Field(default_factory=list)
     verification_result: dict[str, Any] | None = None
     disclosed_claims: dict[str, Any] | None = None
+    consent_decision: dict[str, Any] | None = None
+    approved_credentials: list[str] = Field(default_factory=list)
+    approved_claims: dict[str, Any] | None = None
+    rejected_claims: list[str] = Field(default_factory=list)
+
+class RecordConsentRequest(Oid4ApiModel):
+    decision: str = Field(
+        default="APPROVE",
+        validation_alias=AliasChoices("decision", "action"),
+    )
+    action: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("action", "decision"),
+    )
+    holder_did: str = Field(
+        ...,
+        validation_alias=AliasChoices("holder_did", "holderDid"),
+    )
+    approved_credentials: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("approved_credentials", "approvedCredentials"),
+    )
+    approved_claims: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("approved_claims", "approvedClaims"),
+    )
+    rejected_claims: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("rejected_claims", "rejectedClaims"),
+    )
+    rejection_reason: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rejection_reason", "rejectionReason"),
+    )
+    verifier_did: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("verifier_did", "verifierDid"),
+    )
+    client_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("client_id", "clientId"),
+    )
+    nonce: str | None = None
+    purpose: str | None = None
+
+class RecordConsentResponse(Oid4ApiModel):
+    session_id: str
+    status: str
+    consent_status: str
+    decision_id: str | None = None
+    action: str = "APPROVE"
+    decision: str = "APPROVE"
+    holder_did: str
+    approved_credentials: list[str] = Field(default_factory=list)
+    approved_claims: dict[str, Any] = Field(default_factory=dict)
+    rejected_claims: list[str] = Field(default_factory=list)
+    timestamp: datetime
+    rejection_reason: str | None = None
 
 class EvaluateDcqlRequest(Oid4ApiModel):
     candidate_credentials: list[dict[str, Any]] = Field(

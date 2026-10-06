@@ -30,6 +30,8 @@ from app.schemas.oid4_api import (
     CreateOid4vpPresentationResponse,
     EvaluateDcqlRequest,
     EvaluateDcqlResponse,
+    RecordConsentRequest,
+    RecordConsentResponse,
 )
 
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
@@ -235,6 +237,54 @@ def submit_direct_post(
 
 
 @router.post(
+    "/requests/{session_id}/consent",
+    response_model=RecordConsentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Record Holder Presentation Consent Decision",
+    description="Holder explicitly records an authoritative consent decision (APPROVE or REJECT) bound to session, claims, and credentials."
+)
+def record_presentation_consent(
+    session_id: str,
+    payload: RecordConsentRequest,
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> RecordConsentResponse:
+    try:
+        session, decision = service.record_consent(
+            session_id=session_id,
+            action=payload.action,
+            holder_did=payload.holder_did,
+            approved_credentials=payload.approved_credentials,
+            approved_claims=payload.approved_claims,
+            rejected_claims=payload.rejected_claims,
+            verifier_did=payload.verifier_did,
+            client_id=payload.client_id,
+            nonce=payload.nonce,
+            purpose=payload.purpose,
+        )
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except SessionExpiredError as e:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
+    except SessionAlreadyConsumedError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    return RecordConsentResponse(
+        session_id=session.session_id,
+        status=session.status.value,
+        consent_status=session.consent_status or decision.action.value,
+        decision_id=decision.decision_id,
+        action=decision.action.value,
+        holder_did=decision.holder_did,
+        approved_credentials=list(decision.approved_credentials),
+        approved_claims=dict(decision.approved_claims),
+        rejected_claims=list(decision.rejected_claims),
+        timestamp=decision.timestamp,
+        rejection_reason=session.rejection_reason,
+    )
+
+@router.post(
     "/presentation",
     response_model=CreateOid4vpPresentationResponse,
     status_code=status.HTTP_200_OK,
@@ -258,6 +308,8 @@ def create_oid4vp_presentation(
         raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
     except SessionAlreadyConsumedError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return CreateOid4vpPresentationResponse(
         session_id=payload.session_id,

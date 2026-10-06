@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, Mapping
 from bson import ObjectId
 from pymongo import DESCENDING
@@ -14,6 +15,8 @@ from app.domain.oid4vp import (
     NinePointVerificationResult,
     SessionNotFoundError,
     SessionAlreadyConsumedError,
+    ConsentDecision,
+    ConsentAction,
 )
 from app.domain.persistence import (
     DuplicateEntityError,
@@ -45,6 +48,10 @@ class VerificationSessionDocumentMapper:
             "consentStatus": session.consent_status,
             "rejectionReason": session.rejection_reason,
             "requestedFields": list(session.requested_fields),
+            "consentDecision": session.consent_decision.to_dict() if session.consent_decision else None,
+            "approvedCredentials": list(session.approved_credentials),
+            "approvedClaims": deepcopy(dict(session.approved_claims)) if session.approved_claims else None,
+            "rejectedClaims": list(session.rejected_claims),
             "version": session.version,
         }
 
@@ -77,6 +84,40 @@ class VerificationSessionDocumentMapper:
             except Exception:
                 dcql_data = {}
 
+        consent_dec_doc = doc.get("consentDecision")
+        consent_dec = None
+        if isinstance(consent_dec_doc, dict):
+            c_created = consent_dec_doc.get("createdAt")
+            if isinstance(c_created, str):
+                try:
+                    c_created = datetime.fromisoformat(c_created.replace("Z", "+00:00"))
+                except Exception:
+                    c_created = doc["createdAt"]
+            c_expires = consent_dec_doc.get("expiresAt")
+            if isinstance(c_expires, str):
+                try:
+                    c_expires = datetime.fromisoformat(c_expires.replace("Z", "+00:00"))
+                except Exception:
+                    c_expires = doc["expiresAt"]
+            dec_raw = consent_dec_doc.get("decision", "APPROVE")
+            dec_action = ConsentAction.REJECT if str(dec_raw).upper() == "REJECT" else ConsentAction.APPROVE
+            consent_dec = ConsentDecision(
+                session_id=consent_dec_doc.get("sessionId", doc["sessionId"]),
+                verifier_did=consent_dec_doc.get("verifierDid", doc["verifierDid"]),
+                client_id=consent_dec_doc.get("clientId", doc["clientId"]),
+                purpose=consent_dec_doc.get("purpose", doc.get("purpose", "")),
+                nonce=consent_dec_doc.get("nonce", doc["nonce"]),
+                holder_did=consent_dec_doc.get("holderDid", ""),
+                decision=dec_action,
+                approved_credentials=tuple(consent_dec_doc.get("approvedCredentials", ())),
+                requested_claims=tuple(consent_dec_doc.get("requestedClaims", ())),
+                approved_claims=deepcopy(consent_dec_doc.get("approvedClaims", {})),
+                rejected_claims=tuple(consent_dec_doc.get("rejectedClaims", ())),
+                created_at=c_created or doc["createdAt"],
+                expires_at=c_expires or doc["expiresAt"],
+                dcql_query_hash=consent_dec_doc.get("dcqlQueryHash"),
+            )
+
         return VerificationSession(
             id=str(doc["_id"]),
             session_id=doc["sessionId"],
@@ -96,6 +137,10 @@ class VerificationSessionDocumentMapper:
             consent_status=doc.get("consentStatus", "PENDING"),
             rejection_reason=doc.get("rejectionReason"),
             requested_fields=tuple(doc.get("requestedFields", ())),
+            consent_decision=consent_dec,
+            approved_credentials=tuple(doc.get("approvedCredentials", ())),
+            approved_claims=deepcopy(doc.get("approvedClaims")),
+            rejected_claims=tuple(doc.get("rejectedClaims", ())),
             version=doc.get("version", 1),
         )
 
@@ -194,6 +239,57 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
             )
         except PyMongoError as e:
             raise PersistenceUnavailableError(f"Failed to reject verification session {session_id}.") from e
+
+        if res.matched_count == 0:
+            current = self.get_by_session_id(session_id)
+            if current is None:
+                raise SessionNotFoundError(f"Session {session_id} not found.")
+            if current.status in {VerificationSessionStatus.VERIFIED, VerificationSessionStatus.REJECTED}:
+                raise SessionAlreadyConsumedError(f"Session {session_id} has already been evaluated or rejected.")
+            raise OptimisticLockError(f"Session {session_id} was modified concurrently.")
+
+        updated = self.get_by_session_id(session_id)
+        assert updated is not None
+        return updated
+
+    def record_consent(
+        self,
+        session_id: str,
+        *,
+        consent_decision: ConsentDecision,
+        expected_version: int,
+    ) -> VerificationSession:
+        try:
+            status_val = (
+                VerificationSessionStatus.REJECTED.value
+                if consent_decision.decision == ConsentAction.REJECT
+                else VerificationSessionStatus.PENDING.value
+            )
+            consent_status_val = (
+                "REJECTED"
+                if consent_decision.decision == ConsentAction.REJECT
+                else "APPROVED"
+            )
+            res = self._collection.update_one(
+                {
+                    "sessionId": session_id,
+                    "version": expected_version,
+                    "status": VerificationSessionStatus.PENDING.value,
+                },
+                {
+                    "$set": {
+                        "status": status_val,
+                        "consentStatus": consent_status_val,
+                        "consentDecision": consent_decision.to_dict(),
+                        "approvedCredentials": list(consent_decision.approved_credentials),
+                        "approvedClaims": deepcopy(dict(consent_decision.approved_claims)),
+                        "rejectedClaims": list(consent_decision.rejected_claims),
+                    },
+                    "$inc": {"version": 1},
+                },
+            )
+        except PyMongoError as e:
+            raise PersistenceUnavailableError(f"Failed to record consent for session {session_id}.") from e
 
         if res.matched_count == 0:
             current = self.get_by_session_id(session_id)

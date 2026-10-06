@@ -1284,6 +1284,7 @@ export interface Oid4vpSession {
   consentStatus?: "PENDING" | "GRANTED" | "REJECTED";
   rejectionReason?: string;
   verifierDid?: string;
+  clientId?: string;
   deepLinkUri: string;
   qrPayload: string;
   expiresAt: string;
@@ -1508,6 +1509,90 @@ export async function rejectOid4vpSession(payload: {
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Failed to reject OID4VP session: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder explicitly records an authoritative consent decision (APPROVE or REJECT)
+ */
+export interface Oid4vpConsentPayload {
+  sessionId: string;
+  action?: "APPROVE" | "REJECT";
+  decision?: "APPROVE" | "REJECT";
+  holderDid: string;
+  approvedCredentials?: string[];
+  approvedClaims?: Record<string, any>;
+  rejectedClaims?: string[];
+  verifierDid?: string;
+  clientId?: string;
+  nonce?: string;
+  purpose?: string;
+}
+
+export interface Oid4vpConsentResponse {
+  sessionId: string;
+  status: string;
+  consentStatus: string;
+  decisionId?: string;
+  action: string;
+  decision: string;
+  holderDid: string;
+  approvedCredentials: string[];
+  approvedClaims: Record<string, any>;
+  rejectedClaims: string[];
+  timestamp: string;
+  rejectionReason?: string;
+}
+
+export async function recordOid4vpConsent(payload: Oid4vpConsentPayload): Promise<Oid4vpConsentResponse> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(payload.sessionId)}/consent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      decision: payload.decision || payload.action || "APPROVE",
+      action: payload.action || payload.decision || "APPROVE",
+      holderDid: payload.holderDid,
+      approvedCredentials: payload.approvedCredentials || [],
+      approvedClaims: payload.approvedClaims || {},
+      rejectedClaims: payload.rejectedClaims || [],
+      verifierDid: payload.verifierDid,
+      clientId: payload.clientId,
+      nonce: payload.nonce,
+      purpose: payload.purpose,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to record consent: ${res.status} ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Holder requests backend to create cryptographic presentation proof bound to session nonce & audience
+ */
+export async function createOid4vpPresentation(payload: {
+  sessionId: string;
+  disclosedClaims?: Record<string, any>;
+  holderDid?: string;
+  verifiableCredentials?: any[];
+}): Promise<{ sessionId: string; vpToken: any }> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/presentation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: payload.sessionId,
+      disclosedClaims: payload.disclosedClaims,
+      holderDid: payload.holderDid,
+      verifiableCredentials: payload.verifiableCredentials || [],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to create signed presentation: ${res.status} ${err}`);
   }
   return res.json();
 }

@@ -72,6 +72,60 @@ class NinePointVerificationResult:
             "details": dict(self.details),
         }
 
+class ConsentAction(StrEnum):
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+
+
+import uuid
+
+@dataclass(frozen=True)
+class ConsentDecision:
+    session_id: str
+    verifier_did: str
+    client_id: str
+    purpose: str
+    nonce: str
+    holder_did: str
+    decision: ConsentAction
+    approved_credentials: tuple[str, ...]
+    requested_claims: tuple[str, ...]
+    approved_claims: Mapping[str, Any]
+    rejected_claims: tuple[str, ...] = field(default_factory=tuple)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    expires_at: datetime = field(default_factory=datetime.utcnow)
+    dcql_query_hash: str | None = None
+    decision_id: str = field(default_factory=lambda: f"urn:uuid:{uuid.uuid4()}")
+
+    @property
+    def action(self) -> ConsentAction:
+        return self.decision
+
+    @property
+    def timestamp(self) -> datetime:
+        return self.created_at
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "decisionId": self.decision_id,
+            "sessionId": self.session_id,
+            "verifierDid": self.verifier_did,
+            "clientId": self.client_id,
+            "purpose": self.purpose,
+            "nonce": self.nonce,
+            "holderDid": self.holder_did,
+            "decision": self.decision.value if hasattr(self.decision, "value") else str(self.decision),
+            "approvedCredentials": list(self.approved_credentials),
+            "requestedClaims": list(self.requested_claims),
+            "approvedClaims": dict(self.approved_claims),
+            "rejectedClaims": list(self.rejected_claims),
+            "createdAt": self.created_at.isoformat() if hasattr(self.created_at, "isoformat") else str(self.created_at),
+            "expiresAt": self.expires_at.isoformat() if hasattr(self.expires_at, "isoformat") else str(self.expires_at),
+            "dcqlQueryHash": self.dcql_query_hash,
+            "timestamp": self.created_at.isoformat() if hasattr(self.created_at, "isoformat") else str(self.created_at),
+        }
+
+
 @dataclass(frozen=True)
 class VerificationSession:
     id: str
@@ -92,6 +146,10 @@ class VerificationSession:
     consent_status: str = "PENDING"
     rejection_reason: str | None = None
     requested_fields: tuple[str, ...] = field(default_factory=tuple)
+    consent_decision: ConsentDecision | None = None
+    approved_credentials: tuple[str, ...] = field(default_factory=tuple)
+    approved_claims: Mapping[str, Any] | None = None
+    rejected_claims: tuple[str, ...] = field(default_factory=tuple)
     version: int = 1
 
     def __post_init__(self) -> None:
