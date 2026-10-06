@@ -293,7 +293,7 @@ class Oid4vpService:
             return updated, rej_dec
 
         # APPROVE branch
-        if not holder_did or not str(holder_did).startswith("did:"):
+        if not holder_did or not holder_did.startswith("did:"):
             raise ValueError("A valid Holder DID is required to record presentation consent.")
 
         appr_creds = tuple(approved_credentials or ())
@@ -399,7 +399,7 @@ class Oid4vpService:
         for raw in (session.client_id, session.verifier_did, session.response_uri):
             if not raw:
                 continue
-            cleaned = str(raw).strip()
+            cleaned = raw.strip()
             if cleaned:
                 candidates.add(cleaned)
                 candidates.add(cleaned.rstrip("/"))
@@ -420,7 +420,7 @@ class Oid4vpService:
         for value in (bound_audience, bound_domain):
             if not value:
                 continue
-            val_clean = str(value).strip().rstrip("/")
+            val_clean = value.strip().rstrip("/")
             if val_clean in candidates:
                 return True
             try:

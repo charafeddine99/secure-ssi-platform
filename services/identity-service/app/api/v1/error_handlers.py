@@ -538,7 +538,7 @@ async def http_error_handler(
     request: Request,
     error: HTTPException,
 ) -> JSONResponse:
-    message = str(error.detail) if error.detail else "The requested operation could not be completed."
+    message = error.detail if error.detail else "The requested operation could not be completed."
     return build_error_response(
         request_id=_request_id(request),
         status_code=error.status_code,

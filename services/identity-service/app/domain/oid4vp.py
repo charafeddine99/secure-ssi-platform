@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Mapping
 
@@ -92,8 +92,8 @@ class ConsentDecision:
     requested_claims: tuple[str, ...]
     approved_claims: Mapping[str, Any]
     rejected_claims: tuple[str, ...] = field(default_factory=tuple)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    expires_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     dcql_query_hash: str | None = None
     decision_id: str = field(default_factory=lambda: f"urn:uuid:{uuid.uuid4()}")
 
@@ -137,8 +137,8 @@ class VerificationSession:
     dcql_query: Mapping[str, Any] = field(default_factory=dict)
     presentation_definition: Mapping[str, Any] = field(default_factory=dict)
     status: VerificationSessionStatus = VerificationSessionStatus.PENDING
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    expires_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     purpose: str = "Verification of digital credentials"
     presentation_id: str | None = None
     verification_result: NinePointVerificationResult | None = None
