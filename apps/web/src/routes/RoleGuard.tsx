@@ -1,6 +1,6 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth, UserProfile } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 
 export type AllowedRole = "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
 

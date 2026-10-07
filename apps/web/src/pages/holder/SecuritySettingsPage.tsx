@@ -14,18 +14,14 @@ import {
 } from "../../services/api";
 import {
   KeyRound,
-  Shield,
   Eye,
   EyeOff,
   Users,
   Copy,
   Check,
   AlertTriangle,
-  RotateCcw,
   ShieldAlert,
-  Clock,
   XCircle,
-  RefreshCw
 } from "lucide-react";
 
 export const SecuritySettingsPage: React.FC = () => {
@@ -37,7 +33,6 @@ export const SecuritySettingsPage: React.FC = () => {
   const [policy, setPolicy] = useState<RecoveryPolicy | null>(null);
   const [guardiansList, setGuardiansList] = useState<BackendGuardian[]>([]);
   const [activePetition, setActivePetition] = useState<RecoveryRequest | null>(null);
-  const [loadingRecovery, setLoadingRecovery] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [recoveryReason, setRecoveryReason] = useState("ACCOUNT_COMPROMISE");
   const [customReason, setCustomReason] = useState("");
@@ -53,7 +48,6 @@ export const SecuritySettingsPage: React.FC = () => {
   };
 
   const loadRecoveryData = async () => {
-    setLoadingRecovery(true);
     try {
       const walletId = "wallet_holder_primary";
       const [pol, guards, reqs] = await Promise.all([
@@ -68,10 +62,8 @@ export const SecuritySettingsPage: React.FC = () => {
         (r) => r.status === "PENDING" || r.status === "TIMELOCKED" || r.status === "APPROVED"
       );
       setActivePetition(active || null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn("Could not load recovery configuration:", err);
-    } finally {
-      setLoadingRecovery(false);
     }
   };
 
@@ -95,10 +87,10 @@ export const SecuritySettingsPage: React.FC = () => {
       });
       setShowRecoveryModal(false);
       await loadRecoveryData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatusMsg({
         type: "error",
-        text: err.message || "Failed to initiate recovery petition."
+        text: err instanceof Error ? err.message : "Failed to initiate recovery petition."
       });
     } finally {
       setSubmittingRecovery(false);
@@ -115,10 +107,10 @@ export const SecuritySettingsPage: React.FC = () => {
         text: `Recovery petition ${activePetition.requestId} cancelled.`
       });
       await loadRecoveryData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatusMsg({
         type: "error",
-        text: err.message || "Failed to cancel recovery petition."
+        text: err instanceof Error ? err.message : "Failed to cancel recovery petition."
       });
     }
   };

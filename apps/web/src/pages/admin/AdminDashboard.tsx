@@ -19,22 +19,39 @@ import {
   Cpu, 
   RefreshCw, 
   Server, 
-  Activity, 
-  ShieldCheck, 
   ArrowRight,
   Download,
   Trash2,
-  Layers,
   CheckCircle2,
   HardDrive
 } from "lucide-react";
+
+interface DbStatsInfo {
+  active_runtime?: string;
+  credentials?: number;
+  audit_logs?: number;
+  users?: number;
+  guardians?: number;
+  sqlite_fallback_stats?: {
+    users?: number;
+    credentials?: number;
+    guardians?: number;
+    audit_logs?: number;
+  };
+  stats?: {
+    users?: number;
+    credentials?: number;
+    guardians?: number;
+    audit_logs?: number;
+  };
+}
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [gateway, setGateway] = useState<GatewayStatus | null>(null);
   const [blockchain, setBlockchain] = useState<BlockchainStatus | null>(null);
   const [fraudStats, setFraudStats] = useState<FraudModelStats | null>(null);
-  const [dbStats, setDbStats] = useState<any>(null);
+  const [dbStats, setDbStats] = useState<DbStatsInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
@@ -50,7 +67,7 @@ export const AdminDashboard: React.FC = () => {
       setGateway(gw);
       setBlockchain(bc || gw?.blockchain || null);
       setFraudStats(fs);
-      setDbStats(ds || gw?.database || null);
+      setDbStats((ds as DbStatsInfo | null) || (gw?.database as DbStatsInfo | null) || null);
     } finally {
       setLoading(false);
     }
@@ -236,7 +253,7 @@ export const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginBottom: "12px" }}>
             Target: <span style={{ color: "#38bdf8", fontWeight: 600 }}>MongoDB Enterprise (secure_identity)</span>
             <br />
-            Active Runtime: <span style={{ color: "#34d399", fontWeight: 600 }}>{dbStats?.active_runtime || "MongoDB / SQLite Fallback"}</span>
+            Active Runtime: <span style={{ color: "#34d399", fontWeight: 600 }}>{String(dbStats?.active_runtime || "MongoDB / SQLite Fallback")}</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>

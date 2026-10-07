@@ -1,5 +1,5 @@
 import React from "react";
-import { ShieldAlert, ShieldCheck, AlertTriangle, Cpu } from "lucide-react";
+import { Cpu } from "lucide-react";
 
 interface RiskScorePanelProps {
   score: number;
@@ -13,12 +13,9 @@ interface RiskScorePanelProps {
 
 export const RiskScorePanel: React.FC<RiskScorePanelProps> = ({
   score,
-  isFraudulent,
-  anomalyScore,
   xgboostProbability,
   reconstructionMse,
-  reasons = [],
-  evaluationLatencyMs
+  reasons = []
 }) => {
   const getSeverity = () => {
     if (score > 70) return { label: "CRITICAL RISK", color: "#f87171", bg: "rgba(239, 68, 68, 0.15)", border: "rgba(239, 68, 68, 0.4)" };

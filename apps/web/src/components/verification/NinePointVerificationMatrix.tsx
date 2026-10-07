@@ -4,7 +4,7 @@ import { NinePointVerificationResult } from "../../services/api";
 
 interface NinePointVerificationMatrixProps {
   result: NinePointVerificationResult;
-  disclosedClaims?: Record<string, any>;
+  disclosedClaims?: Record<string, unknown>;
   aiRiskScore?: number;
   nonce?: string;
   sessionId?: string;

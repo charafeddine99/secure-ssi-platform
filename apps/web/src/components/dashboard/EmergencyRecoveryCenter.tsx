@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useWallet, EMERGENCY_RECOVERY_ADDRESS } from "../../context/WalletContext";
 import { ethers } from "ethers";
 
@@ -22,7 +22,6 @@ export const EmergencyRecoveryCenter: React.FC = () => {
 
   // On-Chain Status Info
   const [isConfigured, setIsConfigured] = useState<boolean>(false);
-  const [configuredGuardians, setConfiguredGuardians] = useState<string[]>([]);
   const [isQuarantined, setIsQuarantined] = useState<boolean>(false);
   const [recoveryStatus, setRecoveryStatus] = useState<{
     proposedOwner: string;
@@ -36,7 +35,7 @@ export const EmergencyRecoveryCenter: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Fetch status on account change
-  const refreshOnChainStatus = async () => {
+  const refreshOnChainStatus = useCallback(async () => {
     if (!account) return;
     try {
       const contract = getEmergencyRecoveryContract(false);
@@ -44,11 +43,6 @@ export const EmergencyRecoveryCenter: React.FC = () => {
 
       const configured = await contract.isWalletConfigured(account).catch(() => false);
       setIsConfigured(configured);
-
-      if (configured) {
-        const guardiansList = await contract.getGuardians(account).catch(() => []);
-        setConfiguredGuardians(Array.from(guardiansList));
-      }
 
       const quarantined = await contract.isWalletQuarantined(account).catch(() => false);
       setIsQuarantined(quarantined);
@@ -67,11 +61,11 @@ export const EmergencyRecoveryCenter: React.FC = () => {
     } catch (err) {
       console.warn("Could not query contract status:", err);
     }
-  };
+  }, [account, getEmergencyRecoveryContract]);
 
   useEffect(() => {
     refreshOnChainStatus();
-  }, [account]);
+  }, [refreshOnChainStatus]);
 
   // Form 1: Configure 3 Guardians
   const handleConfigureGuardians = async (e: React.FormEvent) => {
@@ -105,9 +99,10 @@ export const EmergencyRecoveryCenter: React.FC = () => {
 
       setActionSuccess("3 Guardians successfully configured on-chain!");
       await refreshOnChainStatus();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Configure guardians failed:", err);
-      setActionError(err?.reason || err?.message || "Failed to configure guardians.");
+      const e = err as { reason?: string; message?: string };
+      setActionError(e?.reason || e?.message || "Failed to configure guardians.");
     } finally {
       setIsConfiguring(false);
     }
@@ -141,9 +136,10 @@ export const EmergencyRecoveryCenter: React.FC = () => {
 
       setActionSuccess("Recovery initiated! 1 of 3 guardian approvals recorded.");
       await refreshOnChainStatus();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Initiate recovery failed:", err);
-      setActionError(err?.reason || err?.message || "Failed to initiate recovery. Are you an authorized guardian?");
+      const e = err as { reason?: string; message?: string };
+      setActionError(e?.reason || e?.message || "Failed to initiate recovery. Are you an authorized guardian?");
     } finally {
       setIsInitiating(false);
     }
@@ -171,9 +167,10 @@ export const EmergencyRecoveryCenter: React.FC = () => {
 
       setActionSuccess(`Guardian approval recorded! (Block: ${receipt.blockNumber}). If 2-of-3 threshold is reached, ownership transfers automatically.`);
       await refreshOnChainStatus();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Approve recovery failed:", err);
-      setActionError(err?.reason || err?.message || "Failed to approve recovery. Verify that you are an authorized guardian.");
+      const e = err as { reason?: string; message?: string };
+      setActionError(e?.reason || e?.message || "Failed to approve recovery. Verify that you are an authorized guardian.");
     } finally {
       setIsApproving(false);
     }

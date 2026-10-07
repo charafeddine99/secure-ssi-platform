@@ -23,7 +23,7 @@ export interface BackendCredential {
   issued_date: string;
   expiry_date: string;
   status: "ACTIVE" | "REVOKED";
-  claims: Record<string, any>;
+  claims: Record<string, unknown>;
   proof_value: string;
   ai_risk_score: number;
   zkp_predicate?: string;
@@ -49,7 +49,7 @@ export interface BackendAuditLog {
   actor_did: string;
   target_wallet: string;
   risk_score: number;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   created_at: string;
 }
 
@@ -66,7 +66,7 @@ export interface BlockchainStatus {
     emergency_recovery: string;
     audit_logger?: string;
   };
-  recovery_status?: any;
+  recovery_status?: unknown;
 }
 
 export interface GatewayStatus {
@@ -79,7 +79,7 @@ export interface GatewayStatus {
     blockchain_node?: string;
   };
   blockchain?: BlockchainStatus;
-  database?: any;
+  database?: unknown;
 }
 
 export interface SmartContractInfo {
@@ -132,6 +132,33 @@ export async function fetchCredentials(userDid?: string, walletAddress?: string)
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
+interface RawBackendCredential {
+  id?: string;
+  credentialId?: string;
+  holderDid?: string;
+  credentialType?: string | string[];
+  title?: string;
+  category?: string;
+  issuerDid?: string;
+  issuer?: string;
+  issuerName?: string;
+  issuanceDate?: string;
+  expirationDate?: string;
+  status?: "ACTIVE" | "REVOKED";
+  claims?: Record<string, unknown>;
+  rawCredential?: {
+    credentialSubject?: Record<string, unknown>;
+    proof?: { proofValue?: string };
+  };
+  proofValue?: string;
+  aiRiskScore?: number;
+  createdAt?: string;
+  status_list_id?: string;
+  statusListId?: string;
+  status_list_index?: number;
+  statusListIndex?: number;
+}
+
   // 1. Try authoritative API Gateway / Identity wallet credentials
   try {
     const walletId = "wallet_holder_primary";
@@ -139,8 +166,8 @@ export async function fetchCredentials(userDid?: string, walletAddress?: string)
     if (res.ok) {
       const data = await res.json();
       if (data?.credentials && Array.isArray(data.credentials)) {
-        return data.credentials.map((c: any) => ({
-          id: c.credentialId || c.id,
+        return data.credentials.map((c: RawBackendCredential) => ({
+          id: c.credentialId || c.id || "cred_default",
           user_did: c.holderDid || userDid || "did:key:z6MkuBesnaSecureHolder2026Ed25519",
           wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
           credential_type: Array.isArray(c.credentialType) ? c.credentialType[1] || c.credentialType[0] : (c.credentialType || "UniversityAffiliationCredential"),
@@ -190,10 +217,10 @@ export async function issueCredential(payload: {
   credential_type: string;
   title?: string;
   category?: string;
-  claims: Record<string, any>;
+  claims: Record<string, unknown>;
 }): Promise<{
   success: boolean;
-  credential?: any;
+  credential?: Record<string, unknown>;
   txHash?: string;
   error?: string;
 }> {
@@ -262,8 +289,9 @@ export async function issueCredential(payload: {
       credential: data.credential,
       txHash: data.blockchain_anchor?.tx_hash
     };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Bağlantı hatası" };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Bağlantı hatası";
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -290,25 +318,21 @@ export async function revokeCredential(credentialId: string, reason: string = "U
     if (res.status === 403 || res.status === 409 || res.status === 400 || res.status === 404) {
       throw new Error(message);
     }
-  } catch (err: any) {
-    if (err.message && (err.message.includes("Revocation failed") || err.message.includes("403") || err.message.includes("409") || err.message.includes("PERMISSION_DENIED"))) {
+  } catch (err: unknown) {
+    if (err instanceof Error && (err.message.includes("Revocation failed") || err.message.includes("403") || err.message.includes("409") || err.message.includes("PERMISSION_DENIED"))) {
       throw err;
     }
   }
 
   // 2. Try direct Identity Service v1 route
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/credentials/${encodeURIComponent(credentialId)}/revoke`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ reason })
-    });
-    if (res.ok) return true;
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Revocation failed (HTTP ${res.status})`);
-  } catch (err: any) {
-    throw err;
-  }
+  const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/credentials/${encodeURIComponent(credentialId)}/revoke`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ reason })
+  });
+  if (res.ok) return true;
+  const data = await res.json().catch(() => ({}));
+  throw new Error(data.detail || `Revocation failed (HTTP ${res.status})`);
 }
 
 export interface RecoveryPolicy {
@@ -356,6 +380,36 @@ export interface GuardianAssignment {
   updatedAt?: string;
 }
 
+interface RawBackendGuardianItem {
+  displayName?: string;
+  label?: string;
+  guardianName?: string;
+  role?: string;
+  guardianDid?: string;
+  did?: string;
+  guardianAddress?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+interface RawRecoveryRequestItem {
+  requestId: string;
+  walletId: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXECUTED" | "CANCELLED" | "EXPIRED";
+  reason?: string;
+  approvalsCount?: number;
+  requiredCount?: number;
+  createdAt?: string;
+  expiresAt?: string;
+  timelockExpiresAt?: string | null;
+  executedAt?: string | null;
+  predecessorKeyId?: string | null;
+  successorKeyId?: string | null;
+  predecessorDid?: string | null;
+  successorDid?: string | null;
+  txHash?: string | null;
+}
+
 /**
  * Fetch Guardians list from Recovery Service via Gateway
  */
@@ -370,7 +424,7 @@ export async function fetchGuardians(walletAddress?: string): Promise<BackendGua
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
       if (items.length > 0) {
-        return items.map((g: any, idx: number) => ({
+        return items.map((g: RawBackendGuardianItem, idx: number) => ({
           id: idx + 1,
           wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
           guardian_name: g.displayName || g.label || g.guardianName || `Guardian #${idx + 1}`,
@@ -393,7 +447,7 @@ export async function fetchGuardians(walletAddress?: string): Promise<BackendGua
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length > 0) {
-        return items.map((g: any, idx: number) => ({
+        return items.map((g: RawBackendGuardianItem, idx: number) => ({
           id: idx + 1,
           wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
           guardian_name: g.displayName || `Guardian #${idx + 1}`,
@@ -457,7 +511,7 @@ export async function fetchRecoveryRequests(limit: number = 50): Promise<Recover
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.items)) {
-        return data.items.map((r: any) => ({
+        return data.items.map((r: RawRecoveryRequestItem) => ({
           requestId: r.requestId,
           walletId: r.walletId,
           status: r.status,
@@ -486,15 +540,15 @@ export async function fetchRecoveryRequests(limit: number = 50): Promise<Recover
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.items)) {
-        return data.items.map((r: any) => ({
+        return data.items.map((r: RawRecoveryRequestItem) => ({
           requestId: r.requestId,
           walletId: r.walletId,
           status: r.status,
           reason: r.reason,
           approvalsCount: r.approvalsCount ?? 2,
           requiredCount: r.requiredCount ?? 3,
-          createdAt: r.createdAt,
-          expiresAt: r.expiresAt,
+          createdAt: r.createdAt || new Date().toISOString(),
+          expiresAt: r.expiresAt || new Date().toISOString(),
           timelockExpiresAt: r.timelockExpiresAt,
           executedAt: r.executedAt,
           predecessorKeyId: r.predecessorKeyId,
@@ -768,11 +822,12 @@ export async function upsertRecoveryPolicy(policy: {
 /**
  * Legacy alias for approveGuardian
  */
-export async function approveGuardian(guardianId: number, walletAddress: string): Promise<{
+export async function approveGuardian(guardianId: number, walletAddress?: string): Promise<{
   success: boolean;
   onChainTx?: string;
   error?: string;
 }> {
+  void walletAddress;
   const res = await approveRecoveryPetition(`req_${guardianId}`, `g_${guardianId}`);
   return {
     success: res.success,
@@ -952,7 +1007,7 @@ export async function fetchFraudStats(): Promise<FraudModelStats | null> {
 /**
  * Fetch database persistence stats from Identity Service
  */
-export async function fetchDatabaseStats(): Promise<any> {
+export async function fetchDatabaseStats(): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/database/stats`);
     if (res.ok) return await res.json();
@@ -1024,6 +1079,15 @@ export async function evaluateAiRisk(context: {
   };
 }
 
+export interface FraudAssessmentResult {
+  risk_score: number;
+  is_fraudulent: boolean;
+  anomaly_score?: number;
+  xgboost_probability?: number;
+  reconstruction_mse?: number;
+  reasons: string[];
+}
+
 /**
  * Assess fraud risk through Gateway / Fraud Service
  */
@@ -1033,14 +1097,7 @@ export async function assessFraudRisk(payload: {
   ip_address?: string;
   device_fingerprint?: string;
   recent_failed_attempts?: number;
-}): Promise<{
-  risk_score: number;
-  is_fraudulent: boolean;
-  anomaly_score?: number;
-  xgboost_probability?: number;
-  reconstruction_mse?: number;
-  reasons: string[];
-}> {
+}): Promise<FraudAssessmentResult> {
   try {
     const res = await fetch(`${FRAUD_BASE_URL}/api/fraud_detection`, {
       method: "POST",
@@ -1089,12 +1146,29 @@ export interface PresentationVerificationResult {
   status: "VERIFIED" | "REJECTED" | "UNAVAILABLE" | "ERROR";
   signature_valid?: boolean;
   challenge_valid?: boolean;
-  claims?: Record<string, any>;
-  details?: any;
+  claims?: Record<string, unknown>;
+  details?: unknown;
   errors: string[];
 }
 
-export async function verifyPresentation(payload: any): Promise<PresentationVerificationResult> {
+interface VerificationResponseData {
+  valid?: boolean;
+  status?: string;
+  result?: {
+    finalPolicyResult?: string;
+    signatureValid?: boolean;
+    challengeValid?: boolean;
+  };
+  signature_valid?: boolean;
+  challenge_valid?: boolean;
+  claims?: Record<string, unknown>;
+  disclosedClaims?: Record<string, unknown>;
+  errors?: string[];
+  rejection_codes?: string[];
+  detail?: string | Record<string, unknown>;
+}
+
+export async function verifyPresentation(payload: Record<string, unknown>): Promise<PresentationVerificationResult> {
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -1107,7 +1181,7 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
   ];
 
   let lastNetworkError: Error | null = null;
-  let lastHttpError: { status: number; statusText: string; body?: any } | null = null;
+  let lastHttpError: { status: number; statusText: string; body?: unknown } | null = null;
 
   for (const url of endpoints) {
     try {
@@ -1117,7 +1191,7 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
         body: JSON.stringify(payload)
       });
 
-      let data: any = null;
+      let data: VerificationResponseData | null = null;
       try {
         data = await res.json();
       } catch {
@@ -1143,7 +1217,7 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
           status,
           signature_valid: data.result?.signatureValid ?? (data.signature_valid ?? (isValid ? true : false)),
           challenge_valid: data.result?.challengeValid ?? (data.challenge_valid ?? (isValid ? true : false)),
-          claims: data.claims || data.disclosedClaims || payload.disclosed_claims || {},
+          claims: data.claims || data.disclosedClaims || (payload.disclosed_claims as Record<string, unknown>) || {},
           details: data,
           errors
         };
@@ -1163,7 +1237,7 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
           return {
             verified: false,
             status: "REJECTED",
-            claims: payload.disclosed_claims || {},
+            claims: (payload.disclosed_claims as Record<string, unknown>) || {},
             details: data || { status: res.status, statusText: res.statusText },
             errors
           };
@@ -1171,17 +1245,18 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
 
         lastHttpError = { status: res.status, statusText: res.statusText, body: data };
       }
-    } catch (err: any) {
-      lastNetworkError = err;
+    } catch (err: unknown) {
+      lastNetworkError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
   // Network transport failure or internal server error: fail closed with explicit UNAVAILABLE / ERROR
   if (lastHttpError) {
+    const emptyClaims: Record<string, unknown> = {};
     return {
       verified: false,
       status: "ERROR",
-      claims: payload.disclosed_claims || {},
+      claims: (payload.disclosed_claims as Record<string, unknown>) || emptyClaims,
       details: lastHttpError,
       errors: [
         `Verification service error (HTTP ${lastHttpError.status}): ${lastHttpError.statusText || "Internal Server Error"}`
@@ -1189,10 +1264,11 @@ export async function verifyPresentation(payload: any): Promise<PresentationVeri
     };
   }
 
+  const emptyClaims: Record<string, unknown> = {};
   return {
     verified: false,
     status: "UNAVAILABLE",
-    claims: payload.disclosed_claims || {},
+    claims: (payload.disclosed_claims as Record<string, unknown>) || emptyClaims,
     details: { error: lastNetworkError?.message || "Connection refused" },
     errors: [
       `Verification service unreachable: ${lastNetworkError?.message || "Network/Transport connection failed"}`
@@ -1257,7 +1333,7 @@ export interface Oid4vciOffer {
   deepLinkUri: string;
   qrPayload: string;
   expiresAt: string;
-  subjectData: Record<string, any>;
+  subjectData: Record<string, unknown>;
 }
 
 export interface NinePointVerificationResult {
@@ -1289,7 +1365,7 @@ export interface Oid4vpSession {
   qrPayload: string;
   expiresAt: string;
   verificationResult?: NinePointVerificationResult;
-  disclosedClaims?: Record<string, any>;
+  disclosedClaims?: Record<string, unknown>;
   aiRiskScore?: number;
 }
 
@@ -1298,7 +1374,7 @@ export interface Oid4vpSession {
  */
 export async function createOid4vciOffer(payload: {
   credentialConfigurationIds: string[];
-  subjectData: Record<string, any>;
+  subjectData: Record<string, unknown>;
   ttlSeconds?: number;
   userPin?: string;
   token?: string;
@@ -1379,7 +1455,7 @@ export async function claimOid4vciOffer(payload: {
   walletId?: string;
   userPin?: string;
   token?: string;
-}): Promise<{ credential: any; credentialId: string; status: string }> {
+}): Promise<{ credential: Record<string, unknown>; credentialId: string; status: string }> {
   const token = payload.token || localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -1472,8 +1548,8 @@ export async function getOid4vpSession(sessionId: string): Promise<Oid4vpSession
  */
 export async function submitOid4vpDirectPost(payload: {
   sessionId: string;
-  vpToken: any;
-  disclosedClaims: Record<string, any>;
+  vpToken: Record<string, unknown>;
+  disclosedClaims: Record<string, unknown>;
   aiRiskScore?: number;
 }): Promise<{ status: string; result: NinePointVerificationResult }> {
   const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/response`, {
@@ -1522,7 +1598,7 @@ export interface Oid4vpConsentPayload {
   decision?: "APPROVE" | "REJECT";
   holderDid: string;
   approvedCredentials?: string[];
-  approvedClaims?: Record<string, any>;
+  approvedClaims?: Record<string, unknown>;
   rejectedClaims?: string[];
   verifierDid?: string;
   clientId?: string;
@@ -1539,7 +1615,7 @@ export interface Oid4vpConsentResponse {
   decision: string;
   holderDid: string;
   approvedCredentials: string[];
-  approvedClaims: Record<string, any>;
+  approvedClaims: Record<string, unknown>;
   rejectedClaims: string[];
   timestamp: string;
   rejectionReason?: string;
@@ -1575,10 +1651,10 @@ export async function recordOid4vpConsent(payload: Oid4vpConsentPayload): Promis
  */
 export async function createOid4vpPresentation(payload: {
   sessionId: string;
-  disclosedClaims?: Record<string, any>;
+  disclosedClaims?: Record<string, unknown>;
   holderDid?: string;
-  verifiableCredentials?: any[];
-}): Promise<{ sessionId: string; vpToken: any }> {
+  verifiableCredentials?: Record<string, unknown>[];
+}): Promise<{ sessionId: string; vpToken: Record<string, unknown> }> {
   const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/presentation`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -9,16 +9,11 @@ import {
   Oid4vpSession,
 } from "../../services/api";
 import {
-  PlusCircle,
   QrCode,
   ArrowLeft,
   CheckCircle2,
-  Copy,
-  Check,
-  ShieldCheck,
   Clock,
   Sparkles,
-  Layers,
   RefreshCw,
   XCircle,
   ShieldAlert,
@@ -32,7 +27,6 @@ export const CreateRequestPage: React.FC = () => {
 
   const [purpose, setPurpose] = useState("Age verification and citizenship confirmation");
   const [credentialType, setCredentialType] = useState("UniversityAffiliationCredential");
-  const [predicate, setPredicate] = useState("age >= 18");
   const [claims, setClaims] = useState(["affiliation", "degree", "programCode"]);
   const [ttlSeconds, setTtlSeconds] = useState(600);
   const [showPreview, setShowPreview] = useState(false);
@@ -68,7 +62,7 @@ export const CreateRequestPage: React.FC = () => {
         if (updated.status !== session.status) {
           setSession(updated);
         }
-      } catch (err) {
+      } catch {
         // Silently retry polling
       }
     }, 2000);
@@ -89,8 +83,8 @@ export const CreateRequestPage: React.FC = () => {
         ttlSeconds,
       });
       setSession(newSession);
-    } catch (err: any) {
-      setError(err.message || "Failed to create OID4VP verification session.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create OID4VP verification session.");
     } finally {
       setCreatingSession(false);
     }

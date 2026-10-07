@@ -1,6 +1,5 @@
 import React from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { Layers, Database, Cpu, Shield, KeyRound, Terminal, ExternalLink } from "lucide-react";
 
 export const ArchitectureDocsPage: React.FC = () => {
   const layers = [
@@ -33,7 +32,7 @@ export const ArchitectureDocsPage: React.FC = () => {
       description: "Implements W3C Verifiable Credentials 2.0 issuance with Ed25519 Linked Data signatures, DIDComm v2 encryption, and status list management.",
       endpoints: [
         { method: "POST", path: "/api/issue_credential", desc: "Evaluates AI risk and generates W3C JSON-LD credential signed with Ed25519." },
-        { method: "POST", path: "/api/verify_presentation", desc: "Validates Ed25519 signature, status bitstring, and selective disclosure." },
+        { method: "POST", path: "/api/verify_presentation", desc: "Validates Ed25519 signature, status bitstring, and claim minimization." },
         { method: "GET", path: "/api/user_credentials", desc: "Retrieves active credentials for a given user wallet address." }
       ]
     },

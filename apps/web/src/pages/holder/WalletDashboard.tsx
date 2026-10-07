@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useWallet } from "../../context/WalletContext";
@@ -6,7 +6,6 @@ import { fetchCredentials, fetchPendingOffers, claimOid4vciOffer, Oid4vciOffer }
 import { CredentialCard, CredentialCardData } from "../../components/credentials/CredentialCard";
 import { CredentialDetailModal } from "../../components/credentials/CredentialDetailModal";
 import { SelectiveDisclosureSheet } from "../../components/consent/SelectiveDisclosureSheet";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import {
   QrCode,
   RefreshCw,
@@ -105,7 +104,7 @@ export const WalletDashboard: React.FC = () => {
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // Load real credentials from backend
-  const loadCredentials = async () => {
+  const loadCredentials = useCallback(async () => {
     setLoading(true);
     try {
       const walletAddr = account || user?.walletAddress;
@@ -133,10 +132,10 @@ export const WalletDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [account, user?.walletAddress, user?.did]);
 
   // Load pending credential offers from authoritative OID4VCI endpoint
-  const loadPendingOffers = async () => {
+  const loadPendingOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
       const offers = await fetchPendingOffers();
@@ -146,12 +145,12 @@ export const WalletDashboard: React.FC = () => {
     } finally {
       setLoadingOffers(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadCredentials();
     loadPendingOffers();
-  }, [account, user]);
+  }, [loadCredentials, loadPendingOffers]);
 
   const handleSyncAll = async () => {
     await Promise.all([loadCredentials(), loadPendingOffers()]);
@@ -198,10 +197,10 @@ export const WalletDashboard: React.FC = () => {
       setTimeout(() => setNotification(null), 5000);
       // Immediately reload credentials from database
       await loadCredentials();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNotification({
         type: "error",
-        message: err.message || "Failed to claim credential."
+        message: err instanceof Error ? err.message : "Failed to claim credential."
       });
     } finally {
       setClaiming(false);
@@ -668,7 +667,7 @@ export const WalletDashboard: React.FC = () => {
         verifierName="European Airport Border Control E-Gate"
         verifierPurpose="Age verification (Over 18) and nationality validation"
         requiredClaims={["Nationality", "Uyruk"]}
-        onConfirmPresentation={(_disclosed, _blinded) => {
+        onConfirmPresentation={() => {
           navigate("/wallet/activity");
         }}
       />

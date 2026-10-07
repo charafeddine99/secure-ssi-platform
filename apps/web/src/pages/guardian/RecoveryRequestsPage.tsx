@@ -8,14 +8,9 @@ import {
   RecoveryRequest,
 } from "../../services/api";
 import {
-  ShieldAlert,
   ArrowRight,
-  CheckCircle2,
-  Clock,
   RefreshCw,
   XCircle,
-  AlertTriangle,
-  Lock,
 } from "lucide-react";
 
 export const RecoveryRequestsPage: React.FC = () => {
@@ -31,7 +26,7 @@ export const RecoveryRequestsPage: React.FC = () => {
     try {
       const data = await fetchRecoveryRequests(50);
       setPetitions(data);
-    } catch (err: any) {
+    } catch {
       setActionError("Failed to fetch recovery requests from Recovery Service.");
     } finally {
       setLoading(false);
@@ -46,8 +41,8 @@ export const RecoveryRequestsPage: React.FC = () => {
     try {
       await cancelRecoveryRequest(requestId);
       await loadPetitions();
-    } catch (err: any) {
-      setActionError(err.message || "Failed to cancel recovery petition.");
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "Failed to cancel recovery petition.");
     }
   };
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
-import { WalletProvider } from "./context/WalletContext";
+import { AuthProvider } from "./context/AuthProvider";
+import { WalletProvider } from "./context/WalletProvider";
 import { AppRoutes } from "./routes/AppRoutes";
 
 /**

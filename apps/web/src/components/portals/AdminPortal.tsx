@@ -4,9 +4,8 @@ import { fetchGatewayStatus, fetchBlockchainStatus, fetchAuditLogs, BackendAudit
 export type AdminScreen = 
   | "USERS" | "ORGANIZATIONS" | "TRUST" | "FRAUD" | "RECOVERY" | "BLOCKCHAIN" | "AUDIT" | "SYSTEM";
 
-export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate: (screen: AdminScreen) => void }> = ({
+export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (screen: AdminScreen) => void }> = ({
   activeScreen,
-  onNavigate
 }) => {
   const [gatewayStatus, setGatewayStatus] = useState<string>("ONLINE");
   const [systemHealth, setSystemHealth] = useState<string>("OPTIMAL");
@@ -205,7 +204,7 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate: (scr
       {activeScreen === "BLOCKCHAIN" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Hardhat EVM Akıllı Sözleşmeleri & On-Chain Durum
+            Hardhat EVM Akıllı Sözleşmeleri & On-Chain Durum {blockchainInfo?.connected ? `(Block: #${blockchainInfo.block_number})` : ""}
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
             Solidity 0.8.28 & OpenZeppelin tabanlı dağıtılmış akıllı sözleşmeler.
@@ -272,7 +271,7 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate: (scr
                 { id: 1, event_type: "CREDENTIAL_ISSUED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "10 dk önce" },
                 { id: 2, event_type: "PRESENTATION_VERIFIED", actor_did: "did:web:enterprise-verifier.eu", target_wallet: "0xf39Fd...", created_at: "25 dk önce" },
                 { id: 3, event_type: "BITSTRING_STATUS_UPDATED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "1 saat önce" }
-              ]).map((ev: any, i: number) => (
+              ]).map((ev: { id: number; event_type: string; actor_did: string; target_wallet: string; created_at: string }, i: number) => (
                 <tr key={ev.id || i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <td style={{ padding: "10px", fontWeight: "700", color: "#60a5fa" }}>{ev.event_type}</td>
                   <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{ev.actor_did || "system:node"}</td>

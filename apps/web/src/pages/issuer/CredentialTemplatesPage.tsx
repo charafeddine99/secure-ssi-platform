@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { FileText, PlusCircle, ArrowRight, Shield } from "lucide-react";
+import { PlusCircle, ArrowRight } from "lucide-react";
 
 export const CredentialTemplatesPage: React.FC = () => {
   const navigate = useNavigate();

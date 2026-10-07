@@ -557,6 +557,25 @@ export const AuthPage: React.FC<{ onComplete?: () => void }> = ({ onComplete }) 
                 }}
               />
             </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>
+                Password
+              </label>
+              <input
+                type="password"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: "#0b0f19",
+                  border: "1px solid #1f2937",
+                  color: "#f8fafc",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
 
             <button
               type="submit"

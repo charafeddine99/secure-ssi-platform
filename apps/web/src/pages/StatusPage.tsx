@@ -9,8 +9,30 @@ interface CredentialItem {
   issuer: string;
   issuedDate: string;
   status: "ACTIVE" | "REVOKED";
-  claims: Record<string, any>;
+  claims: Record<string, unknown>;
   proofValue: string;
+}
+
+interface VerifierResult {
+  valid: boolean;
+  reason?: string;
+  issuer?: string;
+  algorithm?: string;
+  latencyMs?: number;
+  policySatisfied?: boolean;
+  policyPredicate?: string;
+  hiddenFields?: string[];
+}
+
+interface AiEvalResult {
+  risk_score: number;
+  risk_level: string;
+  recommended_action: string;
+  reasons: string[];
+  anomalyScore?: number;
+  riskLevel?: string;
+  latencyMs?: number;
+  [key: string]: unknown;
 }
 
 interface GuardianItem {
@@ -61,9 +83,9 @@ export function StatusPage() {
   const [issuerNotification, setIssuerNotification] = useState<string | null>(null);
 
   // 3. VERIFIER STATE
-  const [verifierResult, setVerifierResult] = useState<any>(null);
+  const [verifierResult, setVerifierResult] = useState<VerifierResult | null>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [zkpMasked, setZkpMasked] = useState<boolean>(true);
+  const [policyMasked, setPolicyMasked] = useState<boolean>(true);
 
   // 4. AI FRAUD MONITOR STATE
   const [aiGeoKm, setAiGeoKm] = useState<number>(15);
@@ -71,7 +93,7 @@ export function StatusPage() {
   const [aiFreq, setAiFreq] = useState<number>(2);
   const [aiIsTor, setAiIsTor] = useState<boolean>(false);
   const [aiDeviceMatch, setAiDeviceMatch] = useState<boolean>(true);
-  const [aiEvalResult, setAiEvalResult] = useState<any>(null);
+  const [aiEvalResult, setAiEvalResult] = useState<AiEvalResult | null>(null);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [quarantinedList, setQuarantinedList] = useState<string[]>([]);
 
@@ -138,7 +160,7 @@ export function StatusPage() {
         setVerifierResult({
           valid: false,
           reason: "KİMLİK GEÇERSİZ: Belge SUBÜ Status List üzerinde iptal edilmiş (REVOKED).",
-          zkpSatisfied: false
+          policySatisfied: false
         });
       } else {
         setVerifierResult({
@@ -146,8 +168,8 @@ export function StatusPage() {
           issuer: selectedCred.issuer,
           algorithm: "DataIntegrityProof - eddsa-jcs-2022",
           latencyMs: 3.8,
-          zkpSatisfied: true,
-          zkpPredicate: "GPA >= 3.00 (DCQL Politikasına Göre Doğrulandı)",
+          policySatisfied: true,
+          policyPredicate: "GPA >= 3.00 (DCQL Politikasına Göre Doğrulandı)",
           hiddenFields: ["tcKimlik", "ogrenciNo", "ogrenciAdi"]
         });
       }
@@ -277,8 +299,8 @@ export function StatusPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#38bdf8", letterSpacing: "0.1em", fontWeight: 700 }}>T.C. SAKARYA UYGULAMALI BİLİMLER ÜNİVERSİTESİ</span>
-                        <h2 style={{ fontSize: "1.4rem", margin: "6px 0 0", color: "#fff" }}>{selectedCred.claims.bolum}</h2>
-                        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{selectedCred.claims.derece}</span>
+                        <h2 style={{ fontSize: "1.4rem", margin: "6px 0 0", color: "#fff" }}>{String(selectedCred.claims.bolum ?? "")}</h2>
+                        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{String(selectedCred.claims.derece ?? "")}</span>
                       </div>
                       <div style={{ width: "42px", height: "42px", background: "#1e3a8a33", border: "1px solid #38bdf866", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8" }}>
                         🎓
@@ -287,10 +309,10 @@ export function StatusPage() {
 
                     <div style={{ background: "#050c17", padding: "16px", borderRadius: "10px", border: "1px solid #162a45", marginBottom: "18px" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
-                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ:</span><br/><strong>{selectedCred.claims.ogrenciAdi}</strong></div>
-                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ NO:</span><br/><strong>{selectedCred.claims.ogrenciNo}</strong></div>
-                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>FAKÜLTE:</span><br/>{selectedCred.claims.fakulte}</div>
-                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>NOT ORTALAMASI:</span><br/><strong style={{ color: "#34d399" }}>{selectedCred.claims.gpa}</strong></div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ:</span><br/><strong>{String(selectedCred.claims.ogrenciAdi ?? "")}</strong></div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>ÖĞRENCİ NO:</span><br/><strong>{String(selectedCred.claims.ogrenciNo ?? "")}</strong></div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>FAKÜLTE:</span><br/>{String(selectedCred.claims.fakulte ?? "")}</div>
+                        <div><span style={{ color: "var(--text-subtle)", fontSize: "0.75rem" }}>NOT ORTALAMASI:</span><br/><strong style={{ color: "#34d399" }}>{String(selectedCred.claims.gpa ?? "")}</strong></div>
                       </div>
                     </div>
 
@@ -425,8 +447,8 @@ export function StatusPage() {
                   {credentials.map(c => (
                     <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#081120", borderRadius: "8px", border: "1px solid var(--border-color)", marginBottom: "10px" }}>
                       <div>
-                        <strong>{c.claims.ogrenciAdi}</strong> ({c.claims.ogrenciNo})
-                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{c.claims.bolum} · {c.status}</div>
+                        <strong>{String(c.claims.ogrenciAdi ?? "")}</strong> ({String(c.claims.ogrenciNo ?? "")})
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{String(c.claims.bolum ?? "")} · {c.status}</div>
                       </div>
                       {c.status === "ACTIVE" ? (
                         <button
@@ -470,7 +492,7 @@ export function StatusPage() {
 
                       <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-color)" }}>
                         <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: "var(--accent-cyan)" }}>
-                          <input type="checkbox" checked={zkpMasked} onChange={e => setZkpMasked(e.target.checked)} />
+                          <input type="checkbox" checked={policyMasked} onChange={e => setPolicyMasked(e.target.checked)} />
                           Veri Minimizasyonu: Yalnızca GPA Doğrula
                         </label>
                       </div>
@@ -508,10 +530,10 @@ export function StatusPage() {
                           <div>• <strong>İmzacı Güvenilirlik:</strong> SUBÜ Resmi Root Anahtarı ile eşleşti.</div>
                           <div>• <strong>Algoritma:</strong> {verifierResult.algorithm}</div>
                           <div>• <strong>Revocation Durumu:</strong> Bitstring Status List üzerinde aktif.</div>
-                          {zkpMasked && (
+                          {policyMasked && (
                             <div style={{ marginTop: "10px", padding: "10px", background: "#0b192c", borderRadius: "8px", border: "1px solid #1d4ed8" }}>
                               <strong style={{ color: "var(--accent-cyan)" }}>🛡️ Veri Minimizasyonu Talebi:</strong>
-                              <div style={{ color: "#fff", fontSize: "0.82rem" }}>{verifierResult.zkpPredicate}</div>
+                              <div style={{ color: "#fff", fontSize: "0.82rem" }}>{verifierResult.policyPredicate}</div>
                               <div style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginTop: "2px" }}>Öğrencinin TC Kimlik No ve İsim alanları ifşa edilmedi (Gizlilik Korundu).</div>
                             </div>
                           )}

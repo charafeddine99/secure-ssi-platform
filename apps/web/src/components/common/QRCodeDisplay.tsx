@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { Copy, Check, Download, ExternalLink } from "lucide-react";
+import { Copy, Check, Download } from "lucide-react";
 
 interface QRCodeDisplayProps {
   value: string;

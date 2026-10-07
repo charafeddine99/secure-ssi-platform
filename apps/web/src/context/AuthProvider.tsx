@@ -1,91 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { useState, useEffect, ReactNode } from "react";
 import { ethers } from "ethers";
+import {
+  AuthContext,
+  UserProfile,
+  DEMO_CREDENTIALS,
+  DEFAULT_DEMO_USER,
+  exchangeBackendToken,
+} from "./AuthContext";
 
-export interface UserProfile {
-  name: string;
-  nationalId: string;
-  email: string;
-  organization: string;
-  did: string;
-  walletAddress: string;
-  privateKey?: string;
-  seedPhrase?: string;
-  assuranceLevel: "LOW" | "SUBSTANTIAL" | "HIGH";
-  role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
-  // Backward compatibility fields for legacy views if any
-  studentId?: string;
-  department?: string;
+interface EthereumWindow {
+  ethereum?: ethers.Eip1193Provider;
 }
 
-interface AuthContextType {
-  user: UserProfile | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isDemoEvaluationMode: boolean;
-  setDemoEvaluationMode: (enabled: boolean) => void;
-  switchDemoRole: (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => void;
-  login: (email: string, pass: string) => boolean;
-  loginWithMetaMask: () => Promise<boolean>;
-  loginWithSeedPhrase: (phrase: string) => boolean;
-  register: (
-    name: string,
-    nationalId: string,
-    email: string,
-    organization: string,
-    password?: string
-  ) => { user: UserProfile; seedPhrase: string };
-  logout: () => void;
-  quickDemoLogin: () => void;
+function getEthereum(): ethers.Eip1193Provider | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as EthereumWindow).ethereum;
 }
-
-const DEMO_CREDENTIALS: Record<string, { username: string; pass: string }> = {
-  ADMIN: { username: "admin@example.test", pass: "Admin-Prototype-2026!" },
-  ISSUER: { username: "issuer@example.test", pass: "Issuer-Prototype-2026!" },
-  VERIFIER: { username: "verifier@example.test", pass: "Verifier-Prototype-2026!" },
-  HOLDER: { username: "holder@example.test", pass: "Holder-Prototype-2026!" },
-  GUARDIAN: { username: "admin@example.test", pass: "Admin-Prototype-2026!" }
-};
-
-async function exchangeBackendToken(username: string, pass: string): Promise<string | null> {
-  const endpoints = [
-    "http://localhost:8000/api/v1/identity/auth/token",
-    "http://localhost:8001/api/v1/auth/token"
-  ];
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password: pass })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.accessToken) {
-          localStorage.setItem("ssi_access_token", data.accessToken);
-          localStorage.setItem("secure_ssi_token", data.accessToken);
-          return data.accessToken;
-        }
-      }
-    } catch {
-      // Downstream endpoint unreachable, continue
-    }
-  }
-  return null;
-}
-
-const DEFAULT_DEMO_USER: UserProfile = {
-  name: "Demo Holder (Charaf Eddine Bessanane)",
-  nationalId: "DEMO-HOLD-829104",
-  email: "holder@example.test",
-  organization: "Demo Academic Wallet [DEMO ENVIRONMENT]",
-  did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-  walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  seedPhrase: "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard",
-  assuranceLevel: "HIGH",
-  role: "HOLDER"
-};
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(
@@ -107,7 +37,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
         }
         return parsed;
-      } catch (e) {
+      } catch {
         return null;
       }
     }
@@ -128,42 +58,45 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ISSUER: "Demo University (Accredited Issuer) [DEMO ENVIRONMENT]",
       VERIFIER: "Demo Company (Trust Verification) [DEMO ENVIRONMENT]",
       GUARDIAN: "Demo Social Recovery Network [DEMO ENVIRONMENT]",
-      ADMIN: "Demo Platform Operations [DEMO ENVIRONMENT]"
+      ADMIN: "Platform Infrastructure & Security [DEMO ENVIRONMENT]"
     };
 
     const roleNames: Record<string, string> = {
       HOLDER: "Demo Holder (Charaf Eddine Bessanane)",
-      ISSUER: "Demo University Authority",
-      VERIFIER: "Demo Company Compliance",
-      GUARDIAN: "Demo Quorum Guardian #1",
-      ADMIN: "Demo System Administrator"
+      ISSUER: "European Accredited Issuer Authority",
+      VERIFIER: "EU Compliance Trust Verifier",
+      GUARDIAN: "Shamir Social Recovery Guardian",
+      ADMIN: "Root Trust Registry Operator"
     };
 
     const roleEmails: Record<string, string> = {
       HOLDER: "holder@example.test",
       ISSUER: "issuer@example.test",
       VERIFIER: "verifier@example.test",
-      GUARDIAN: "admin@example.test",
+      GUARDIAN: "guardian@example.test",
       ADMIN: "admin@example.test"
     };
 
-    setUser((prev) => {
-      const base = prev || DEFAULT_DEMO_USER;
-      return {
-        ...base,
-        role: role,
-        name: roleNames[role] || base.name,
-        email: roleEmails[role] || base.email,
-        did: roleDids[role] || base.did,
-        organization: roleOrgs[role] || base.organization
-      };
-    });
-
+    const targetEmail = roleEmails[role];
     const cred = DEMO_CREDENTIALS[role];
+
+    const newUser: UserProfile = {
+      name: roleNames[role],
+      nationalId: `EUDI-${role}-007`,
+      email: targetEmail,
+      organization: roleOrgs[role],
+      did: roleDids[role],
+      walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      assuranceLevel: "HIGH",
+      role: role
+    };
+
+    setUser(newUser);
+
     if (cred) {
-      const liveToken = await exchangeBackendToken(cred.username, cred.pass);
-      if (liveToken) {
-        setToken(liveToken);
+      const backendToken = await exchangeBackendToken(cred.username, cred.pass);
+      if (backendToken) {
+        setToken(backendToken);
       }
     }
   };
@@ -186,7 +119,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
       }
     }
-  }, []);
+  }, [token, user?.role]);
 
   const login = (email: string, pass: string): boolean => {
     const saved = localStorage.getItem("secure_ssi_user");
@@ -221,10 +154,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const loginWithMetaMask = async (): Promise<boolean> => {
-    if (typeof window !== "undefined" && (window as any).ethereum) {
+    const eth = getEthereum();
+    if (eth) {
       try {
-        const provider = new ethers.BrowserProvider((window as any).ethereum);
-        const accounts = await provider.send("eth_requestAccounts", []);
+        const provider = new ethers.BrowserProvider(eth);
+        const accounts = (await provider.send("eth_requestAccounts", [])) as string[];
         if (accounts && accounts.length > 0) {
           const addr = accounts[0];
           const did = `did:key:z6Mku${addr.slice(2, 14)}MetaMask`;
@@ -241,7 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(metaMaskUser);
           return true;
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("MetaMask login error:", err);
       }
     }
@@ -268,7 +202,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(derivedUser);
         return true;
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Seed login error:", err);
     }
     return false;
@@ -279,8 +213,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     nationalId: string,
     email: string,
     organization: string,
-    _password?: string
+    password?: string
   ): { user: UserProfile; seedPhrase: string } => {
+    void password;
     const newWallet = ethers.Wallet.createRandom();
     const generatedSeed = newWallet.mnemonic?.phrase || "venture pulse canyon timber galaxy velvet whisper anchor puzzle echo matrix flame";
     const generatedDid = `did:key:z6Mku${newWallet.address.slice(2, 18)}${Math.random().toString(36).substring(2, 6)}`;
@@ -337,12 +272,4 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 };

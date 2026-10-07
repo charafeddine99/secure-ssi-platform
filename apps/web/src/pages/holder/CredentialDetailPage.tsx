@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
-import { ArrowLeft, CheckCircle2, Shield, Copy, Check, QrCode } from "lucide-react";
+import { ArrowLeft, Copy, Check, QrCode } from "lucide-react";
 
 export const CredentialDetailPage: React.FC = () => {
   const { id } = useParams();

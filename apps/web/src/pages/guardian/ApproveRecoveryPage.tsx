@@ -11,11 +11,8 @@ import {
   ShieldCheck,
   ArrowLeft,
   CheckCircle2,
-  Lock,
-  KeyRound,
   XCircle,
   RefreshCw,
-  AlertTriangle,
 } from "lucide-react";
 
 export const ApproveRecoveryPage: React.FC = () => {
@@ -36,7 +33,7 @@ export const ApproveRecoveryPage: React.FC = () => {
       try {
         const found = await fetchRecoveryRequestById(id || "");
         setRequest(found);
-      } catch (err: any) {
+      } catch {
         setError("Failed to load recovery petition from Recovery Service.");
       } finally {
         setLoading(false);
@@ -55,8 +52,8 @@ export const ApproveRecoveryPage: React.FC = () => {
       );
       setTxHash(res.txHash || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420");
       setSuccessMsg("Guardian cryptographic approval committed to M-of-N quorum!");
-    } catch (err: any) {
-      setError(err.message || "Failed to submit guardian approval.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit guardian approval.");
     } finally {
       setSigning(false);
     }
@@ -71,8 +68,8 @@ export const ApproveRecoveryPage: React.FC = () => {
         "guardian_institutional_notary"
       );
       setSuccessMsg("Guardian rejection recorded. Petition has been opposed.");
-    } catch (err: any) {
-      setError(err.message || "Failed to reject petition.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to reject petition.");
     } finally {
       setRejecting(false);
     }

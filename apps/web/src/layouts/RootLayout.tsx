@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { NetworkIndicator } from "../components/common/NetworkIndicator";
 import { TrustBadge } from "../components/common/TrustBadge";
-import { Shield, BookOpen, Layers, Users, KeyRound, Building2, CheckCircle2, UserCheck } from "lucide-react";
+import { UserCheck } from "lucide-react";
 
 export const RootLayout: React.FC = () => {
   const { user, isDemoEvaluationMode, switchDemoRole } = useAuth();

@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/v1", tags=["API Gateway Facade & Proxy"])
 
 MAX_PAYLOAD_BYTES = 1024 * 1024  # 1 MB
 MAX_JSON_DEPTH = 16
-HTTP_413 = status.HTTP_413_CONTENT_TOO_LARGE
+HTTP_413 = getattr(status, "HTTP_413_CONTENT_TOO_LARGE", getattr(status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413))
 
 
 def compute_json_depth(val: Any, current_depth: int = 1) -> int:

@@ -6,17 +6,13 @@ import {
   quarantineWallet, 
   fetchFraudStats, 
   releaseAccountQuarantine,
-  FraudModelStats 
+  FraudModelStats,
+  FraudAssessmentResult
 } from "../../services/api";
 import { 
-  Cpu, 
   ShieldAlert, 
-  ShieldCheck, 
   AlertTriangle, 
-  RefreshCw, 
   Play, 
-  CheckCircle2, 
-  Activity, 
   Unlock 
 } from "lucide-react";
 
@@ -24,7 +20,7 @@ export const AiFraudMonitorPage: React.FC = () => {
   const [stats, setStats] = useState<FraudModelStats | null>(null);
   const [testing, setTesting] = useState(false);
   const [testMode, setTestMode] = useState<"NORMAL" | "ATTACK">("ATTACK");
-  const [assessment, setAssessment] = useState<any>({
+  const [assessment, setAssessment] = useState<FraudAssessmentResult | null>({
     risk_score: 89,
     is_fraudulent: true,
     xgboost_probability: 0.94,

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
-import { Building2, Search, FileCode, CheckCircle2, Globe, Shield } from "lucide-react";
+import { Building2, Search } from "lucide-react";
 
 export const EcosystemPage: React.FC = () => {
   const [filter, setFilter] = useState<"ALL" | "ISSUERS" | "VERIFIERS" | "SCHEMAS">("ALL");

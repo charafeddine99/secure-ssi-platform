@@ -3,7 +3,7 @@ import { Modal } from "../common/Modal";
 import { TrustBadge } from "../common/TrustBadge";
 import { StatusChip } from "../common/StatusChip";
 import { CredentialCardData } from "./CredentialCard";
-import { CheckCircle2, Shield, Copy, Check } from "lucide-react";
+import { CheckCircle2, Copy, Check } from "lucide-react";
 
 interface CredentialDetailModalProps {
   credential: CredentialCardData | null;

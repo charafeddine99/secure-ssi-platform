@@ -7,10 +7,9 @@ import {
   fetchGuardians,
   fetchRecoveryRequests,
   approveRecoveryPetition,
-  BackendGuardian,
   RecoveryRequest
 } from "../../services/api";
-import { Users, ShieldAlert, CheckCircle2, RotateCcw, AlertTriangle, ArrowRight, RefreshCw, Clock } from "lucide-react";
+import { ShieldAlert, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw } from "lucide-react";
 
 export const GuardianDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -77,8 +76,8 @@ export const GuardianDashboard: React.FC = () => {
           approvalsCount: Math.min(activePetition.requiredCount, activePetition.approvalsCount + 1)
         });
       }
-    } catch (err: any) {
-      setActionError(err.message || "Failed to sign recovery approval.");
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "Failed to sign recovery approval.");
     }
   };
 

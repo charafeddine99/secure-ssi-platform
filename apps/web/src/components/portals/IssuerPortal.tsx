@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useWallet } from "../../context/WalletContext";
-import { issueCredential, revokeCredential, fetchCredentials, BackendCredential } from "../../services/api";
+import { issueCredential, revokeCredential, fetchCredentials } from "../../services/api";
 
 export type IssuerScreen = 
   | "DASHBOARD" | "TEMPLATES" | "ISSUE" | "ISSUED" | "REVOCATION" | "ORGANIZATION";
@@ -137,7 +137,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
       const offer = `openid-credential-offer://?credential_issuer=http://localhost:8000/api/v1/identity&credential_definition={"type":["${selectedTemplate.type}"]}&grants={"urn:ietf:params:oauth:grant-type:pre-authorized_code":{"pre-authorized_code":"pac_${Date.now()}"}}`;
 
       const newItem: IssuedItem = {
-        id: res.credential.id || `urn:uuid:${Date.now()}`,
+        id: (typeof res.credential.id === "string" ? res.credential.id : undefined) || `urn:uuid:${Date.now()}`,
         recipientDid,
         templateName: selectedTemplate.name,
         issuedAt: new Date().toISOString().replace("T", " ").substring(0, 16),

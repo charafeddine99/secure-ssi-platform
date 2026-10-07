@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useWallet } from "../context/WalletContext";
 import { AuthPage } from "../components/auth/AuthPage";
 import { HolderPortal, HolderScreen } from "../components/portals/HolderPortal";
 import { IssuerPortal, IssuerScreen } from "../components/portals/IssuerPortal";
@@ -12,7 +11,6 @@ export type RoleKey = "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
 
 export const MasterPlatform: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
-  const { account, connectWallet } = useWallet();
 
   // Active Role and screen state
   const [activeRole, setActiveRole] = useState<RoleKey>("HOLDER");

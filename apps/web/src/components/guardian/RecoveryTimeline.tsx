@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckCircle2, Clock, Users, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Clock, Users } from "lucide-react";
 
 export interface GuardianSigner {
   address: string;
@@ -12,7 +12,7 @@ export interface GuardianSigner {
 
 interface RecoveryTimelineProps {
   requiredThreshold: number; // e.g. 2 or 3
-  totalGuardians: number;     // e.g. 3 or 5
+  totalGuardians?: number;    // e.g. 3 or 5
   guardians: GuardianSigner[];
   timeLockRemainingHours?: number;
   onApprove?: (guardianAddress: string) => void;
@@ -20,9 +20,7 @@ interface RecoveryTimelineProps {
 
 export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
   requiredThreshold,
-  totalGuardians,
   guardians,
-  timeLockRemainingHours = 0,
   onApprove
 }) => {
   const approvedCount = guardians.filter((g) => g.hasApproved).length;
@@ -85,7 +83,7 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
 
       {/* Guardian list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {guardians.map((g, idx) => (
+        {guardians.map((g) => (
           <div
             key={g.address}
             style={{

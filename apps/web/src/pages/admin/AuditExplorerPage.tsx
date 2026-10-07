@@ -1,16 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { fetchAuditLogs, BackendAuditLog } from "../../services/api";
 import { 
-  History, 
   Search, 
   RefreshCw, 
-  Filter, 
   Download, 
-  CheckCircle2, 
   ChevronDown, 
   ChevronUp, 
-  ShieldCheck, 
   FileText 
 } from "lucide-react";
 
@@ -21,7 +17,7 @@ export const AuditExplorerPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<number | string | null>(null);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchAuditLogs(filterType, 150);
@@ -42,11 +38,11 @@ export const AuditExplorerPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterType]);
 
   useEffect(() => {
     loadLogs();
-  }, [filterType]);
+  }, [loadLogs]);
 
   const handleExportCsv = () => {
     const headers = ["ID", "Event Type", "Actor DID", "Target Wallet", "Risk Score", "Timestamp"];

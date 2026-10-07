@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import { fetchCredentials, revokeCredential, BackendCredential } from "../../services/api";
-import { AlertTriangle, ShieldCheck, CheckCircle2, Lock, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, RefreshCw, X } from "lucide-react";
 
 export const RevocationRegistryPage: React.FC = () => {
   const [credentials, setCredentials] = useState<BackendCredential[]>([]);
@@ -24,9 +24,9 @@ export const RevocationRegistryPage: React.FC = () => {
       if (data) {
         setCredentials(data);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn("Failed to load credentials for revocation registry:", err);
-      setError(err?.message || "Failed to load credentials from backend.");
+      setError(err instanceof Error ? err.message : "Failed to load credentials from backend.");
     } finally {
       setRefreshing(false);
     }
@@ -63,10 +63,10 @@ export const RevocationRegistryPage: React.FC = () => {
       // On success, refresh authoritative state from backend
       await loadCredentials();
       setSelectedCred(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Revocation failed:", err);
       // NEVER silently change UI state if backend revocation failed
-      setModalError(err?.message || "Revocation failed on authoritative backend.");
+      setModalError(err instanceof Error ? err.message : "Revocation failed on authoritative backend.");
     } finally {
       setIsSubmitting(false);
     }

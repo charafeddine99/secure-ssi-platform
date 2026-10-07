@@ -4,7 +4,6 @@ import { fetchGatewayStatus, fetchBlockchainStatus, GatewayStatus, BlockchainSta
 export const NetworkIndicator: React.FC = () => {
   const [gateway, setGateway] = useState<GatewayStatus | null>(null);
   const [blockchain, setBlockchain] = useState<BlockchainStatus | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -17,10 +16,9 @@ export const NetworkIndicator: React.FC = () => {
         if (mounted) {
           setGateway(gw);
           setBlockchain(bc);
-          setLoading(false);
         }
       } catch {
-        if (mounted) setLoading(false);
+        // network error handled silently
       }
     };
     checkHealth();

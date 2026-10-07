@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckCircle2, XCircle, Clock, ShieldCheck, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
 
 export interface VerificationStep {
   id: string;

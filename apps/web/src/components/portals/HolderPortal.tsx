@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useWallet } from "../../context/WalletContext";
-import { fetchCredentials, BackendCredential } from "../../services/api";
+import { fetchCredentials } from "../../services/api";
 
 export type HolderScreen = 
   | "DASHBOARD" | "IDENTITY" | "WALLET" | "CREDENTIALS" | "CREDENTIAL_DETAIL" 
@@ -17,7 +17,7 @@ export interface VerifiableCredentialItem {
   issuedDate: string;
   expiryDate: string;
   status: "ACTIVE" | "REVOKED";
-  claims: Record<string, any>;
+  claims: Record<string, unknown>;
   proofValue: string;
   statusListIndex: number;
   aiRiskScore: number;
@@ -94,7 +94,6 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
 
   const [credentials, setCredentials] = useState<VerifiableCredentialItem[]>(INITIAL_FALLBACK_CREDENTIALS);
   const [selectedCredential, setSelectedCredential] = useState<VerifiableCredentialItem>(INITIAL_FALLBACK_CREDENTIALS[0]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Fetch real credentials from backend on load
   useEffect(() => {
@@ -104,7 +103,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           const mapped: VerifiableCredentialItem[] = backendCreds.map((c, idx) => ({
             id: c.id,
             title: c.title,
-            category: (c.category as any) || "IDENTITY",
+            category: (c.category as VerifiableCredentialItem["category"]) || "IDENTITY",
             type: c.credential_type,
             issuer: c.issuer,
             issuerName: c.issuer_name || "Official EUDI Issuer",
@@ -124,8 +123,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           setCredentials(mapped);
           setSelectedCredential(mapped[0]);
         }
-      })
-      .finally(() => setIsLoading(false));
+      });
   }, []);
   
   // Present & Consent state

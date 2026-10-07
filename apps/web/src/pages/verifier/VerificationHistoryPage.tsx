@@ -1,7 +1,6 @@
 import React from "react";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
-import { History, ShieldCheck, FileCheck } from "lucide-react";
 
 export const VerificationHistoryPage: React.FC = () => {
   const history = [

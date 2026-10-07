@@ -1,63 +1,62 @@
 import React, { useState, useEffect } from "react";
 import { fetchAuditLogs, BackendAuditLog } from "../../services/api";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { Clock, ShieldCheck, QrCode, ArrowUpRight, ArrowDownLeft, Lock } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft } from "lucide-react";
+
+// Fallback demo activities
+const FALLBACK_LOGS: BackendAuditLog[] = [
+  {
+    id: 1,
+    event_type: "PRESENTATION_SHARED",
+    actor_did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+    target_wallet: "did:verifier:frontex:e-gate-check",
+    risk_score: 12,
+    details: {
+      claimsShared: ["Nationality"],
+      predicate: "age >= 18",
+      transport: "Aries DIDComm v2 (A256GCM)"
+    },
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 2,
+    event_type: "CREDENTIAL_RECEIVED",
+    actor_did: "did:gov:eudi:nvi-authority",
+    target_wallet: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+    risk_score: 5,
+    details: {
+      type: "NationalIdentityCredential",
+      proof: "Ed25519Signature2020"
+    },
+    created_at: new Date(Date.now() - 3600000 * 24).toISOString()
+  },
+  {
+    id: 3,
+    event_type: "CREDENTIAL_RECEIVED",
+    actor_did: "did:ssi:subu:academic-authority",
+    target_wallet: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+    risk_score: 8,
+    details: {
+      type: "BachelorDiplomaCredential",
+      university: "SUBÜ"
+    },
+    created_at: new Date(Date.now() - 3600000 * 72).toISOString()
+  }
+];
 
 export const ActivityHistoryPage: React.FC = () => {
   const [logs, setLogs] = useState<BackendAuditLog[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Fallback demo activities
-  const fallbackLogs = [
-    {
-      id: 1,
-      event_type: "PRESENTATION_SHARED",
-      actor_did: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-      target_wallet: "did:verifier:frontex:e-gate-check",
-      risk_score: 12,
-      details: {
-        claimsShared: ["Nationality"],
-        predicate: "age >= 18",
-        transport: "Aries DIDComm v2 (A256GCM)"
-      },
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 2,
-      event_type: "CREDENTIAL_RECEIVED",
-      actor_did: "did:gov:eudi:nvi-authority",
-      target_wallet: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-      risk_score: 5,
-      details: {
-        type: "NationalIdentityCredential",
-        proof: "Ed25519Signature2020"
-      },
-      created_at: new Date(Date.now() - 3600000 * 24).toISOString()
-    },
-    {
-      id: 3,
-      event_type: "CREDENTIAL_RECEIVED",
-      actor_did: "did:ssi:subu:academic-authority",
-      target_wallet: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-      risk_score: 8,
-      details: {
-        type: "BachelorDiplomaCredential",
-        university: "SUBÜ"
-      },
-      created_at: new Date(Date.now() - 3600000 * 72).toISOString()
-    }
-  ];
 
   useEffect(() => {
     fetchAuditLogs()
       .then((data) => {
         if (data && data.length > 0) setLogs(data);
-        else setLogs(fallbackLogs as any);
+        else setLogs(FALLBACK_LOGS);
       })
-      .catch(() => setLogs(fallbackLogs as any));
+      .catch(() => setLogs(FALLBACK_LOGS));
   }, []);
 
-  const displayLogs = logs.length > 0 ? logs : fallbackLogs;
+  const displayLogs = logs.length > 0 ? logs : FALLBACK_LOGS;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -129,7 +128,9 @@ export const ActivityHistoryPage: React.FC = () => {
 
                 {log.details && (
                   <div style={{ fontSize: "0.7rem", color: "#cbd5e1", marginTop: "4px" }}>
-                    {log.details.claimsShared ? `Shared: ${log.details.claimsShared.join(", ")}` : log.details.type || "Cryptographic verification"}
+                    {Array.isArray(log.details.claimsShared)
+                      ? `Shared: ${log.details.claimsShared.map(String).join(", ")}`
+                      : String(log.details.type || "Cryptographic verification")}
                   </div>
                 )}
               </div>

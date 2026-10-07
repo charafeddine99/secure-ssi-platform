@@ -3,12 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import { fetchCredentials, BackendCredential } from "../../services/api";
-import { Building2, PlusCircle, FileText, RotateCcw, CheckCircle2, Clock, Users, ArrowRight } from "lucide-react";
+import { Building2, PlusCircle, FileText, RotateCcw, CheckCircle2 } from "lucide-react";
 
 export const IssuerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [issuedCreds, setIssuedCreds] = useState<BackendCredential[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchCredentials()

@@ -1,7 +1,6 @@
 import React from "react";
 import { Outlet, Link } from "react-router-dom";
 import { TrustBadge } from "../components/common/TrustBadge";
-import { Shield, Layers, Cpu, Database, Key } from "lucide-react";
 
 export const PublicLayout: React.FC = () => {
   return (

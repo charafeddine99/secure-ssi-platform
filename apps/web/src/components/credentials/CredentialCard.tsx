@@ -1,5 +1,5 @@
 import React from "react";
-import { ShieldCheck, Eye, KeyRound, QrCode } from "lucide-react";
+import { Eye, QrCode } from "lucide-react";
 import { TrustBadge } from "../common/TrustBadge";
 import { StatusChip } from "../common/StatusChip";
 
@@ -12,7 +12,7 @@ export interface CredentialCardData {
   issuedDate: string;
   expiryDate: string;
   status: "ACTIVE" | "REVOKED";
-  claims: Record<string, any>;
+  claims: Record<string, unknown>;
   proofValue: string;
   aiRiskScore?: number;
   statusListIndex?: number;
@@ -163,7 +163,7 @@ export const CredentialCard: React.FC<CredentialCardProps> = ({
           {onPresent && (
             <button
               onClick={() => onPresent(credential)}
-              title="Present with Selective Disclosure"
+              title="Present Credential (OID4VP)"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

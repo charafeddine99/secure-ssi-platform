@@ -5,16 +5,9 @@ import {
   claimOid4vciOffer,
 } from "../../services/api";
 import {
-  QrCode,
   Camera,
-  ShieldCheck,
   ArrowRight,
   CheckCircle2,
-  Lock,
-  Download,
-  AlertCircle,
-  ExternalLink,
-  Sparkles,
 } from "lucide-react";
 
 export const ScanQrPage: React.FC = () => {
@@ -80,8 +73,8 @@ export const ScanQrPage: React.FC = () => {
 
         setClaimSuccess(true);
         setClaimedCredId(res.credentialId);
-      } catch (err: any) {
-        setError(err.message || "Failed to claim OID4VCI offer.");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to claim OID4VCI offer.");
       } finally {
         setClaiming(false);
       }
@@ -102,8 +95,8 @@ export const ScanQrPage: React.FC = () => {
             requestUri: trimmed,
           },
         });
-      } catch (err: any) {
-        setError("Failed to parse OID4VP URI: " + err.message);
+      } catch (err: unknown) {
+        setError("Failed to parse OID4VP URI: " + (err instanceof Error ? err.message : String(err)));
       }
       return;
     }

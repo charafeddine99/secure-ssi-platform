@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
-import { StatusChip } from "../../components/common/StatusChip";
 import {
   getOid4vpSession,
   submitOid4vpDirectPost,
-  rejectOid4vpSession,
   recordOid4vpConsent,
   createOid4vpPresentation,
-  fetchCredentials,
   Oid4vpSession,
   BackendCredential,
 } from "../../services/api";
 import {
-  ShieldCheck,
-  Lock,
   Eye,
   EyeOff,
   CheckCircle2,
@@ -35,14 +30,13 @@ export const PresentationConsentPage: React.FC = () => {
   const stateCred = location.state?.credential as BackendCredential | undefined;
 
   const [session, setSession] = useState<Oid4vpSession | null>(null);
-  const [loadingSession, setLoadingSession] = useState<boolean>(Boolean(stateSessionId));
 
   const [verifierName, setVerifierName] = useState("Accredited Compliance Authority");
   const [purpose, setPurpose] = useState("Verification of active academic status & qualification");
   const [expiresAt, setExpiresAt] = useState<string>("");
 
   // Claims loaded from selected credential or realistic university profile
-  const [claimsData, setClaimsData] = useState<Record<string, any>>({
+  const [claimsData, setClaimsData] = useState<Record<string, unknown>>({
     affiliation: "Senior Security Architect",
     programCode: "SUB-SEC-2026",
     degree: "Computer Engineering & Applied Cryptography",
@@ -81,17 +75,18 @@ export const PresentationConsentPage: React.FC = () => {
         if (data.verifierDid) setVerifierName(data.verifierDid);
 
         if (data.requestedFields && data.requestedFields.length > 0) {
-          const newSelected: Record<string, boolean> = {};
-          // Default: disclose requested fields, protect others
-          Object.keys(claimsData).forEach((k) => {
-            newSelected[k] = data.requestedFields.includes(k);
+          const reqFields = data.requestedFields;
+          setSelectedClaims((prev) => {
+            const newSelected: Record<string, boolean> = {};
+            // Default: disclose requested fields, protect others
+            Object.keys(prev).forEach((k) => {
+              newSelected[k] = reqFields.includes(k);
+            });
+            return newSelected;
           });
-          setSelectedClaims(newSelected);
         }
       } catch (err) {
         console.warn("Could not load real OID4VP session, using fallback:", err);
-      } finally {
-        setLoadingSession(false);
       }
     };
 
@@ -126,7 +121,7 @@ export const PresentationConsentPage: React.FC = () => {
     setPresenting(true);
     setStatusMessage(null);
 
-    const disclosedValues: Record<string, any> = {};
+    const disclosedValues: Record<string, unknown> = {};
     const rejectedList: string[] = [];
     Object.entries(selectedClaims).forEach(([k, isSelected]) => {
       if (isSelected && claimsData[k] !== undefined) {
@@ -178,8 +173,8 @@ export const PresentationConsentPage: React.FC = () => {
       setTimeout(() => {
         navigate("/wallet/activity");
       }, 1600);
-    } catch (err: any) {
-      setStatusMessage({ type: "error", text: err.message || "Failed to submit presentation via Direct Post." });
+    } catch (err: unknown) {
+      setStatusMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to submit presentation via Direct Post." });
     } finally {
       setPresenting(false);
     }
@@ -211,8 +206,8 @@ export const PresentationConsentPage: React.FC = () => {
       setTimeout(() => {
         navigate("/wallet");
       }, 1400);
-    } catch (err: any) {
-      setStatusMessage({ type: "error", text: err.message || "Failed to reject verification session." });
+    } catch (err: unknown) {
+      setStatusMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to reject verification session." });
     } finally {
       setRejecting(false);
     }

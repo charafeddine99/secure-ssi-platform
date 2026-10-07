@@ -21,7 +21,14 @@ import {
 interface MenuItem {
   path: string;
   label: string;
-  icon: any;
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+}
+
+interface RoleConfig {
+  roleTitle: string;
+  org: string;
+  accentColor: string;
+  items: MenuItem[];
 }
 
 export const InstitutionalLayout: React.FC = () => {
@@ -33,9 +40,8 @@ export const InstitutionalLayout: React.FC = () => {
   const isIssuer = location.pathname.startsWith("/issuer");
   const isVerifier = location.pathname.startsWith("/verifier");
   const isGuardian = location.pathname.startsWith("/guardian");
-  const isAdmin = location.pathname.startsWith("/admin");
 
-  const getRoleConfig = () => {
+  const getRoleConfig = (): RoleConfig => {
     if (isIssuer) {
       return {
         roleTitle: "ISSUER OPERATIONS CONSOLE",

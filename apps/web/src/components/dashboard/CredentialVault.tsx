@@ -104,9 +104,9 @@ export const CredentialVault: React.FC = () => {
       };
 
       setCredentials((prev) => [newCred, ...prev]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Issuance failed:", err);
-      setIssuanceError(err.message || "Failed to request credential from SSI Layer 3 API.");
+      setIssuanceError(err instanceof Error ? err.message : "Failed to request credential from SSI Layer 3 API.");
     } finally {
       setIsIssuing(false);
     }

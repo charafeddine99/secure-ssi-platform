@@ -2,7 +2,7 @@ import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { TrustBadge } from "../components/common/TrustBadge";
-import { Wallet, QrCode, Clock, Shield, KeyRound, ChevronRight } from "lucide-react";
+import { Wallet, QrCode, Clock, Shield } from "lucide-react";
 
 export const HolderLayout: React.FC = () => {
   const { user } = useAuth();

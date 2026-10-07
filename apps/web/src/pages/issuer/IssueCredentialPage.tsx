@@ -9,19 +9,15 @@ import {
   createOid4vciOffer,
   getOid4vciOffer,
   Oid4vciOffer,
+  FraudAssessmentResult,
 } from "../../services/api";
 import {
-  PlusCircle,
-  ShieldCheck,
   ArrowLeft,
   CheckCircle2,
-  AlertTriangle,
   Send,
   QrCode,
   Layers,
   Sparkles,
-  KeyRound,
-  Clock,
 } from "lucide-react";
 
 export const IssueCredentialPage: React.FC = () => {
@@ -53,9 +49,9 @@ export const IssueCredentialPage: React.FC = () => {
   const [birthDate, setBirthDate] = useState("1999-04-12");
 
   const [assessingRisk, setAssessingRisk] = useState(false);
-  const [riskAssessment, setRiskAssessment] = useState<any>(null);
+  const [riskAssessment, setRiskAssessment] = useState<FraudAssessmentResult | null>(null);
   const [issuing, setIssuing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Poll OID4VCI offer status
@@ -68,7 +64,7 @@ export const IssueCredentialPage: React.FC = () => {
           setOfferClaimed(true);
           setOidOffer(latest);
         }
-      } catch (err) {
+      } catch {
         // Silently retry polling
       }
     }, 2500);
@@ -83,7 +79,7 @@ export const IssueCredentialPage: React.FC = () => {
     setOfferClaimed(false);
 
     try {
-      const subjectData: Record<string, any> = {
+      const subjectData: Record<string, unknown> = {
         affiliation: oidAffiliation,
         programCode: oidProgramCode,
         degree: oidDegree,
@@ -98,8 +94,8 @@ export const IssueCredentialPage: React.FC = () => {
       });
 
       setOidOffer(offer);
-    } catch (err: any) {
-      setError(err.message || "Failed to create OID4VCI offer.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create OID4VCI offer.");
     } finally {
       setGeneratingOffer(false);
     }
@@ -118,8 +114,8 @@ export const IssueCredentialPage: React.FC = () => {
         recent_failed_attempts: 0,
       });
       setRiskAssessment(assessment);
-    } catch (err: any) {
-      setError("AI assessment failed or service unreachable: " + err.message);
+    } catch (err: unknown) {
+      setError("AI assessment failed or service unreachable: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setAssessingRisk(false);
     }
@@ -131,7 +127,7 @@ export const IssueCredentialPage: React.FC = () => {
     setIssuing(true);
     setError(null);
 
-    const claims: Record<string, any> = {
+    const claims: Record<string, unknown> = {
       "Full Name": subjectName,
       Nationality: nationality,
       "National ID No": nationalId,
@@ -148,9 +144,9 @@ export const IssueCredentialPage: React.FC = () => {
         category,
         claims,
       });
-      setResult(res);
-    } catch (err: any) {
-      setError(err.message || "Credential issuance failed.");
+      setResult(res as Record<string, unknown>);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Credential issuance failed.");
     } finally {
       setIssuing(false);
     }
@@ -666,7 +662,7 @@ export const IssueCredentialPage: React.FC = () => {
               <div style={{ backgroundColor: "#0d131f", padding: "14px", borderRadius: "10px", border: "1px solid #1f2937", fontSize: "0.8rem" }}>
                 <div style={{ color: "#94a3b8" }}>Credential URN:</div>
                 <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "2px" }}>
-                  {result.credential_id || result.id || "urn:uuid:credential-success"}
+                  {String((result as Record<string, unknown>).credential_id || (result as Record<string, unknown>).id || "urn:uuid:credential-success")}
                 </div>
               </div>
 

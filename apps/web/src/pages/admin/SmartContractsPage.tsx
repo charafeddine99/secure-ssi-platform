@@ -10,15 +10,9 @@ import {
 } from "../../services/api";
 import { 
   Database, 
-  ExternalLink, 
-  ShieldCheck, 
-  CheckCircle2, 
   RefreshCw, 
-  Layers, 
   Search, 
-  Clock, 
-  Hash, 
-  Cpu 
+  Clock 
 } from "lucide-react";
 
 export const SmartContractsPage: React.FC = () => {

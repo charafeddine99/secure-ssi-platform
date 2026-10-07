@@ -102,6 +102,7 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
               </h2>
               <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
                 Vasi Hesabı: <span style={{ fontFamily: "var(--font-mono)", color: "#10b981" }}>{account || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"}</span>
+                {liveGuardians.length > 0 && <span style={{ marginLeft: "10px", color: "#94a3b8" }}>• Sistemde Kayıtlı Vasi: {liveGuardians.length}</span>}
               </p>
             </div>
           </div>

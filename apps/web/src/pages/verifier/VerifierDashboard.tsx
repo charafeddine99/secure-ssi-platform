@@ -2,7 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
-import { Search, PlusCircle, FileCheck, History, CheckCircle2, ShieldCheck, ArrowRight } from "lucide-react";
+import { Search, PlusCircle, FileCheck, History, ShieldCheck } from "lucide-react";
 
 export const VerifierDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -10,7 +10,7 @@ export const VerifierDashboard: React.FC = () => {
   const stats = [
     { label: "Total Presentations Audited", value: "148", change: "100% Cryptographic", icon: FileCheck, color: "#34d399" },
     { label: "Average Verification Latency", value: "0.14 ms", change: "Local ed25519-2020", icon: Search, color: "#60a5fa" },
-    { label: "Selective Disclosure Rate", value: "86.2%", change: "Zero Data Leakage", icon: ShieldCheck, color: "#c084fc" },
+    { label: "Claim Minimization Rate", value: "86.2%", change: "Zero Data Leakage", icon: ShieldCheck, color: "#c084fc" },
     { label: "Revoked / Expired Interceptions", value: "4 Rejected", change: "Bitstring verified", icon: History, color: "#f87171" }
   ];
 
@@ -57,7 +57,7 @@ export const VerifierDashboard: React.FC = () => {
             Verifier Trust Console
           </h1>
           <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            High-speed cryptographic verification of W3C Verifiable Presentations and selective disclosures.
+            High-speed cryptographic verification of W3C Verifiable Presentations and claim minimization.
           </p>
         </div>
 
@@ -179,7 +179,7 @@ export const VerifierDashboard: React.FC = () => {
                   Subject: {v.subject} • Verified: {v.claimsVerified.join(", ")}
                 </div>
                 <div style={{ fontSize: "0.72rem", color: "#34d399", marginTop: "2px" }}>
-                  Minimization: {v.hiddenClaimsCount} sensitive fields completely hidden via salted blind commitment
+                  Minimization: {v.hiddenClaimsCount} unrequested fields omitted via DCQL policy minimization
                 </div>
               </div>
 

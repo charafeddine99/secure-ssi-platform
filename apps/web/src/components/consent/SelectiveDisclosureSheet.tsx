@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Modal } from "../common/Modal";
-import { ShieldCheck, Eye, EyeOff, CheckCircle2, Lock } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, Lock } from "lucide-react";
 import { CredentialCardData } from "../credentials/CredentialCard";
 
 interface SelectiveDisclosureSheetProps {
@@ -10,22 +10,20 @@ interface SelectiveDisclosureSheetProps {
   verifierName?: string;
   verifierPurpose?: string;
   requiredClaims?: string[];
-  onConfirmPresentation: (disclosedClaims: Record<string, any>, blindedCommitments: string[]) => void;
+  onConfirmPresentation: (disclosedClaims: Record<string, unknown>, blindedCommitments: string[]) => void;
 }
 
 export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> = ({
   isOpen,
   onClose,
   credential,
-  verifierName = "General eIDAS Verifier Service",
+  verifierName = "Institutional Verifier Service",
   verifierPurpose = "Standard identity verification & compliance check",
   requiredClaims = [],
   onConfirmPresentation
 }) => {
-  if (!credential) return null;
-
-  // Track selection for each claim
-  const allClaimKeys = Object.keys(credential.claims || {});
+  // Track selection for each claim - state declared unconditionally before any early return
+  const allClaimKeys = credential ? Object.keys(credential.claims || {}) : [];
   
   // Default: required claims checked, sensitive numbers unchecked
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>(() => {
@@ -40,6 +38,8 @@ export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> =
     return initial;
   });
 
+  if (!credential) return null;
+
   const toggleClaim = (key: string) => {
     setSelectedKeys((prev) => ({
       ...prev,
@@ -48,18 +48,18 @@ export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> =
   };
 
   const handleApprove = () => {
-    const disclosed: Record<string, any> = {};
-    const blinded: string[] = [];
+    const disclosed: Record<string, unknown> = {};
+    const minimized: string[] = [];
 
     allClaimKeys.forEach((k) => {
       if (selectedKeys[k]) {
         disclosed[k] = credential.claims[k];
       } else {
-        blinded.push(`salted-hash:${k}:${btoa(String(credential.claims[k])).slice(0, 16)}`);
+        minimized.push(`omitted:${k}`);
       }
     });
 
-    onConfirmPresentation(disclosed, blinded);
+    onConfirmPresentation(disclosed, minimized);
     onClose();
   };
 
@@ -70,7 +70,7 @@ export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="User Consent & Selective Disclosure"
+      title="User Consent & Claim Minimization"
       subtitle={`Verifier: ${verifierName}`}
       maxWidth="600px"
     >
@@ -112,7 +112,7 @@ export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> =
         </span>
         <span style={{ color: "#cbd5e1" }}>
           <strong style={{ color: "#60a5fa" }}>{disclosedCount}</strong> revealed /{" "}
-          <strong style={{ color: "#f87171" }}>{minimizedCount}</strong> hidden (salted hash)
+          <strong style={{ color: "#f87171" }}>{minimizedCount}</strong> omitted (policy minimized)
         </span>
       </div>
 
@@ -158,7 +158,7 @@ export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> =
                     )}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: isSelected ? "#93c5fd" : "#64748b" }}>
-                    {isSelected ? String(credential.claims[key]) : "Hidden — Verifier receives cryptographic hash"}
+                    {isSelected ? String(credential.claims[key]) : "Omitted from presentation (claim minimization)"}
                   </div>
                 </div>
               </div>
