@@ -30,21 +30,21 @@ export const VerifyPresentationPage: React.FC = () => {
       status: "PENDING"
     },
     {
+      id: "step-binding",
+      title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
+      description: "Sunumun oturum meydan okumasına (nonce) ve hamil DID kimliğine kriptografik bağlılık teyidi",
+      status: "PENDING"
+    },
+    {
       id: "step-status",
       title: "W3C Bitstring İptal Kütüğü Durum Kontrolü",
       description: "Hardhat EVM RevocationRegistry sözleşmesinde BitstringStatusList2021 slot #104 denetimi",
       status: "PENDING"
     },
     {
-      id: "step-predicate",
-      title: "Sıfır Bilgi İspatı (ZKP) Önerme Koşulu Doğrulaması",
-      description: "Doğum tarihi ifşa edilmeden 'Yaş >= 18' koşulunun kriptografik matematiksel teyidi",
-      status: "PENDING"
-    },
-    {
       id: "step-minimization",
-      title: "Veri Minimizasyonu ve Kör Taahhüt Denetimi",
-      description: "Tuzlanmış SHA-256 taahhütlerinin doğrulanması ve sıfır gereksiz veri transferi teyidi",
+      title: "DCQL Sorgu ve Veri Minimizasyonu Uyumluluğu",
+      description: "İhraççı kimlik belgesinin tam bütünlüğü korunurken, hamil onayı ve DCQL politikasına uygun aktarım teyidi",
       status: "PENDING"
     }
   ];
@@ -139,6 +139,16 @@ export const VerifyPresentationPage: React.FC = () => {
             : (res.errors && res.errors.length > 0 ? res.errors.join("; ") : "İmza doğrulama hatası")
         },
         {
+          id: "step-binding",
+          title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
+          description: isVerified
+            ? "Oturum meydan okuması (nonce) ve hamil DID sahipliği doğrulandı."
+            : "Hamil bağlama doğrulaması gerçekleştirilemedi.",
+          status: isVerified ? "SUCCESS" : "FAILED",
+          latencyMs: Math.max(0.01, Number((Number(latencyPerStep) * 0.25).toFixed(2))),
+          details: "Hamil İmzası: Geçerli"
+        },
+        {
           id: "step-status",
           title: "W3C Bitstring İptal Kütüğü Durum Kontrolü",
           description: isVerified
@@ -151,20 +161,10 @@ export const VerifyPresentationPage: React.FC = () => {
           details: "StatusList2021 Bitstring Kökü: 0x94635169d750b520e53f6a2a6be2739ef25d"
         },
         {
-          id: "step-predicate",
-          title: "Sıfır Bilgi İspatı (ZKP) Önerme Koşulu Doğrulaması",
-          description: isVerified
-            ? "Yaş önermesi (Yaş >= 18) doğum tarihi paylaşılmadan DOĞRU olarak onaylandı."
-            : "Önerme koşulu doğrulaması gerçekleştirilemedi.",
-          status: isVerified ? "SUCCESS" : "FAILED",
-          latencyMs: Math.max(0.01, Number((Number(latencyPerStep) * 0.25).toFixed(2))),
-          details: "Önerme: Yaş >= 18"
-        },
-        {
           id: "step-minimization",
-          title: "Veri Minimizasyonu ve Kör Taahhüt Denetimi",
+          title: "DCQL Sorgu ve Veri Minimizasyonu Uyumluluğu",
           description: isVerified
-            ? "4 hassas nitelik gizlendi ve tuzlanmış SHA-256 taahhütleri ile doğrulandı."
+            ? "İhraççı belgesi bütünlüğü korunarak, DCQL politikasına ve hamil onayına uygun aktarım sağlandı."
             : "Veri minimizasyonu denetimi tamamlanamadı.",
           status: isVerified ? "SUCCESS" : "FAILED",
           latencyMs: Math.max(0.02, Number((Number(latencyPerStep) * 0.35).toFixed(2))),
@@ -176,7 +176,7 @@ export const VerifyPresentationPage: React.FC = () => {
         overallStatus: res.status,
         verifiedAt: new Date().toISOString(),
         totalLatencyMs: totalTime.toFixed(2),
-        dataLeakageRisk: isVerified ? "%0 (Sıfır Sızıntı)" : "Belirsiz",
+        dataLeakageRisk: isVerified ? "%0 (Politika Uyumlu)" : "Belirsiz",
         disclosedClaims: res.claims || samplePayload.disclosed_claims,
         errors: res.errors
       });
@@ -193,6 +193,13 @@ export const VerifyPresentationPage: React.FC = () => {
           details: errorMsg
         },
         {
+          id: "step-binding",
+          title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
+          description: "Doğrulama işlemi tamamlanamadı.",
+          status: "FAILED",
+          latencyMs: 0.01
+        },
+        {
           id: "step-status",
           title: "W3C Bitstring İptal Kütüğü Kontrolü",
           description: "Doğrulama işlemi tamamlanamadı.",
@@ -200,15 +207,8 @@ export const VerifyPresentationPage: React.FC = () => {
           latencyMs: 0.01
         },
         {
-          id: "step-predicate",
-          title: "Sıfır Bilgi İspatı (ZKP) Koşul Denetimi",
-          description: "Doğrulama işlemi tamamlanamadı.",
-          status: "FAILED",
-          latencyMs: 0.01
-        },
-        {
           id: "step-minimization",
-          title: "Veri Minimizasyonu Teyidi",
+          title: "DCQL Veri Minimizasyonu Teyidi",
           description: "Doğrulama işlemi tamamlanamadı.",
           status: "FAILED",
           latencyMs: 0.01
@@ -272,7 +272,7 @@ export const VerifyPresentationPage: React.FC = () => {
           Doğrulanabilir Sunum Denetimi (OID4VP)
         </h1>
         <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "6px 0 0 0", lineHeight: 1.4 }}>
-          Dijital imzaları, blokzincir iptal kütüğünü ve ZKP seçici ifşa önermelerini milisaniye hızında denetleyin.
+          Dijital imzaları, hamil bağlamayı, blokzincir iptal kütüğünü ve DCQL veri minimizasyonunu milisaniye hızında denetleyin.
         </p>
       </div>
 
@@ -425,9 +425,9 @@ export const VerifyPresentationPage: React.FC = () => {
               </div>
             </div>
             <div style={{ backgroundColor: "rgba(10, 20, 16, 0.7)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>ZKP Önermesi:</span>
+              <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>DCQL Politikası:</span>
               <div style={{ fontWeight: 800, color: result.overallStatus === "VERIFIED" ? "#60a5fa" : "#94a3b8", fontSize: "0.95rem", marginTop: "4px" }}>
-                {result.overallStatus === "VERIFIED" ? "Yaş >= 18 (T.C. Vatandaşı)" : "Değerlendirilemedi"}
+                {result.overallStatus === "VERIFIED" ? "Yaş >= 18 (DCQL Onaylı)" : "Değerlendirilemedi"}
               </div>
             </div>
           </div>

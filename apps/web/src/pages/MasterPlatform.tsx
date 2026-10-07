@@ -161,7 +161,7 @@ export const MasterPlatform: React.FC = () => {
                 { key: "CREDENTIALS", label: "📜 Credentials" },
                 { key: "CREDENTIAL_DETAIL", label: "🔍 Credential Detail" },
                 { key: "PRESENT", label: "📤 Present (OID4VP)" },
-                { key: "CONSENT", label: "🛡️ Consent & ZKP" },
+                { key: "CONSENT", label: "🛡️ Consent & Policy" },
                 { key: "VERIFICATION_RESULT", label: "📋 Result Receipt" },
                 { key: "ACTIVITY", label: "🕒 Activity Ledger" },
                 { key: "SECURITY", label: "🔐 Security & AI" },

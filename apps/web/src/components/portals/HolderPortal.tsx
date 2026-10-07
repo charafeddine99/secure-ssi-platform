@@ -21,7 +21,7 @@ export interface VerifiableCredentialItem {
   proofValue: string;
   statusListIndex: number;
   aiRiskScore: number;
-  zkpRule: {
+  policyRule: {
     description: string;
     predicate: string;
     hiddenFields: string[];
@@ -51,9 +51,9 @@ const INITIAL_FALLBACK_CREDENTIALS: VerifiableCredentialItem[] = [
     },
     proofValue: "z3s9PqRtXvM8EUDINationalIdentityProof2026Ed25519Signature",
     aiRiskScore: 4,
-    zkpRule: {
-      description: "Reşit Olma ve Vatandaşlık İspatı (Seçici İfşa)",
-      predicate: "Yaş >= 18 && Uyruk == 'T.C.' (Doğum Tarihi ve TC No Gizlenerek)",
+    policyRule: {
+      description: "Reşit Olma ve Vatandaşlık İspatı (Minimizasyon)",
+      predicate: "Yaş >= 18 && Uyruk == 'T.C.' (DCQL Politikasıyla Seçili Aktarım)",
       hiddenFields: ["Ulusal Kimlik No", "Seri No", "Doğum Tarihi", "Doğum Yeri"]
     }
   },
@@ -77,9 +77,9 @@ const INITIAL_FALLBACK_CREDENTIALS: VerifiableCredentialItem[] = [
     },
     proofValue: "z4r8NmKyTwJ7QEAAEuCybersecurityArchitectSignedEd25519",
     aiRiskScore: 6,
-    zkpRule: {
+    policyRule: {
       description: "Kıdemli Mimar Lisans Doğrulaması",
-      predicate: "Unvan == 'Senior Distributed Systems Architect' (Akreditasyon No Gizlenerek)",
+      predicate: "Unvan == 'Senior Distributed Systems Architect' (DCQL Seçili Aktarım)",
       hiddenFields: ["Akreditasyon No"]
     }
   }
@@ -115,9 +115,9 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
             claims: typeof c.claims === "string" ? JSON.parse(c.claims) : (c.claims || {}),
             proofValue: c.proof_value || "z3sProofValEd25519SignedW3C",
             aiRiskScore: c.ai_risk_score || 5,
-            zkpRule: {
-              description: `${c.title} Seçici İfşa Kuralı`,
-              predicate: c.zkp_predicate || "W3C VC 2.0 ZKP Valid",
+            policyRule: {
+              description: `${c.title} DCQL Minimizasyon Kuralı`,
+              predicate: c.zkp_predicate || "W3C VC 2.0 Valid",
               hiddenFields: []
             }
           }));
@@ -896,7 +896,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                     fontWeight: "600",
                     color: isAllowed ? "var(--color-primary)" : "var(--text-tertiary)"
                   }}>
-                    {isAllowed ? "AÇIKÇA İFŞA ET" : "GİZLE (ZKP / MINIMIZED)"}
+                    {isAllowed ? "AÇIKÇA İFŞA ET" : "GİZLE (MİNİMİZE ET)"}
                   </span>
                 </div>
               ))}

@@ -147,7 +147,7 @@ export function StatusPage() {
           algorithm: "DataIntegrityProof - eddsa-jcs-2022",
           latencyMs: 3.8,
           zkpSatisfied: true,
-          zkpPredicate: "GPA >= 3.00 (Koşul Gerçek Değer Gizlenerek Doğrulandı)",
+          zkpPredicate: "GPA >= 3.00 (DCQL Politikasına Göre Doğrulandı)",
           hiddenFields: ["tcKimlik", "ogrenciNo", "ogrenciAdi"]
         });
       }
