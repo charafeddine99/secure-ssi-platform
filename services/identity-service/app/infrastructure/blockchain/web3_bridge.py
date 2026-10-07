@@ -19,17 +19,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
-try:
-    from eth_account import Account
-    from web3 import Web3
-    from web3.exceptions import Web3Exception
-    _WEB3_AVAILABLE = True
-except ImportError:
-    Account = None  # type: ignore
-    Web3 = None  # type: ignore
-    class Web3Exception(Exception):  # type: ignore
-        pass
-    _WEB3_AVAILABLE = False
+from eth_account import Account
+from web3 import Web3
+from web3.exceptions import Web3Exception
 
 from app.config.blockchain_settings import BlockchainSettings, load_blockchain_settings
 from app.domain.blockchain_anchor import (
@@ -202,18 +194,9 @@ class BlockchainBridge:
     ) -> None:
         self.settings = settings or load_blockchain_settings()
         self.repository = repository
-        self.account = None
-        self.did_contract = None
-        self.revocation_contract = None
-        self.recovery_contract = None
-        self.audit_contract = None
-
-        if not _WEB3_AVAILABLE or Web3 is None:
-            self.w3 = None
-            return
-
         self.w3 = Web3(Web3.HTTPProvider(self.settings.rpc_url, request_kwargs={"timeout": self.settings.timeout_seconds}))
-        if self.settings.private_key and Account is not None:
+        self.account = None
+        if self.settings.private_key:
             try:
                 self.account = Account.from_key(self.settings.private_key)
             except Exception as e:
@@ -244,8 +227,6 @@ class BlockchainBridge:
             return None
 
     def is_connected(self) -> bool:
-        if not _WEB3_AVAILABLE or self.w3 is None:
-            return False
         try:
             return self.settings.enabled and self.w3.is_connected()
         except Exception:
