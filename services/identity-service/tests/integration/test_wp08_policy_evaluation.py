@@ -84,7 +84,7 @@ def _make_valid_vp_token(*, nonce: str, expired: bool = False) -> dict[str, Any]
             "https://www.w3.org/ns/credentials/v2",
             "https://secure-ssi.example/contexts/university-affiliation/v1",
         ],
-        "id": "urn:uuid:wp08-integration-test-vc-0001",
+        "id": "urn:uuid:a1b2c3d4-e5f6-4789-8abc-000000000001",
         "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
         "issuer": "did:web:issuer.example",
         "validFrom": (now - timedelta(days=30)).isoformat().replace("+00:00", "Z"),
@@ -113,7 +113,7 @@ def _make_invalid_sig_vp_token(*, nonce: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     unsigned_vc: dict[str, Any] = {
         "@context": ["https://www.w3.org/ns/credentials/v2"],
-        "id": "urn:uuid:wp08-bad-sig-vc",
+        "id": "urn:uuid:b1b2c3d4-e5f6-4789-8abc-000000000002",
         "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
         "issuer": "did:web:issuer.example",
         "validFrom": now.isoformat().replace("+00:00", "Z"),
