@@ -43,6 +43,9 @@ from app.infrastructure.persistence.repositories import MongoAuditEventRepositor
 from app.infrastructure.persistence.mappers import new_object_id
 from app.infrastructure.clients.fraud_client import fraud_client
 from app.application.services.trust_registry_service import TrustRegistryService
+# WP-08: Verification Policy Integration
+from app.domain.verification_policy import PolicyCheckName, PolicyCheckResult
+from app.application.services.verification_policy_service import VerificationPolicyEvaluator
 
 class Oid4vpService:
     def __init__(
@@ -947,49 +950,92 @@ class Oid4vpService:
                         consent_violation_reason = f"Disclosed claim '{k}' was rejected by holder consent."
                         break
 
-        # STRICT INVARIANT: Cryptographic Failure Hierarchy (Section 15)
-        # Under NO circumstance can AI override cryptographic, expiration, revocation, or DCQL query failure.
-        crypto_valid = (
-            cred_valid
-            and issuer_trusted
-            and sig_valid
-            and holder_binding_valid
-            and expiry_valid
-            and revocation_status_clear
-            and challenge_valid
-            and dcql_satisfied
-            and not is_already_quarantined
-            and not consent_violation
+        # WP-08 — EXPLICIT, AUDITABLE POLICY EVALUATION (fail-closed)
+        # Build nine named PolicyCheckResult objects and delegate to VerificationPolicyEvaluator.
+        # The evaluator enforces the strict cryptographic failure hierarchy:
+        #   any crypto gate failure → REJECTED (AI cannot override).
+        # Quarantine side-effect (blockchain anchor write) is performed here AFTER
+        # the evaluator returns its intent via quarantine_triggered.
+
+        # Map pre-computed booleans to named check results
+        _check_credential = (
+            PolicyCheckResult.ok(PolicyCheckName.CREDENTIAL_VALID)
+            if cred_valid
+            else PolicyCheckResult.fail(PolicyCheckName.CREDENTIAL_VALID, reason="Credential format invalid or missing")
+        )
+        _check_issuer = (
+            PolicyCheckResult.ok(PolicyCheckName.ISSUER_TRUSTED)
+            if issuer_trusted
+            else PolicyCheckResult.fail(PolicyCheckName.ISSUER_TRUSTED, reason=trust_reason_val or "Issuer not in trust registry")
+        )
+        _check_sig = (
+            PolicyCheckResult.ok(PolicyCheckName.SIGNATURE_VALID)
+            if sig_valid
+            else PolicyCheckResult.fail(PolicyCheckName.SIGNATURE_VALID, reason="Cryptographic signature invalid or unverifiable")
+        )
+        _check_holder = (
+            PolicyCheckResult.ok(PolicyCheckName.HOLDER_BINDING)
+            if holder_binding_valid
+            else PolicyCheckResult.fail(PolicyCheckName.HOLDER_BINDING, reason=holder_binding_reason or "Holder binding failed")
+        )
+        _check_expiry = (
+            PolicyCheckResult.ok(PolicyCheckName.EXPIRATION)
+            if expiry_valid
+            else PolicyCheckResult.fail(PolicyCheckName.EXPIRATION, reason="Credential has expired")
+        )
+        # Revocation gate: also blocks if subject is already quarantined
+        _revoc_clear = revocation_status_clear and not is_already_quarantined
+        _check_revoc = (
+            PolicyCheckResult.ok(PolicyCheckName.REVOCATION_STATUS)
+            if _revoc_clear
+            else PolicyCheckResult.fail(
+                PolicyCheckName.REVOCATION_STATUS,
+                reason="Revoked or locked in quarantine" if is_already_quarantined else "Credential revoked",
+            )
+        )
+        _check_nonce = (
+            PolicyCheckResult.ok(PolicyCheckName.SESSION_NONCE)
+            if challenge_valid
+            else PolicyCheckResult.fail(PolicyCheckName.SESSION_NONCE, reason="Session nonce/challenge mismatch or missing")
+        )
+        _check_dcql = (
+            PolicyCheckResult.ok(PolicyCheckName.DCQL_SATISFACTION)
+            if dcql_satisfied
+            else PolicyCheckResult.fail(PolicyCheckName.DCQL_SATISFACTION, reason=dcql_reason or "DCQL query not satisfied")
+        )
+        _check_consent = (
+            PolicyCheckResult.ok(PolicyCheckName.CONSENT_COMPLIANCE)
+            if not consent_violation
+            else PolicyCheckResult.fail(PolicyCheckName.CONSENT_COMPLIANCE, reason=consent_violation_reason or "Consent violation")
         )
 
-        quarantine_triggered = False
-        quarantine_reason = None
+        # Delegate to VerificationPolicyEvaluator (pure, side-effect-free)
+        policy_result = VerificationPolicyEvaluator.evaluate(
+            credential_valid=_check_credential,
+            issuer_trusted=_check_issuer,
+            signature_valid=_check_sig,
+            holder_binding=_check_holder,
+            expiration=_check_expiry,
+            revocation_status=_check_revoc,
+            session_nonce=_check_nonce,
+            dcql_satisfaction=_check_dcql,
+            consent_compliance=_check_consent,
+            ai_risk_score=ai_risk_score,
+        )
 
-        if not crypto_valid:
-            # Rejection due to cryptographic or trust failure
-            policy_accepted = False
-            final_policy = "REJECTED"
-        else:
-            # All cryptographic proofs are valid; evaluate adaptive AI policy
-            if ai_risk_level == "LOW":
-                policy_accepted = True
-                final_policy = "ACCEPTED"
-            elif ai_risk_level == "MEDIUM":
-                # Adaptive policy: Step-up authentication required; cannot pass unconditionally
-                policy_accepted = False
-                final_policy = "REJECTED"
-            else:  # HIGH or CRITICAL
-                policy_accepted = False
-                final_policy = "REJECTED"
-                if ai_risk_score >= 85:
-                    quarantine_triggered = True
-                    quarantine_reason = f"Automated AI threat engine quarantine (Risk Score: {ai_risk_score}/100)"
-                    try:
-                        from app.infrastructure.cache_and_anchor import blockchain_anchor
-                        if subject_id and hasattr(blockchain_anchor, "anchor_quarantine"):
-                            blockchain_anchor.anchor_quarantine(subject_id, quarantine_reason)
-                    except Exception:
-                        pass
+        policy_accepted = policy_result.accepted
+        final_policy = policy_result.decision.value
+        quarantine_triggered = policy_result.quarantine_triggered
+        quarantine_reason = policy_result.quarantine_reason
+
+        # Execute quarantine side-effect only when evaluator requests it
+        if quarantine_triggered:
+            try:
+                from app.infrastructure.cache_and_anchor import blockchain_anchor
+                if subject_id and hasattr(blockchain_anchor, "anchor_quarantine"):
+                    blockchain_anchor.anchor_quarantine(subject_id, quarantine_reason)
+            except Exception:
+                pass
 
         # Data minimization / claim minimization intent breakdown
         disclosed_dict = dict(disclosed_claims or target_vc.get("credentialSubject", {}))
@@ -1005,9 +1051,9 @@ class Oid4vpService:
             signature_valid=sig_valid,
             holder_binding_valid=holder_binding_valid,
             expiration_valid=expiry_valid,
-            revocation_status_clear=revocation_status_clear and not is_already_quarantined,
+            revocation_status_clear=_revoc_clear,
             challenge_valid=challenge_valid,
-            ai_risk_level=ai_risk_level,
+            ai_risk_level=policy_result.ai_risk_level.value,
             ai_risk_score=ai_risk_score,
             blockchain_anchored=blockchain_anchored,
             final_policy_result=final_policy,
@@ -1037,7 +1083,7 @@ class Oid4vpService:
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "dcql": "DCQL query criteria fully satisfied" if dcql_satisfied else (dcql_reason or "DCQL satisfaction failed"),
                     "consent": "Authorized by holder consent" if not consent_violation else (consent_violation_reason or "Consent violation"),
-                    "ai_fraud": "Low fraud risk profile" if ai_risk_level == "LOW" else f"Elevated threat detected: {ai_risk_level} ({ai_risk_score}/100)",
+                    "ai_fraud": "Low fraud risk profile" if policy_result.ai_risk_level.value == "LOW" else f"Elevated threat detected: {policy_result.ai_risk_level.value} ({ai_risk_score}/100)",
                     "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
                 },
                 "dcql": {
