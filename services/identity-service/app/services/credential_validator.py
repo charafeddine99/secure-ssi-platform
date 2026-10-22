@@ -64,7 +64,7 @@ UTC_TIMESTAMP_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$"
 )
 STATUS_LIST_ID_PATTERN = re.compile(
-    r"^https?://[^?#\s]+/revocation-[0-9a-f]{24}"
+    r"^https?://[^?#\s]+/(?:revocation|suspension)-[0-9a-f]{24}"
     r"(?:-[0-9]{6})?$"
 )
 
@@ -397,6 +397,16 @@ class CredentialProfileValidator:
             )
 
     def _validate_credential_status(self, value: Any) -> None:
+        entries = value if isinstance(value, list) else [value]
+        if not entries:
+            self._raise(
+                VerificationReasonCode.INVALID_CREDENTIAL_STATUS,
+                "credentialStatus must contain at least one status entry.",
+            )
+        for entry in entries:
+            self._validate_credential_status_entry(entry)
+
+    def _validate_credential_status_entry(self, value: Any) -> None:
         required = {
             "id",
             "type",
@@ -414,7 +424,7 @@ class CredentialProfileValidator:
                 VerificationReasonCode.INVALID_CREDENTIAL_STATUS,
                 "credentialStatus type is unsupported.",
             )
-        if value.get("statusPurpose") != "revocation":
+        if value.get("statusPurpose") not in ("revocation", "suspension"):
             self._raise(
                 VerificationReasonCode.INVALID_CREDENTIAL_STATUS,
                 "credentialStatus purpose is unsupported.",

@@ -9,6 +9,12 @@
 **Status**: **L3 VERIFIED**  
 **Interoperability Level**: **L4 INTEROPERABILITY: NOT TESTED**  
 
+> **Historical, package-scoped report.** `L3 VERIFIED` here describes this
+> WP-07 snapshot only; it is not project-wide G0–G16 acceptance or current
+> source-state proof. See the current
+> [gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ---
 
 ## 1. Objective

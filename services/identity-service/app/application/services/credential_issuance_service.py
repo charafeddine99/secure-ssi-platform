@@ -76,6 +76,9 @@ class CredentialIssuanceService:
                 self._metrics.record_issuance_failure()
             raise
 
+    def supports_issuer(self, issuer_did: str) -> bool:
+        return self._signer.supports_issuer(issuer_did)
+
     def _issue(
         self,
         unsigned_credential: Mapping[str, Any],

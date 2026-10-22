@@ -21,6 +21,7 @@ from app.infrastructure.persistence.mappers import (
     new_object_id,
     to_object_id,
 )
+from app.infrastructure.crypto.local_issuer_key_provider import SYNTHETIC_ISSUER_DID
 
 
 NOW = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
@@ -47,6 +48,7 @@ def test_user_mapper_round_trips_bson_without_exposing_hash() -> None:
         password_hash=ARGON_HASH,
         created_at=NOW,
         updated_at=NOW,
+        issuer_did=SYNTHETIC_ISSUER_DID,
     )
 
     document = UserDocumentMapper.to_document(user)
@@ -54,8 +56,29 @@ def test_user_mapper_round_trips_bson_without_exposing_hash() -> None:
 
     assert isinstance(document["_id"], ObjectId)
     assert "id" not in document
+    assert document["issuerDid"] == SYNTHETIC_ISSUER_DID
     assert restored == user
     assert ARGON_HASH not in repr(restored)
+
+
+def test_user_mapper_accepts_existing_records_without_issuer_scope() -> None:
+    user = PersistedUser(
+        id=OBJECT_ID,
+        username="issuer@example.test",
+        display_name="Issuer",
+        roles=(Role.ISSUER,),
+        enabled=True,
+        password_hash=ARGON_HASH,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    document = UserDocumentMapper.to_document(user)
+    document.pop("issuerDid")
+
+    restored = UserDocumentMapper.from_document(document)
+
+    assert restored.issuer_did is None
+    assert restored == user
 
 
 def test_credential_mapper_deep_copies_raw_json() -> None:

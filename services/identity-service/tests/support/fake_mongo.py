@@ -25,6 +25,10 @@ class FakeCursor:
         self._documents = self._documents[:value]
         return self
 
+    def skip(self, value: int) -> "FakeCursor":
+        self._documents = self._documents[value:]
+        return self
+
     def __iter__(self):
         return iter(deepcopy(self._documents))
 
@@ -82,6 +86,9 @@ class FakeCollection:
                 if _matches(document, filters)
             ]
         )
+
+    def count_documents(self, filters: dict[str, Any]) -> int:
+        return sum(1 for document in self.documents if _matches(document, filters))
 
     def replace_one(
         self,

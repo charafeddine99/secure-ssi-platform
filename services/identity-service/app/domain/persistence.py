@@ -6,7 +6,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
-from app.domain.auth import User
+from app.domain.auth import User, _normalize_issuer_did
 from app.domain.credential_status import CredentialStatus
 from app.domain.holder_wallet import validate_wallet_id
 from app.domain.permissions import Role, normalize_roles
@@ -86,6 +86,7 @@ class AuditEventType(StrEnum):
     TRUST_RECORD_UPDATED = "TRUST_RECORD_UPDATED"
     TRUST_RECORD_DEACTIVATED = "TRUST_RECORD_DEACTIVATED"
     TRUST_RECORD_REVOKED = "TRUST_RECORD_REVOKED"
+    USER_ISSUER_SCOPE_UPDATED = "USER_ISSUER_SCOPE_UPDATED"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,7 @@ class PersistedUser:
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     version: int = 1
     deleted_at: datetime | None = None
+    issuer_did: str | None = None
 
     def __post_init__(self) -> None:
         _validate_object_id(self.id, name="User id")
@@ -115,6 +117,10 @@ class PersistedUser:
         object.__setattr__(self, "roles", normalize_roles(self.roles))
         if not self.roles:
             raise ValueError("A persisted user must have at least one role.")
+        issuer_did = _normalize_issuer_did(self.issuer_did)
+        if issuer_did is not None and Role.ISSUER not in self.roles:
+            raise ValueError("Issuer scope can only be assigned to an issuer role.")
+        object.__setattr__(self, "issuer_did", issuer_did)
         _validate_record_metadata(
             created_at=self.created_at,
             updated_at=self.updated_at,
@@ -129,6 +135,7 @@ class PersistedUser:
             display_name=self.display_name,
             roles=self.roles,
             enabled=self.enabled,
+            issuer_did=self.issuer_did,
         )
 
 

@@ -18,7 +18,11 @@ from app.infrastructure.persistence.oid4vp_repository import (
     MongoVerificationSessionRepository,
 )
 from app.application.services.oid4vp_service import Oid4vpService
+from app.application.services.trust_registry_service import TrustRegistryService
 from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+from app.infrastructure.persistence.trust_registry_repository import (
+    InMemoryTrustRegistryRepository,
+)
 from app.infrastructure.fixtures.signed_credentials import (
     build_local_proof_service,
     build_signed_presentation,
@@ -213,6 +217,10 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     collection = FakeCollection(unique_fields=("sessionId",))
     session_repo = MongoVerificationSessionRepository(cast(Any, collection))
     audit_repo = FakeAuditRepository()
+    trust_registry = TrustRegistryService(
+        repository=InMemoryTrustRegistryRepository()
+    )
+    trust_registry.seed_default_demo_issuers()
 
     service = Oid4vpService(
         session_repository=session_repo,
@@ -220,6 +228,7 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
         audit_repository=audit_repo,  # type: ignore[arg-type]
         verifier_presentation_service=DummyVerifierPresentationService(),  # type: ignore[arg-type]
         status_list_service=DummyStatusListService(),  # type: ignore[arg-type]
+        trust_registry_service=trust_registry,
     )
 
     session = _create_sample_session(
@@ -256,7 +265,7 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 
-    # Disclose only 2 of the 4 requested fields
+    # Legacy selection metadata cannot hide claims from a signed VC.
     disclosed_claims = {
         "affiliation": "student",
         "degree": "Bachelor of Science",
@@ -272,11 +281,13 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
 
     assert result.final_policy_result == "ACCEPTED"
     data_min = result.details.get("dataMinimization", {})
-    assert data_min["status"] == "SELECTIVE_DISCLOSURE_APPLIED"
+    assert data_min["status"] == "FULL_CREDENTIAL_DISCLOSED"
     assert data_min["requestedFields"] == ["affiliation", "degree", "programCode", "graduationYear"]
-    assert set(data_min["disclosedFields"]) == {"affiliation", "degree"}
-    assert set(data_min["hiddenFields"]) == {"programCode", "graduationYear"}
-    assert data_min["disclosureRatio"] == 0.5
+    assert set(data_min["disclosedFields"]) == {
+        "affiliation", "degree", "programCode", "graduationYear"
+    }
+    assert data_min["hiddenFields"] == []
+    assert data_min["cryptographicSelectiveDisclosure"] is False
 
     # Check session updated to GRANTED
     updated_session = session_repo.get_by_session_id("session_dp_minimization_0001")
@@ -288,5 +299,7 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
     consent_events = [e for e in audit_repo.events if e.event_type is AuditEventType.CONSENT_GRANTED]
     assert len(consent_events) == 1
     assert consent_events[0].metadata["session_id"] == "session_dp_minimization_0001"
-    assert consent_events[0].metadata["disclosed_claims_count"] == "2"
-    assert consent_events[0].metadata["hidden_fields_count"] == "2"
+    assert consent_events[0].metadata["disclosed_field_count"] == "4"
+    assert consent_events[0].metadata["hidden_field_count"] == "0"
+    assert consent_events[0].metadata["disclosure_profile"] == "FULL_SIGNED_VC"
+    assert not any("affiliation" in value for value in consent_events[0].metadata.values())

@@ -121,6 +121,7 @@ from app.infrastructure.key_management.generic_remote_kms import (
     UrllibKmsHttpTransport,
 )
 from app.infrastructure.persistence.connection import MongoConnectionManager
+from app.infrastructure.persistence.memory_db import MemoryConnectionManager
 from app.infrastructure.persistence.indexes import (
     AUDIT_EVENTS_COLLECTION,
     AUDIT_OUTBOX_COLLECTION,
@@ -216,7 +217,12 @@ _STATUS_LIST_SETTINGS = load_status_list_settings()
 _AUDIT_OUTBOX_SETTINGS = load_audit_outbox_settings()
 _HOLDER_WALLET_SETTINGS = load_holder_wallet_settings()
 _KEY_MANAGEMENT_SETTINGS = load_key_management_settings()
-_MONGO_MANAGER = MongoConnectionManager(_MONGO_SETTINGS)
+# When MongoDB is disabled (offline / host dev mode), use the in-memory adapter
+# so all collection reads return seeded demo data instead of raising 503.
+if _MONGO_SETTINGS.enabled:
+    _MONGO_MANAGER: MongoConnectionManager | MemoryConnectionManager = MongoConnectionManager(_MONGO_SETTINGS)
+else:
+    _MONGO_MANAGER = MemoryConnectionManager()
 _PASSWORD_HASHER = Argon2PasswordHasher()
 _USER_PROVIDER = LocalSyntheticUserProvider.default(
     enabled=_AUTH_SETTINGS.local_fixture_users_enabled
@@ -832,8 +838,8 @@ def get_credential_issuance_api_service(
     status_list_settings: StatusListSettings = Depends(
         get_status_list_settings
     ),
-    wallet_repository: HolderWalletRepository | None = Depends(
-        get_optional_holder_wallet_repository
+    wallet_repository: HolderWalletRepository = Depends(
+        get_holder_wallet_repository
     ),
 ) -> CredentialApiService:
     proof_service = CredentialProofService(
@@ -1163,7 +1169,7 @@ def get_oid4vp_service(
         verifier_presentation_service=verifier_service,
         status_list_service=status_list_service,
         trust_registry_service=trust_registry_service,
-        did_resolver=_HOLDER_DID_RESOLVER,
+        did_resolver=combined_resolver,
         canonicalizer=_CANONICALIZER,
     )
 
@@ -1177,8 +1183,8 @@ def get_blockchain_anchor_repository(
 
 
 def get_blockchain_bridge(
-    anchor_repository: MongoBlockchainAnchorRepository = Depends(
-        get_blockchain_anchor_repository
-    ),
 ) -> BlockchainBridge:
-    return BlockchainBridge(repository=anchor_repository)
+    # Status and contract-directory endpoints report chain configuration and
+    # connectivity only. They must remain observable when MongoDB is down;
+    # anchor read/write routes inject their repository separately.
+    return BlockchainBridge()

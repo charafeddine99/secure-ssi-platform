@@ -9,8 +9,7 @@ def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "ok"
-    assert "timestamp" in data
+    assert data["status"] == "healthy"
 
 
 def test_legitimate_authentication_low_risk():
@@ -69,7 +68,7 @@ def test_validation_error_on_empty_did():
     }
     response = client.post("/api/fraud_detection", json=payload)
     assert response.status_code == 400
-    assert "cannot be blank" in response.json()["detail"]
+    assert "cannot be empty" in response.json()["detail"]
 
 
 def test_validation_error_on_negative_attempts():
@@ -108,7 +107,7 @@ def test_pipeline_normalization_bounds():
 
 def test_hybrid_engine_components():
     """
-    Verify both the XGBoost supervised probability and Autoencoder reconstruction MSE.
+    Verify the deterministic heuristic result and its disclosure fields.
     """
     engine = HybridFraudDetectionEngine()
     import numpy as np
@@ -118,6 +117,8 @@ def test_hybrid_engine_components():
     assert "risk_score" in result
     assert "is_fraudulent" in result
     assert "anomaly_score" in result
-    assert "reconstruction_mse" in result
+    assert result["model_version"] == "rule-heuristic-v1"
+    assert result["advisory_only"] is True
+    assert result["risk_signals"]
     assert result["is_fraudulent"] is True
     assert result["risk_score"] > 70

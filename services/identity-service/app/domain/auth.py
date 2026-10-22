@@ -9,6 +9,21 @@ from app.domain.permissions import (
 )
 
 
+def _normalize_issuer_did(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if (
+        not normalized
+        or len(normalized) > 2_048
+        or len(normalized) <= len("did:web:")
+        or not normalized.startswith("did:web:")
+        or any(character.isspace() for character in normalized)
+    ):
+        raise ValueError("Issuer scope must be a valid did:web identifier.")
+    return normalized
+
+
 @dataclass(frozen=True)
 class User:
     id: str
@@ -16,6 +31,7 @@ class User:
     display_name: str
     roles: tuple[Role, ...]
     enabled: bool = True
+    issuer_did: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.username or not self.display_name:
@@ -23,6 +39,10 @@ class User:
         object.__setattr__(self, "roles", normalize_roles(self.roles))
         if not self.roles:
             raise ValueError("A local user must have at least one role.")
+        issuer_did = _normalize_issuer_did(self.issuer_did)
+        if issuer_did is not None and Role.ISSUER not in self.roles:
+            raise ValueError("Issuer scope can only be assigned to an issuer role.")
+        object.__setattr__(self, "issuer_did", issuer_did)
 
 
 @dataclass(frozen=True)
@@ -33,6 +53,7 @@ class AuthenticatedPrincipal:
     roles: tuple[Role, ...]
     permissions: tuple[Permission, ...]
     authentication_source: str
+    issuer_did: str | None = None
 
     @classmethod
     def from_user(
@@ -48,6 +69,7 @@ class AuthenticatedPrincipal:
             roles=normalize_roles(user.roles),
             permissions=permissions_for_roles(user.roles),
             authentication_source=authentication_source,
+            issuer_did=user.issuer_did,
         )
 
 

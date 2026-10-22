@@ -1,19 +1,9 @@
-"""
-Layer 3: Self-Sovereign Identity (SSI) Credential Issuance Microservice
-Powered by FastAPI, web3.py, and requests.
+"""Retired pre-WP-08 Identity Service prototype.
 
-Workflow:
-1. Receives POST /api/issue_credential with verification context:
-   wallet_address, did_id, ip_address, device_fingerprint, recent_failed_attempts
-2. Queries the local AI Fraud Detection API (http://127.0.0.1:8002/api/fraud_detection) synchronously via requests.
-3. Parses risk_score from the response:
-   - If risk_score > 70:
-       Rejects issuance with HTTP 403 Forbidden.
-       Immediately signs and submits an on-chain blockchain transaction using web3.py
-       calling quarantineWallet(address, string) on the EmergencyRecovery smart contract.
-   - If risk_score <= 70:
-       Generates and returns a W3C-compliant Verifiable Credential in JSON-LD format
-       featuring an Ed25519 Linked Data Proof.
+This module remains importable for historical tests only. Its HTTP routes are
+disabled because it used synthetic signatures, SQLite authority, fabricated
+transaction hashes, and address/reason quarantine writes. Run ``app.main:app``
+from this service package for the supported implementation.
 """
 
 import os
@@ -27,7 +17,7 @@ from typing import Dict, Any, Optional
 import requests
 from web3 import Web3
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -88,16 +78,12 @@ AUDIT_LOGGER_ADDRESS = os.getenv(
     "AUDIT_LOGGER_CONTRACT_ADDRESS",
     _deployed_contracts.get("AuditLogger", "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9")
 )
-DEPLOYER_PRIVATE_KEY = os.getenv(
-    "DEPLOYER_PRIVATE_KEY",
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-)
+DEPLOYER_PRIVATE_KEY = os.getenv("DEPLOYER_PRIVATE_KEY", "").strip()
 SERVICE_PORT = int(os.getenv("SSI_SERVICE_PORT", "8001"))
 
 GUARDIAN_PRIVATE_KEYS = {
-    1: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-    2: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
-    3: "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6"
+    guardian_id: os.getenv(f"GUARDIAN_PRIVATE_KEY_{guardian_id}", "").strip()
+    for guardian_id in (1, 2, 3)
 }
 
 # ABI for EmergencyRecovery contract
@@ -273,7 +259,7 @@ class BlockchainManager:
         self.recovery_address = Web3.to_checksum_address(recovery_address)
         self.did_address = Web3.to_checksum_address(did_address)
         self.private_key = private_key
-        self.account = self.w3.eth.account.from_key(private_key)
+        self.account = self.w3.eth.account.from_key(private_key) if private_key else None
         self.recovery_contract = self.w3.eth.contract(
             address=self.recovery_address,
             abi=EMERGENCY_RECOVERY_ABI
@@ -284,7 +270,7 @@ class BlockchainManager:
         )
         logger.info(
             f"Connected to Blockchain RPC: {rpc_url} | "
-            f"Admin Address: {self.account.address} | "
+            f"Signer: {'configured' if self.account else 'disabled'} | "
             f"EmergencyRecovery: {self.recovery_address} | "
             f"DIDRegistry: {self.did_address}"
         )
@@ -292,20 +278,23 @@ class BlockchainManager:
     def is_connected(self) -> bool:
         return self.w3.is_connected()
 
-    def anchor_vc_hash(self, did: str, vc_hash_bytes: bytes) -> str:
-        """Anchors VC hash into DIDRegistry.sol on-chain."""
+    def anchor_vc_hash(self, did: str, vc_hash_bytes: bytes) -> Optional[str]:
+        """Anchors a credential digest under a DID digest; returns only a receipt hash."""
         try:
+            if self.account is None:
+                return None
+            did_key = "0x" + hashlib.sha256(did.encode("utf-8")).hexdigest()
             nonce = self.w3.eth.get_transaction_count(self.account.address)
-            is_reg = self.did_contract.functions.isDIDRegistered(did).call()
+            is_reg = self.did_contract.functions.isDIDRegistered(did_key).call()
             if not is_reg:
-                tx = self.did_contract.functions.registerDID(did, vc_hash_bytes).build_transaction({
+                tx = self.did_contract.functions.registerDID(did_key, vc_hash_bytes).build_transaction({
                     "from": self.account.address,
                     "nonce": nonce,
                     "gas": 300000,
                     "gasPrice": self.w3.eth.gas_price
                 })
             else:
-                tx = self.did_contract.functions.updateVCHash(did, vc_hash_bytes).build_transaction({
+                tx = self.did_contract.functions.updateVCHash(did_key, vc_hash_bytes).build_transaction({
                     "from": self.account.address,
                     "nonce": nonce,
                     "gas": 300000,
@@ -313,47 +302,21 @@ class BlockchainManager:
                 })
             signed_tx = self.w3.eth.account.sign_transaction(tx, private_key=self.private_key)
             tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-            self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=10)
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=10)
+            if receipt["status"] != 1:
+                return None
             return Web3.to_hex(tx_hash)
         except Exception as e:
-            logger.warning(f"DIDRegistry on-chain anchor note: {e}")
-            return Web3.to_hex(vc_hash_bytes)
+            logger.warning("Legacy DID anchoring unavailable (%s)", type(e).__name__)
+            return None
 
     def quarantine_wallet(self, wallet_address: str, reason: str) -> Dict[str, Any]:
         """
-        Builds, signs, and executes an on-chain transaction calling
-        quarantineWallet(address, string) on EmergencyRecovery.sol.
+        Address-and-reason quarantine is disabled in the retired service.
         """
-        checksum_target = Web3.to_checksum_address(wallet_address)
-        nonce = self.w3.eth.get_transaction_count(self.account.address)
-
-        tx = self.recovery_contract.functions.quarantineWallet(
-            checksum_target,
-            reason
-        ).build_transaction({
-            "from": self.account.address,
-            "nonce": nonce,
-            "gas": 300000,
-            "gasPrice": self.w3.eth.gas_price
-        })
-
-        signed_tx = self.w3.eth.account.sign_transaction(tx, private_key=self.private_key)
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        logger.info(f"Submitted quarantine TX: {tx_hash.hex()} for wallet {checksum_target}")
-
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=15)
-        status_ok = (receipt["status"] == 1)
-
-        is_quarantined = self.recovery_contract.functions.isWalletQuarantined(checksum_target).call()
-        formatted_hash = Web3.to_hex(tx_hash)
-
-        return {
-            "transaction_hash": formatted_hash,
-            "block_number": receipt["blockNumber"],
-            "gas_used": receipt["gasUsed"],
-            "status": "SUCCESS" if status_ok else "FAILED",
-            "is_quarantined_on_chain": is_quarantined
-        }
+        raise RuntimeError(
+            "Legacy address-and-reason quarantine is disabled; use the current service-side policy lockout."
+        )
 
     def check_is_quarantined(self, wallet_address: str) -> bool:
         checksum_target = Web3.to_checksum_address(wallet_address)
@@ -362,7 +325,9 @@ class BlockchainManager:
     def approve_recovery_guardian(self, wallet_address: str, guardian_id: int) -> str:
         """Signs and submits approveRecovery on-chain using guardian's actual private key."""
         checksum_target = Web3.to_checksum_address(wallet_address)
-        g_key = GUARDIAN_PRIVATE_KEYS.get(guardian_id, GUARDIAN_PRIVATE_KEYS[1])
+        g_key = GUARDIAN_PRIVATE_KEYS.get(guardian_id, "")
+        if not g_key:
+            raise RuntimeError("No Guardian signer is configured for the legacy service.")
         g_acct = self.w3.eth.account.from_key(g_key)
 
         status = self.recovery_contract.functions.getRecoveryStatus(checksum_target).call()
@@ -393,6 +358,8 @@ class BlockchainManager:
     def execute_recovery(self, wallet_address: str) -> str:
         checksum_target = Web3.to_checksum_address(wallet_address)
         g_key = GUARDIAN_PRIVATE_KEYS[1]
+        if not g_key:
+            raise RuntimeError("No Guardian signer is configured for the legacy service.")
         g_acct = self.w3.eth.account.from_key(g_key)
         tx = self.recovery_contract.functions.executeRecovery(checksum_target).build_transaction({
             "from": g_acct.address,
@@ -508,9 +475,12 @@ class W3CVCGenerator:
 # =====================================================================
 
 app = FastAPI(
-    title="Layer 3: Self-Sovereign Identity (SSI) Microservice",
+    title="Retired SSI Prototype (Legacy Compatibility Only)",
     version="1.0.0",
-    description="W3C JSON-LD Verifiable Credential issuance pipeline guarded by AI Fraud Detection & On-Chain Emergency Recovery Quarantine"
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+    description="This retired prototype rejects HTTP operations. Use app.main:app from the Identity Service package."
 )
 
 app.add_middleware(
@@ -529,15 +499,26 @@ blockchain_manager = BlockchainManager(
 )
 
 
+@app.middleware("http")
+async def reject_retired_legacy_routes(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={
+            "error": "LEGACY_IDENTITY_SERVICE_RETIRED",
+            "detail": "This prototype is not an active API. Use the current Identity Service app.main:app.",
+        },
+    )
+
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {
-        "status": "healthy",
-        "service": "ssi-credential-issuance-layer3",
-        "blockchain_connected": blockchain_manager.is_connected(),
-        "recovery_contract": EMERGENCY_RECOVERY_ADDRESS,
-        "did_registry_contract": DID_REGISTRY_ADDRESS,
-        "ai_fraud_api": AI_FRAUD_API_URL
+        "status": "retired",
+        "service": "legacy-identity-prototype",
+        "supported": False,
+        "replacement": "Identity Service app.main:app",
     }
 
 

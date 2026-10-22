@@ -2,8 +2,6 @@ import time
 import hashlib
 from typing import Optional, Dict, Any
 
-from web3 import Web3
-
 class CredentialStatusCache:
     """
     Tasarım Raporu Tablo 3.3 ve Madde 109, 156, 169 gereğince:
@@ -37,11 +35,13 @@ class BlockchainAnchorClient:
     """
     Blockchain Katmanı (DIDRegistry, RevocationRegistry, AuditLogger, EmergencyRecovery) ile
     Identity Service arasındaki Web3 bağlantı köprüsü (Maddeler: 44, 46, 47, 48).
-    Supports live Hardhat RPC anchoring and fallback in-memory telemetry.
+    Supports optional Hardhat anchoring and explicit in-memory demo state.
+    A locally requested anchor is never represented as a confirmed receipt.
     """
     def __init__(self, rpc_url: str = "http://127.0.0.1:8545"):
         self.rpc_url = rpc_url
         self._anchored_events: list = []
+        self._quarantined_subjects: set[str] = set()
         try:
             from app.config.blockchain_settings import load_blockchain_settings
             from app.infrastructure.blockchain.web3_bridge import BlockchainBridge
@@ -57,9 +57,11 @@ class BlockchainAnchorClient:
     def anchor_did_document(self, did: str, document_dict: dict) -> str:
         tx_hash = None
         block_number = None
+        record = None
         if self._bridge:
             try:
                 rec = self._bridge.anchor_did_document(did, document_dict)
+                record = rec
                 doc_hash = rec.event_hash
                 tx_hash = rec.tx_hash
                 block_number = rec.block_number
@@ -76,6 +78,7 @@ class BlockchainAnchorClient:
             "doc_hash": doc_hash,
             "tx_hash": tx_hash,
             "block_number": block_number,
+            "anchor_status": record.status.value if record else "UNANCHORED",
             "timestamp": time.time(),
         })
         return doc_hash
@@ -83,9 +86,11 @@ class BlockchainAnchorClient:
     def anchor_revocation_status(self, credential_id: str, reason: str) -> str:
         tx_hash = None
         block_number = None
+        record = None
         if self._bridge:
             try:
                 rec = self._bridge.anchor_credential_revocation(credential_id, reason)
+                record = rec
                 rev_hash = rec.event_hash
                 tx_hash = rec.tx_hash
                 block_number = rec.block_number
@@ -102,6 +107,7 @@ class BlockchainAnchorClient:
             "rev_hash": rev_hash,
             "tx_hash": tx_hash,
             "block_number": block_number,
+            "anchor_status": record.status.value if record else "UNANCHORED",
             "timestamp": time.time(),
         })
         return rev_hash
@@ -109,9 +115,11 @@ class BlockchainAnchorClient:
     def anchor_status_list(self, status_list_id: str, bitstring_bytes: bytes, version: int = 1) -> str:
         tx_hash = None
         block_number = None
+        record = None
         if self._bridge:
             try:
                 rec = self._bridge.anchor_status_list(status_list_id, bitstring_bytes, version)
+                record = rec
                 sl_hash = rec.event_hash
                 tx_hash = rec.tx_hash
                 block_number = rec.block_number
@@ -128,16 +136,22 @@ class BlockchainAnchorClient:
             "version": version,
             "tx_hash": tx_hash,
             "block_number": block_number,
+            "anchor_status": record.status.value if record else "UNANCHORED",
             "timestamp": time.time(),
         })
         return sl_hash
 
-    def anchor_quarantine(self, target_did: str, reason: str) -> str:
+    def anchor_quarantine(self, target_did: str, reason: str) -> dict[str, Any]:
         tx_hash = None
         block_number = None
+        record = None
+        # Quarantine is separate local demo state; anchoring is optional and
+        # its outcome cannot be inferred from this set.
+        self._quarantined_subjects.add(target_did)
         if self._bridge:
             try:
                 rec = self._bridge.anchor_quarantine(target_did, reason)
+                record = rec
                 q_hash = rec.event_hash
                 tx_hash = rec.tx_hash
                 block_number = rec.block_number
@@ -148,6 +162,9 @@ class BlockchainAnchorClient:
             raw_rec = f"QUARANTINE:{target_did}:{reason}".encode("utf-8")
             q_hash = "0x" + hashlib.sha256(raw_rec).hexdigest()
 
+        anchor_status = record.status.value if record else (
+            "FAILED" if self._bridge else "UNANCHORED"
+        )
         self._anchored_events.append({
             "type": "QUARANTINE_ANCHOR",
             "target_did": target_did,
@@ -155,30 +172,27 @@ class BlockchainAnchorClient:
             "reason": reason,
             "tx_hash": tx_hash,
             "block_number": block_number,
+            "anchor_status": anchor_status,
             "timestamp": time.time(),
         })
-        return q_hash
+        return {
+            "event_hash": q_hash,
+            "status": anchor_status,
+            "tx_hash": tx_hash if anchor_status == "CONFIRMED" else None,
+            "block_number": block_number if anchor_status == "CONFIRMED" else None,
+        }
 
     def is_quarantined(self, target_did: str) -> bool:
-        in_memory = any(
-            e.get("type") == "QUARANTINE_ANCHOR" and e.get("target_did") == target_did
-            for e in self._anchored_events
-        )
-        if in_memory:
-            return True
-        if self._bridge and Web3.is_address(target_did):
-            try:
-                return self._bridge.is_quarantined_on_chain(target_did)
-            except Exception:
-                pass
-        return False
+        return target_did in self._quarantined_subjects
 
     def anchor_audit_event(self, event_id: str, event_payload: dict, category_name: str = "IDENTITY_ACTION") -> str:
         tx_hash = None
         block_number = None
+        record = None
         if self._bridge:
             try:
                 rec = self._bridge.anchor_audit_event(event_id, event_payload, category_name)
+                record = rec
                 audit_hash = rec.event_hash
                 tx_hash = rec.tx_hash
                 block_number = rec.block_number
@@ -195,6 +209,7 @@ class BlockchainAnchorClient:
             "audit_hash": audit_hash,
             "tx_hash": tx_hash,
             "block_number": block_number,
+            "anchor_status": record.status.value if record else "UNANCHORED",
             "timestamp": time.time(),
         })
         return audit_hash

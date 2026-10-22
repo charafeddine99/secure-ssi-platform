@@ -92,6 +92,7 @@ async def forward_request(target_url: str, request: Request) -> Response:
     # 2. Context propagation headers
     headers = dict(request.headers)
     headers.pop("host", None)
+    headers.pop("content-length", None)
     headers["x-correlation-id"] = correlation_id
 
     # Propagate authorization and identity context if present
@@ -166,6 +167,7 @@ async def get_system_status():
     services_status = {}
     blockchain_info = {"connected": False}
     database_info = {}
+    database_healthy = False
 
     async with httpx.AsyncClient(timeout=3.0) as client:
         # 1. Identity Service Check
@@ -207,13 +209,19 @@ async def get_system_status():
 
         # 5. Database Persistence Stats Check
         try:
-            r = await client.get(f"{IDENTITY_SERVICE_URL}/api/database/stats")
+            r = await client.get(f"{IDENTITY_SERVICE_URL}/api/v1/database/stats")
             if r.status_code == 200:
                 database_info = r.json()
+                database_healthy = database_info.get("status") == "SUCCESS"
+            else:
+                database_info = {"status": "UNAVAILABLE"}
         except Exception:
-            pass
+            database_info = {"status": "UNREACHABLE"}
 
-    all_healthy = all(v == "HEALTHY" for v in services_status.values())
+    all_healthy = (
+        all(v == "HEALTHY" for v in services_status.values())
+        and database_healthy
+    )
     return {
         "gateway_status": "ONLINE",
         "system_health": "OPTIMAL" if all_healthy else "PARTIAL",

@@ -6,12 +6,15 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 import pytest
+import jwt
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.infrastructure.crypto.multibase import encode_base58_btc
+from app.services.did_resolver import DidKeyResolver
 from app.application.services.oid4vci_service import build_holder_jwt_proof
 
 PASSWORDS = {
@@ -63,6 +66,91 @@ def _create_test_offer(
     res = client.post("/api/v1/oid4vci/offers", json=payload, headers=hdrs)
     assert res.status_code == 201, f"Create offer failed: {res.text}"
     return res.json()
+
+
+def _create_holder_wallet() -> tuple[dict[str, str], str, str]:
+    holder_headers = _get_auth_headers("holder")
+    response = client.post(
+        "/api/v1/wallets",
+        json={},
+        headers=holder_headers,
+    )
+    assert response.status_code == 201, f"Create holder wallet failed: {response.text}"
+    wallet = response.json()
+    return holder_headers, wallet["walletId"], wallet["holderDid"]
+
+
+def _create_wallet_proof(
+    *,
+    holder_headers: dict[str, str],
+    wallet_id: str,
+    nonce: str,
+) -> tuple[str, str]:
+    issuer = client.get(
+        "/api/v1/oid4vci/.well-known/openid-credential-issuer"
+    ).json()
+    response = client.post(
+        "/api/v1/oid4vci/holder-proof",
+        json={
+            "walletId": wallet_id,
+            "audience": issuer["credential_issuer"],
+            "nonce": nonce,
+        },
+        headers=holder_headers,
+    )
+    assert response.status_code == 200, f"Create holder proof failed: {response.text}"
+    proof = response.json()
+    return proof["holderDid"], proof["jwt"]
+
+
+def test_guardian_recovery_proof_uses_only_the_authenticated_did_key() -> None:
+    holder_headers, _wallet_id, holder_did = _create_holder_wallet()
+    payload = {
+        "requestId": "recovery_test_1234567890123456",
+        "sessionId": "session_test_1234567890123456",
+        "guardianId": "guardian_test_1234567890123456",
+        "walletId": "wallet_owner_1234567890123456",
+        "guardianDid": holder_did,
+        "challenge": "server-challenge-value-12345678901234567890",
+        "decision": "APPROVE",
+    }
+    signed = client.post(
+        "/api/v1/wallets/guardian-recovery-proof",
+        json=payload,
+        headers=holder_headers,
+    )
+    assert signed.status_code == 200, signed.text
+    proof = signed.json()
+    assert proof["guardianDid"] == holder_did
+
+    did_document = DidKeyResolver().resolve(holder_did).did_document
+    verification_method = did_document["verificationMethod"][0]
+    multibase = verification_method["publicKeyMultibase"]
+    public_bytes = DidKeyResolver._decode_base58_btc(multibase[1:], holder_did)[2:]
+    claims = jwt.decode(
+        proof["proof"],
+        Ed25519PublicKey.from_public_bytes(public_bytes),
+        algorithms=["EdDSA"],
+        audience="secure-ssi-platform:guardian-recovery",
+    )
+    assert claims["requestId"] == payload["requestId"]
+    assert claims["sessionId"] == payload["sessionId"]
+    assert claims["sub"] == payload["guardianId"]
+    assert claims["walletId"] == payload["walletId"]
+    assert claims["decision"] == payload["decision"]
+    assert claims["challenge"] == payload["challenge"]
+    assert jwt.get_unverified_header(proof["proof"]) == {
+        "alg": "EdDSA",
+        "typ": "guardian-recovery+jwt",
+        "kid": verification_method["id"],
+    }
+
+    foreign = client.post(
+        "/api/v1/wallets/guardian-recovery-proof",
+        json=payload,
+        headers=_get_auth_headers("issuer"),
+    )
+    assert foreign.status_code == 404
 
 
 # ============================================================================
@@ -215,17 +303,14 @@ def test_wp05_canonical_golden_path_issuance_with_bearer_and_proof():
     access_token = token_data["access_token"]
     c_nonce = token_data["c_nonce"]
 
-    # 2. Holder builds cryptographic JWT proof of possession
-    priv, holder_did = _create_holder_key()
-    issuer_meta = client.get("/api/v1/oid4vci/.well-known/openid-credential-issuer").json()
-    issuer_aud = issuer_meta["credential_issuer"]
-
-    proof_jwt = build_holder_jwt_proof(
-        holder_did=holder_did,
-        private_key=priv,
-        audience=issuer_aud,
+    # 2. Holder obtains an issuer-nonce proof through the authenticated wallet.
+    holder_headers, wallet_id, holder_did = _create_holder_wallet()
+    proof_holder_did, proof_jwt = _create_wallet_proof(
+        holder_headers=holder_headers,
+        wallet_id=wallet_id,
         nonce=c_nonce,
     )
+    assert proof_holder_did == holder_did
 
     # 3. Call Credential Endpoint with Bearer token and proof
     cred_req = {
@@ -234,7 +319,7 @@ def test_wp05_canonical_golden_path_issuance_with_bearer_and_proof():
             "proof_type": "jwt",
             "jwt": proof_jwt,
         },
-        "wallet_id": "wallet_holder_primary",
+        "wallet_id": wallet_id,
     }
     cred_res = client.post(
         "/api/v1/oid4vci/credential",
@@ -429,13 +514,13 @@ def test_wp05_credential_endpoint_replayed_c_nonce_rejected():
     token1 = token_res1.json()["access_token"]
     nonce = token_res1.json()["c_nonce"]
 
-    priv, holder_did = _create_holder_key()
-    proof_jwt = build_holder_jwt_proof(
-        holder_did=holder_did,
-        private_key=priv,
-        audience="http://localhost:8001",
+    holder_headers, wallet_id, holder_did = _create_holder_wallet()
+    proof_holder_did, proof_jwt = _create_wallet_proof(
+        holder_headers=holder_headers,
+        wallet_id=wallet_id,
         nonce=nonce,
     )
+    assert proof_holder_did == holder_did
 
     # 1. First presentation consumes the nonce -> SUCCESS
     res1 = client.post(
@@ -443,6 +528,7 @@ def test_wp05_credential_endpoint_replayed_c_nonce_rejected():
         json={
             "credential_configuration_id": "UniversityAffiliationCredential",
             "proof": {"proof_type": "jwt", "jwt": proof_jwt},
+            "wallet_id": wallet_id,
         },
         headers={"Authorization": f"Bearer {token1}"},
     )
@@ -464,12 +550,13 @@ def test_wp05_credential_endpoint_replayed_c_nonce_rejected():
         json={
             "credential_configuration_id": "UniversityAffiliationCredential",
             "proof": {"proof_type": "jwt", "jwt": proof_jwt},  # contains already-consumed nonce
+            "wallet_id": wallet_id,
         },
         headers={"Authorization": f"Bearer {token2}"},
     )
     assert res2.status_code == 400
     assert res2.json()["error"] == "invalid_nonce"
-    assert "replay detected" in res2.json()["error_description"]
+    assert "nonce mismatch" in res2.json()["error_description"]
 
 
 def test_wp05_credential_endpoint_unsupported_credential_config_rejected():
@@ -513,7 +600,7 @@ def test_wp05_legacy_direct_issuance_isolated_with_warning_headers():
     """Legacy preAuthorizedCode direct post returns X-Legacy-Issuance and Warning header."""
     offer = _create_test_offer()
     code = offer["preAuthorizedCode"]
-    _, holder_did = _create_holder_key()
+    holder_headers, wallet_id, holder_did = _create_holder_wallet()
 
     # Legacy direct call to /credential
     res_direct = client.post(
@@ -521,8 +608,9 @@ def test_wp05_legacy_direct_issuance_isolated_with_warning_headers():
         json={
             "preAuthorizedCode": code,
             "holderDid": holder_did,
-            "walletId": "wallet_holder_primary",
+            "walletId": wallet_id,
         },
+        headers=holder_headers,
     )
     assert res_direct.status_code == 201, f"res_direct failed: {res_direct.text}"
     assert res_direct.headers.get("X-Legacy-Issuance") == "true"
@@ -535,7 +623,9 @@ def test_wp05_legacy_direct_issuance_isolated_with_warning_headers():
         json={
             "preAuthorizedCode": offer2["preAuthorizedCode"],
             "holderDid": holder_did,
+            "walletId": wallet_id,
         },
+        headers=holder_headers,
     )
     assert res_legacy.status_code == 201
     assert res_legacy.headers.get("X-Legacy-Issuance") == "true"
@@ -559,18 +649,19 @@ def test_wp05_issued_credential_participates_in_wp04_oid4vp_dcql_presentation():
     token = token_res.json()["access_token"]
     nonce = token_res.json()["c_nonce"]
 
-    priv, holder_did = _create_holder_key()
-    proof_jwt = build_holder_jwt_proof(
-        holder_did=holder_did,
-        private_key=priv,
-        audience="http://localhost:8001",
+    holder_headers, wallet_id, holder_did = _create_holder_wallet()
+    proof_holder_did, proof_jwt = _create_wallet_proof(
+        holder_headers=holder_headers,
+        wallet_id=wallet_id,
         nonce=nonce,
     )
+    assert proof_holder_did == holder_did
     cred_res = client.post(
         "/api/v1/oid4vci/credential",
         json={
             "credential_configuration_id": "UniversityAffiliationCredential",
             "proof": {"proof_type": "jwt", "jwt": proof_jwt},
+            "wallet_id": wallet_id,
         },
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -591,25 +682,51 @@ def test_wp05_issued_credential_participates_in_wp04_oid4vp_dcql_presentation():
     }
     vp_session_res = client.post(
         "/api/v1/oid4vp/requests",
-        json={"purpose": "Verify issued degree", "dcqlQuery": dcql_query},
+        json={
+            "purpose": "Verify issued degree",
+            "requestedFields": ["degree"],
+            "dcqlQuery": dcql_query,
+        },
         headers=verif_hdrs,
     )
     assert vp_session_res.status_code == 201
     vp_session = vp_session_res.json()
     session_id = vp_session["sessionId"]
-    vp_nonce = vp_session["nonce"]
-    client_id = vp_session.get("clientId", "http://testserver/verifier")
-
-    # 3. Holder creates W3C VP 2.0 with WP-02 cryptographic proof
-    from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
-
-    vp = build_signed_presentation(
-        issued_vc,
-        nonce=vp_nonce,
-        domain=client_id,
-        holder_did=holder_did,
-        private_key=priv,
+    credential_id = issued_vc["id"]
+    credential_subject = issued_vc.get("credentialSubject")
+    assert isinstance(credential_subject, dict)
+    disclosed_claims = {
+        key: value
+        for key, value in credential_subject.items()
+        if key != "id"
+    }
+    assert disclosed_claims["degree"] == "Master of Science"
+    consent_res = client.post(
+        f"/api/v1/oid4vp/requests/{session_id}/wallet-consent",
+        json={
+            "walletId": wallet_id,
+            "holderDid": holder_did,
+            "action": "APPROVE",
+            "approvedCredentials": [credential_id],
+            "approvedClaims": disclosed_claims,
+        },
+        headers=holder_headers,
     )
+    assert consent_res.status_code == 200, consent_res.text
+
+    # 3. Holder creates a wallet-key-signed W3C VP from persisted credentials.
+    presentation_res = client.post(
+        "/api/v1/oid4vp/wallet-presentation",
+        json={
+            "sessionId": session_id,
+            "walletId": wallet_id,
+            "credentialIds": [credential_id],
+            "disclosedClaims": disclosed_claims,
+        },
+        headers=holder_headers,
+    )
+    assert presentation_res.status_code == 200, presentation_res.text
+    vp = presentation_res.json()["vpToken"]
 
     # 4. Submit to Direct Post
     dp_res = client.post(
@@ -617,8 +734,7 @@ def test_wp05_issued_credential_participates_in_wp04_oid4vp_dcql_presentation():
         json={
             "sessionId": session_id,
             "vpToken": vp,
-            "disclosedClaims": {"degree": "Master of Distributed Systems"},
-            "aiRiskScore": 5,
+            "disclosedClaims": disclosed_claims,
         },
     )
     assert dp_res.status_code == 200

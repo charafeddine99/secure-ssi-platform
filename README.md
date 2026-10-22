@@ -4,14 +4,15 @@
 > **Bilgisayar Mühendisliği Tasarımı Projesi**  
 > **SECURE SELF-SOVEREIGN IDENTITY WITH AI-BASED FRAUD DETECTION AND EMERGENCY RECOVERY ON BLOCKCHAIN**  
 > **Öğrenci:** Charaf Eddine Bessanane (B210109591) | **Danışman:** Dr. Öğr. Üyesi A. F. M. Suaib Akhter  
+> The thesis title below describes the original research scope; it does not assert that every named capability is implemented in the current prototype.
 
 ---
 
 ## 1. Project Overview
 
-The **Secure Self-Sovereign Identity (SSI) Platform** is an enterprise-grade academic reference implementation combining **W3C Verifiable Credentials Data Model v2.0**, **Decentralized Identifiers (DID)**, **OpenID for Verifiable Credential Issuance (OID4VCI)** and **Presentations (OID4VP)**, **Hybrid AI Fraud Detection**, and **EIP-4337 Smart Contract Anchoring** with **3-of-5 Shamir Secret Sharing Social Recovery**.
+The **Secure Self-Sovereign Identity (SSI) Platform** is an academic prototype exploring W3C Verifiable Credentials Data Model v2.0, DID methods, OpenID4VCI and OpenID4VP, advisory risk signals, Guardian recovery, and optional integrity anchoring.
 
-The platform gives users cryptographic control over their digital credentials while enabling instant, trustless verification with zero personal data leakage.
+This is a custodial, server-mediated web prototype, not an EUDI Wallet, certified product, or production identity service. Claim-level cryptographic selective disclosure and zero-knowledge proofs are not implemented; browser wallet and key operations cross a backend custody boundary.
 
 ---
 
@@ -31,16 +32,16 @@ graph TD
     subgraph L3["Layer 3: Application Services & Core Protocols"]
         GW["API Gateway (Port 8000)"]
         ID["Identity Service (Port 8001)\n• W3C VC 2.0 / did:key / did:web\n• RFC 8785 JCS & Ed25519 Cryptosuite\n• W3C Bitstring Status List 1.0 (131,072 bits)"]
-        REC["Recovery Service (Port 8003)\n• 3-of-5 Shamir Secret Sharing\n• Time-Lock Expiration & Key Rotation"]
+        REC["Recovery Service (Port 8003)\n• Configurable Guardian quorum\n• Persisted time lock & server-managed rotation"]
     end
 
-    subgraph L2["Layer 2: AI Threat & Anomaly Engine"]
-        FRAUD["Fraud Service (Port 8002)\n• Dual ML: XGBoost + Deep Autoencoder (F1=0.943)\n• Impossible Travel & Velocity Heuristics\n• Autonomous On-Chain Quarantine Trigger"]
+    subgraph L2["Layer 2: Advisory Risk"]
+        FRAUD["Fraud Service (Port 8002)\n• Deterministic heuristic rules\n• Synthetic prototype signals\n• Advisory only; no trained model"]
     end
 
-    subgraph L1["Layer 1: Trust Anchors & Decentralized Storage"]
-        EVM["EVM Smart Contracts (Hardhat / Solidity 0.8.28)\n• DIDRegistry\n• RevocationRegistry\n• EmergencyRecovery\n• AuditLogger"]
-        DB["Authoritative Persistence (MongoDB / Redis)"]
+    subgraph L1["Layer 1: Persistence & Optional Integrity"]
+        EVM["Optional EVM contract sources; deployment and receipt are environment-dependent"]
+        DB["MongoDB durable domain state; Redis ephemeral state in configured paths"]
     end
 
     UI --> GW
@@ -49,9 +50,7 @@ graph TD
     GW --> REC
     ID --> DB
     REC --> DB
-    FRAUD --> EVM
-    ID --> EVM
-    REC --> EVM
+    ID -. optional non-PII hash anchoring .-> EVM
 ```
 
 ---
@@ -63,24 +62,24 @@ graph TD
 | **Verifiable Credentials** | W3C VC DM v2.0 | Standardized credential claim format | [W3C Recommendation](https://www.w3.org/TR/vc-data-model-2.0/) |
 | **Canonicalization** | RFC 8785 JCS | Deterministic JSON Canonicalization | [RFC 8785](https://datatracker.ietf.org/doc/html/rfc8785) |
 | **Cryptographic Proofs** | `eddsa-jcs-2022` | Ed25519 signature with multibase encoding | W3C Data Integrity Cryptosuites |
-| **Issuance Protocol** | OID4VCI (Draft 13) | OpenID for Verifiable Credential Issuance | OpenID Foundation |
-| **Presentation Protocol**| OID4VP (Draft 20) | OpenID for Verifiable Presentations | OpenID Foundation |
+| **Issuance Protocol** | OpenID4VCI 1.0 Final, project-supported pre-authorized flow | OpenID for Verifiable Credential Issuance | OpenID Foundation |
+| **Presentation Protocol**| OpenID4VP 1.0 Final, project DCQL profile | OpenID for Verifiable Presentations | OpenID Foundation |
 | **Revocation Registry** | Bitstring Status List 1.0 | 131,072 entries, GZIP compressed, LRU cache | W3C Bitstring Status List v1.0 |
-| **AI Threat Engine** | XGBoost + Autoencoder | Anomaly detection & impossible travel analysis | NIST AI Risk Management Framework |
-| **Smart Contracts** | Solidity 0.8.28 | Root hash anchoring, DID registry, multi-sig | OpenZeppelin / Hardhat |
+| **Advisory Risk** | Deterministic heuristic over prototype signals | Advisory only; no trained model artifact or independent labelled evaluation | Project profile |
+| **Optional Contracts** | Solidity sources / optional EVM bridge | Integrity hash anchoring only when a configured network and receipt are available | Optional prototype component |
 | **Backend Framework** | FastAPI (Python 3.11+) | Asynchronous REST microservices | OpenAPI 3.1 / Pydantic v2 |
-| **Database Layer** | MongoDB 7.0 + Redis 7 | Compound indexed persistence + outbox queue | ACID-compliant Document Storage |
+| **Database Layer** | MongoDB 7.0 + Redis 7 | Durable domain persistence and ephemeral state in configured paths | Service-specific repository contracts |
 | **Frontend Cockpit** | React 18 + Vite 6 + TS | Responsive 5-stakeholder UI | Modern Vanilla CSS Design Tokens |
 
 ---
 
 ## 4. Key Features
 
-- **Self-Sovereign Identity Ownership**: User generates and holds private keys locally; identity verified via `did:key` and `did:web`.
-- **Zero-Knowledge Selective Disclosure**: Holders selectively disclose only requested claims and prove predicates (e.g. `age >= 18` or `GPA >= 3.0`) without revealing birth dates or transcripts.
-- **Microsecond Cryptographic Verification**: 9-point trust verification pipeline executes cryptographic checks, status bit validation, and challenge nonce validation in $<0.2\text{ms}$.
-- **Hybrid AI Fraud Defense**: Autonomous anomaly detection engine analyzes access velocity, IP geolocations, and impossible travel patterns, triggering automatic on-chain quarantine when risk exceeds thresholds.
-- **Guardian Social Recovery**: Multi-sig 3-of-5 Shamir Secret Sharing recovery with time-lock delays and on-chain successor key rotation to recover lost devices without central backdoor access.
+- **Custodial wallet prototype**: wallet-bound issuance and holder workflows use backend-managed key operations; this is not device-bound self-custody.
+- **Credential presentations**: the current Data Integrity profile presents the complete selected signed credential. Claim-level cryptographic selective disclosure, predicate proofs, and zero-knowledge proofs are not implemented.
+- **Policy verification**: the backend evaluates cryptographic proof, issuer trust, status, freshness, and protocol bindings. No sub-millisecond performance guarantee is claimed.
+- **Advisory risk only**: deterministic rules use synthetic prototype signals. There is no trained model artifact or independent labelled evaluation, and risk cannot establish issuer trust or credential status.
+- **Guardian recovery prototype**: configurable quorum, time lock, cancellation, audit, and server-managed key successor workflow. The service verifies submitted EdDSA proofs for registered `did:key` Guardians; the prototype does not establish independent Guardian-device possession or MFA, does not support `did:web` proof verification, and centrally persists encrypted shares rather than independently delivering them.
 
 ---
 
@@ -168,46 +167,34 @@ docker compose up --build
 
 ---
 
-## 7. Documented Demo Accounts `[DEMO ENVIRONMENT]`
+## 7. Demo and authentication boundary
 
-The platform includes pre-configured, stateless synthetic demo personas for instantaneous evaluation:
+The default Compose ports bind to 127.0.0.1 for local development; other
+containers communicate over the private Compose network. This is not a
+production exposure pattern. Use an explicitly secured edge proxy for remote
+access, and do not publish MongoDB or Redis publicly.
 
-| Role | Persona Name | Email / Username | Development Password | Portal Route | Primary Available Actions |
-|---|---|---|---|---|---|
-| **Holder** | Demo Holder | `holder@example.test` | `Holder-Prototype-2026!` | `/wallet` | Inspect `did:key`, receive credentials via OID4VCI, grant selective disclosure |
-| **Issuer** | Demo University | `issuer@example.test` | `Issuer-Prototype-2026!` | `/issuer` | Define schema, issue W3C VC 2.0 degrees, toggle revocation bit in Bitstring list |
-| **Verifier** | Demo Company | `verifier@example.test` | `Verifier-Prototype-2026!` | `/verifier` | Create OID4VP presentation requests, perform 9-point trust verification |
-| **Guardian** | Demo Guardian #1 | `admin@example.test` | `Admin-Prototype-2026!` | `/guardian` | Review recovery petitions, submit Shamir key share, sign threshold approval |
-| **Admin** | Demo Operator | `admin@example.test` | `Admin-Prototype-2026!` | `/admin` | System overview, EVM smart contract logs, tamper-proof audit trail, AI threat stream |
+The static Web bundle receives its Gateway URL through the VITE_API_BASE_URL
+Docker build argument (default: http://localhost:8000). If Compose host ports
+are remapped, rebuild the Web image with that Gateway URL; changing a
+container's runtime environment does not rewrite an already-built SPA bundle.
 
-> [!NOTE]
-> Evaluators can toggle between these roles with a single click using the **Sticky Top Role Switcher** or the **1-Click Quick Demo Login** on the `/login` page.
+Demo credentials are included in the web client only when it is a Vite development build and `VITE_ENABLE_DEMO_AUTH=true` is explicitly set. A normal production build does not embed them. The backend's `.test` accounts remain synthetic local fixtures, not production identities. OID4VP consent and presentation writes require a current backend token, holder role, and wallet ownership checks. Logout revokes the current token in the Identity Service process; revocation is not shared across workers or durable across restarts. The API Gateway applies process-local request limits; Identity and Recovery have no independent limiter, and Gateway limits are not distributed across workers. This prototype still has no production identity provider or MFA.
 
 ---
 
-## 8. Golden Demo Scenario (The 2-Minute Defense Walkthrough)
+## 8. Evaluation flow
 
-Follow this fixed 8-step presentation sequence for jury evaluation:
-
-| Step | Action | Actor | Target URL | Expected Result |
-|:---:|---|---|---|---|
-| **1** | **Create Credential Schema** | Issuer | `/issuer/templates` | Inspect Higher Education Degree W3C 2.0 schema and status list bit assignment |
-| **2** | **Issue Credential** | Issuer | `/issuer/issue` | Input candidate details; sign with Ed25519 Data Integrity proof; generate OID4VCI offer |
-| **3** | **Receive Credential** | Holder | `/wallet/scan` | Holder scans QR or accepts deep-link offer; cryptographic proof verified |
-| **4** | **Inspect Wallet Portfolio** | Holder | `/wallet` | Credential appears in holder's tactile portfolio with verified issuer badge |
-| **5** | **Create Verification Request** | Verifier | `/verifier/request` | Verifier creates OID4VP request specifying age check ($\ge 18$) and degree proof |
-| **6** | **Selective Disclosure Consent** | Holder | `/wallet/consent` | Holder withholds GPA and National ID; submits salted blinded SHA-256 presentation |
-| **7** | **9-Point Trust Audit** | Verifier | `/verifier/verify` | Verifier confirms signature, non-revocation, and predicate validity in $<0.2\text{ms}$ |
-| **8** | **Tamper-Proof Audit Logging** | Admin | `/admin/audit` | Append-only event logged on Hardhat EVM smart contract with zero PII leakage |
+The UI contains a recommended Issuer → Holder → Verifier walkthrough, but the sequence is not evidence that every screen is connected to a live backend. Use a verifier-created OID4VP request and a credential returned by the authenticated holder wallet. The current W3C Data Integrity profile presents the complete selected credential; it does not prove predicates or cryptographically hide individual claims. Optional blockchain status, recovery behavior, and legacy embedded demo screens must be read from their explicit online/demo states. The current G0–G16 matrix, environment blockers, and dated test evidence are tracked in [`docs/implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md`](docs/implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md).
 
 ---
 
 ## 9. Verification & Automated Testing
 
-All platform test suites can be executed with standard commands:
+Use the focused commands documented by the relevant service. The latest documented root run was **not green**: 770 passed, 3 failed, 14 skipped; the residuals are recorded in the WP-08 acceptance report. The count is a dated result, not a claim about a future run.
 
 ```powershell
-# 1. Full Platform Test Suite (550+ tests)
+# Root runner (known residual failures are documented in the reports)
 .\.venv\Scripts\python.exe run_tests.py
 
 # 2. Blockchain & Smart Contracts Test Suite (19 tests)
@@ -237,7 +224,7 @@ blockchain/
 infrastructure/
   mongodb/                     # Database initialization scripts and index definitions
 packages/
-  shared/                      # Shared cryptosuites (ZKP, DIDComm v2, Schemas)
+  shared/                      # Shared types and schemas
 reports/
   S22_UI_UX_FINAL_REPORT.md     # Sprint 22 UI/UX Finalization Report
   S23_DEMO_AUDIT_REPORT.md      # Sprint 23 Demo Environment Audit Report
@@ -249,31 +236,15 @@ scripts/
 services/
   api-gateway/                 # Central routing reverse proxy
   identity-service/            # W3C VC 2.0, DID, Bitstring Status List, KMS
-  fraud-service/               # XGBoost + Autoencoder AI threat detection
+  fraud-service/               # Synthetic-input advisory risk heuristics
   recovery-service/            # 3-of-5 Shamir social recovery
 ```
 
 ---
 
-## 11. Engineering Roadmap & Architecture Milestones
+## 11. Engineering roadmap and current status
 
-1. [Completed] Define the initial threat model, trust boundaries, and planned API contracts.
-2. [Completed] Add the initial shared, versioned schema catalog and structural tests.
-3. [Completed] Select the prototype DID methods and credential proof format through ADRs.
-4. [Completed] Build resolver validation and synthetic DID fixtures required by ADR 0001.
-5. [Completed] Define versioned VC fixture and verification-result models required by ADR 0002.
-6. [Completed] Prototype VC Data Model 2.0 signing and verification with synthetic data.
-7. [Completed] Expose the bounded local credential core through a versioned HTTP API.
-8. [Completed] Add synthetic local authentication and RBAC for credential signing.
-9. [Completed] Add MongoDB connection, repository, mapping, index, concurrency, and soft-delete foundations.
-10. [Completed] Add MongoDB-backed credential lifecycle status, irreversible revocation, RBAC, audit events, and status/revocation APIs.
-11. [Completed] Add W3C-oriented Bitstring Status List publication, stable entry assignment, caching/versioning, and durable idempotent audit outbox delivery.
-12. [Completed] Add issuance-time credential-status binding, atomic persistence, configurable rollover, immutable history, and interoperability fixtures.
-13. [Completed] Add short-lived multi-credential Verifiable Presentations, holder proofs, challenge/domain binding, replay protection, Mongo persistence, RBAC, and audit events.
-14. [Completed] Add holder wallets, object ownership, opaque key references, server challenges, and stale-presentation reconciliation.
-15. [Completed] Add provider-neutral external KMS/HSM ports
-16. [Completed] Add Guardian assignments, generic M-of-N policy
-17. [Next] Add explainable AI fraud detection
+The authoritative G0–G16 gate order is in [`docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md`](docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md) and tracked in [`reports/PROJECT_WIDE_AUDIT_PROGRESS_2026-10-13.md`](reports/PROJECT_WIDE_AUDIT_PROGRESS_2026-10-13.md). Current acceptance states and evidence are in the [gate matrix](docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md), [completion audit](docs/implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md), and [test evidence register](docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md). Historical sprint checklists are not the engineering source of truth. Current evidence does not establish overall completion, production readiness, or L4 interoperability.
 
 ---
 

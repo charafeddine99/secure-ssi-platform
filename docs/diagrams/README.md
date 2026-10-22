@@ -43,7 +43,7 @@ graph TB
 
     subgraph Core_Services ["Layer 2: Decentralized SSI Microservices"]
         ID_SVC["Identity & SSI Core (:8001)<br/>- W3C VC 2.0 / eddsa-jcs-2022<br/>- OID4VCI / OID4VP Protocols<br/>- DID Resolution (did:key, did:web)<br/>- Bitstring Status List v1.0"]
-        FRAUD_SVC["AI Fraud Engine (:8002)<br/>- Hybrid XGBoost + Autoencoder<br/>- Behavioral Telemetry Scoring<br/>- Quarantine & Step-Up Auth"]
+        FRAUD_SVC["Fraud Heuristic Service (:8002)<br/>- Deterministic Rules<br/>- Synthetic Demo Signals<br/>- Advisory Risk Output"]
         REC_SVC["Guardian Recovery Service (:8003)<br/>- 3-of-5 Shamir Secret Sharing<br/>- 48h Time-Lock State Worker<br/>- Successor Key Rotation"]
     end
 
@@ -342,10 +342,10 @@ flowchart LR
         F5["Unusual User-Agent Entropy"]
     end
 
-    subgraph Model_Inference ["Hybrid AI Inference Engine (:8002)"]
-        XGB["XGBoost Classifier<br/>(Supervised Tabular Risk)<br/>Weight: 0.60"]
-        AE["PyTorch Autoencoder<br/>(Unsupervised Anomaly Reconstruction)<br/>Weight: 0.40"]
-        Score["Ensemble Risk Score Calculator<br/>Score = 0.60(XGB) + 0.40(AE_Loss)"]
+    subgraph Model_Inference ["Deterministic Heuristic (:8002)"]
+        RULES["Fixed risk rules<br/>rule-heuristic-v1"]
+        DEVIATION["Weighted behavioral deviation<br/>Synthetic prototype signals"]
+        Score["Combined heuristic score<br/>Advisory only"]
     end
 
     subgraph Decision ["Risk Tier & Policy Action"]
@@ -356,10 +356,10 @@ flowchart LR
     end
 
     Ingestion --> Feature_Engineering
-    Feature_Engineering --> XGB
-    Feature_Engineering --> AE
-    XGB --> Score
-    AE --> Score
+    Feature_Engineering --> RULES
+    Feature_Engineering --> DEVIATION
+    RULES --> Score
+    DEVIATION --> Score
     Score --> Decision
 ```
 

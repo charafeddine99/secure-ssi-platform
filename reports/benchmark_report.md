@@ -4,6 +4,18 @@
 **Execution Timestamp**: 2026-09-30 14:36:12 UTC  
 **Environment**: Windows-10-10.0.26200-SP0 | Python 3.11.16 | Node v24.19.0  
 
+> **Historical result only — not current G15 acceptance.** These measurements
+> are dated 30 September 2026 and were not rerun against the current source
+> checkpoint. The current G15 report is
+> [SECURE_SSI_PLATFORM_PERFORMANCE_REPORT.md](../docs/implementation/SECURE_SSI_PLATFORM_PERFORMANCE_REPORT.md).
+> Its scope is narrower and identifies the exact test commands and component
+> boundaries. In particular, the old “AI Fraud Engine” label does not mean a
+> trained model is deployed: the current Fraud service is a deterministic
+> synthetic heuristic with no independent labelled evaluation. No historical
+> benchmark number is a platform SLA or production performance claim. The
+> sibling `benchmark_results.json` is the machine-readable companion to this
+> same historical snapshot and carries the same limitations.
+
 ---
 
 ## 1. Executive Summary & Optimization Highlights

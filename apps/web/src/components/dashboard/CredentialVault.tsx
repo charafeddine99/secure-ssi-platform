@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { useWallet } from "../../context/WalletContext";
 
 export interface VerifiableCredential {
   id: string;
@@ -7,110 +6,49 @@ export interface VerifiableCredential {
   issuer: string;
   issuanceDate: string;
   expirationDate: string;
-  status: "VALID" | "REVOKED" | "SUSPENDED";
-  trustStatus: "Blockchain Anchored" | "W3C Verified" | "AI Cleared";
+  status: "UNKNOWN" | "VALID" | "REVOKED" | "SUSPENDED";
+  trustStatus: "Synthetic demo fixture";
   claims: Record<string, string>;
   proofValue: string;
 }
 
 const INITIAL_CREDENTIALS: VerifiableCredential[] = [
   {
-    id: "urn:uuid:subu-diploma-2026-b210109591",
+    id: "urn:uuid:synthetic-degree-demo-0001",
     type: "UniversityDegreeCredential",
-    issuer: "did:web:subu.edu.tr",
+    issuer: "did:example:issuer-001",
     issuanceDate: "2026-06-25",
     expirationDate: "2036-06-25",
-    status: "VALID",
-    trustStatus: "Blockchain Anchored",
+    status: "UNKNOWN",
+    trustStatus: "Synthetic demo fixture",
     claims: {
-      "Full Name": "Charaf Eddine Bessanane",
-      "Student ID": "B210109591",
-      "Department": "Computer Engineering",
-      "Degree": "Bachelor of Science",
-      "GPA": "3.82 / 4.00"
+      "Example name": "Synthetic Demo Holder",
+      "Example identifier": "DEMO-0001",
+      "Example department": "Example Department",
+      "Example degree": "Synthetic degree fixture",
+      "Example GPA": "Not assessed"
     },
-    proofValue: "z3h8B1a94f21SUBUSignedProofValueValidW3C2026Ed25519"
+    proofValue: "DEMO_ONLY_NO_CREDENTIAL_PROOF"
   },
   {
-    id: "urn:uuid:kyc-tier1-did-88912",
+    id: "urn:uuid:synthetic-identity-demo-0002",
     type: "IdentityVerificationCredential",
-    issuer: "did:ssi:platform:governance-authority",
+    issuer: "did:example:issuer-002",
     issuanceDate: "2026-09-20",
     expirationDate: "2027-09-20",
-    status: "VALID",
-    trustStatus: "AI Cleared",
+    status: "UNKNOWN",
+    trustStatus: "Synthetic demo fixture",
     claims: {
-      "Verification Level": "Tier 1 Biometric & Device",
-      "AI Fraud Risk Score": "8 / 100",
-      "Security Evaluation": "PASSED (Low Risk)"
+      "Example note": "Synthetic demo only; no biometric or fraud evaluation was performed."
     },
-    proofValue: "z8A4c91Bde77LinkedDataProofEd25519Signature"
+    proofValue: "DEMO_ONLY_NO_CREDENTIAL_PROOF"
   }
 ];
 
 export const CredentialVault: React.FC = () => {
-  const { account } = useWallet();
-  const [credentials, setCredentials] = useState<VerifiableCredential[]>(INITIAL_CREDENTIALS);
+  const [credentials] = useState<VerifiableCredential[]>(INITIAL_CREDENTIALS);
   const [selectedVC, setSelectedVC] = useState<VerifiableCredential | null>(null);
-  const [isIssuing, setIsIssuing] = useState<boolean>(false);
-  const [issuanceError, setIssuanceError] = useState<string | null>(null);
-
-  const handleRequestNewCredential = async () => {
-    if (!account) {
-      setIssuanceError("Please connect your wallet first.");
-      return;
-    }
-
-    setIsIssuing(true);
-    setIssuanceError(null);
-
-    try {
-      // Call Layer 3 API (http://127.0.0.1:8001/api/issue_credential)
-      const res = await fetch("http://127.0.0.1:8001/api/issue_credential", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet_address: account,
-          did_id: `did:key:z6Mku${account.slice(2, 10)}UserWallet`,
-          ip_address: "192.168.1.100",
-          device_fingerprint: "fp_web_dashboard_client_v1",
-          recent_failed_attempts: 0
-        })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Server returned status ${res.status}`);
-      }
-
-      const data = await res.json();
-      const rawVC = data.verifiable_credential;
-
-      const newCred: VerifiableCredential = {
-        id: rawVC.id,
-        type: rawVC.type[1] || "IdentityVerificationCredential",
-        issuer: rawVC.issuer,
-        issuanceDate: rawVC.issuanceDate.split("T")[0],
-        expirationDate: rawVC.expirationDate.split("T")[0],
-        status: "VALID",
-        trustStatus: "AI Cleared",
-        claims: {
-          "Subject DID": rawVC.credentialSubject.id,
-          "Wallet": rawVC.credentialSubject.walletAddress,
-          "KYC Status": rawVC.credentialSubject.kycLevel,
-          "AI Risk Score": `${data.risk_score} / 100`
-        },
-        proofValue: rawVC.proof.proofValue
-      };
-
-      setCredentials((prev) => [newCred, ...prev]);
-    } catch (err: unknown) {
-      console.error("Issuance failed:", err);
-      setIssuanceError(err instanceof Error ? err.message : "Failed to request credential from SSI Layer 3 API.");
-    } finally {
-      setIsIssuing(false);
-    }
-  };
+  const issuanceError = "This legacy vault is a static fixture. Its retired issuance endpoint is disabled; use the current issuer flow.";
 
   return (
     <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md">
@@ -122,38 +60,21 @@ export const CredentialVault: React.FC = () => {
             <h2 className="text-xl font-bold text-white tracking-tight">Credential Vault</h2>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            W3C JSON-LD Verifiable Credentials stored in your self-sovereign identity wallet.
+            Synthetic credential fixtures only. This component is not connected to an issuer or wallet.
           </p>
         </div>
 
         <button
-          onClick={handleRequestNewCredential}
-          disabled={isIssuing}
+          disabled
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white font-medium text-sm rounded-xl transition duration-150 shadow-lg shadow-indigo-600/20"
         >
-          {isIssuing ? (
-            <>
-              <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              <span>Verifying with AI...</span>
-            </>
-          ) : (
-            <>
-              <span>+</span>
-              <span>Issue New VC</span>
-            </>
-          )}
+          <span>Issuance unavailable</span>
         </button>
       </div>
 
       {issuanceError && (
         <div className="mt-4 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center justify-between">
           <span>{issuanceError}</span>
-          <button onClick={() => setIssuanceError(null)} className="text-rose-400 hover:text-white font-bold ml-2">
-            ✕
-          </button>
         </div>
       )}
 
@@ -246,7 +167,7 @@ export const CredentialVault: React.FC = () => {
               </div>
 
               <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                <span className="text-slate-400 font-semibold block mb-1">Ed25519 Linked Data Proof:</span>
+                <span className="text-slate-400 font-semibold block mb-1">Proof placeholder (not verified):</span>
                 <p className="font-mono text-[11px] text-indigo-400 break-all bg-indigo-950/30 p-2 rounded border border-indigo-900/30">
                   {selectedVC.proofValue}
                 </p>

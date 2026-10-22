@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal } from "../common/Modal";
-import { Eye, EyeOff, CheckCircle2, Lock } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { CredentialCardData } from "../credentials/CredentialCard";
 
 interface SelectiveDisclosureSheetProps {
@@ -10,207 +10,87 @@ interface SelectiveDisclosureSheetProps {
   verifierName?: string;
   verifierPurpose?: string;
   requiredClaims?: string[];
-  onConfirmPresentation: (disclosedClaims: Record<string, unknown>, blindedCommitments: string[]) => void;
+  onConfirmPresentation: () => void;
 }
 
 export const SelectiveDisclosureSheet: React.FC<SelectiveDisclosureSheetProps> = ({
   isOpen,
   onClose,
   credential,
-  verifierName = "Institutional Verifier Service",
-  verifierPurpose = "Standard identity verification & compliance check",
+  verifierName = "Verifier",
+  verifierPurpose = "Credential verification",
   requiredClaims = [],
-  onConfirmPresentation
+  onConfirmPresentation,
 }) => {
-  // Track selection for each claim - state declared unconditionally before any early return
-  const allClaimKeys = credential ? Object.keys(credential.claims || {}) : [];
-  
-  // Default: required claims checked, sensitive numbers unchecked
-  const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    allClaimKeys.forEach((key) => {
-      // By default, reveal non-sensitive fields
-      const isSensitive = key.toLowerCase().includes("no") || 
-                          key.toLowerCase().includes("tarih") || 
-                          key.toLowerCase().includes("seri");
-      initial[key] = !isSensitive || requiredClaims.includes(key);
-    });
-    return initial;
-  });
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
 
-  if (!credential) return null;
+  useEffect(() => {
+    setConsentConfirmed(false);
+  }, [isOpen, credential?.id]);
 
-  const toggleClaim = (key: string) => {
-    setSelectedKeys((prev) => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
-  };
-
-  const handleApprove = () => {
-    const disclosed: Record<string, unknown> = {};
-    const minimized: string[] = [];
-
-    allClaimKeys.forEach((k) => {
-      if (selectedKeys[k]) {
-        disclosed[k] = credential.claims[k];
-      } else {
-        minimized.push(`omitted:${k}`);
-      }
-    });
-
-    onConfirmPresentation(disclosed, minimized);
-    onClose();
-  };
-
-  const disclosedCount = Object.values(selectedKeys).filter(Boolean).length;
-  const minimizedCount = allClaimKeys.length - disclosedCount;
+  if (!isOpen || !credential) return null;
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="User Consent & Claim Minimization"
+      title="Consent to share signed credential"
       subtitle={`Verifier: ${verifierName}`}
       maxWidth="600px"
     >
-      {/* Purpose Banner */}
-      <div
-        style={{
-          backgroundColor: "#161f33",
-          padding: "14px 16px",
-          borderRadius: "10px",
-          border: "1px solid #1f2937",
-          marginBottom: "16px"
-        }}
-      >
+      <div style={{ backgroundColor: "#161f33", padding: "14px 16px", borderRadius: "10px", border: "1px solid #1f2937", marginBottom: "16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#60a5fa", fontSize: "0.85rem", fontWeight: 600 }}>
           <Lock size={16} />
-          <span>Verification Purpose</span>
+          <span>Requested purpose</span>
         </div>
-        <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "#cbd5e1" }}>
-          {verifierPurpose}
-        </p>
+        <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#cbd5e1" }}>{verifierPurpose}</p>
       </div>
 
-      {/* Data Minimization Summary */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          backgroundColor: "rgba(16, 185, 129, 0.08)",
-          padding: "10px 14px",
-          borderRadius: "8px",
-          border: "1px solid rgba(16, 185, 129, 0.25)",
-          marginBottom: "16px",
-          fontSize: "0.8rem"
-        }}
-      >
-        <span style={{ color: "#34d399", fontWeight: 600 }}>
-          Data Minimization Active
-        </span>
-        <span style={{ color: "#cbd5e1" }}>
-          <strong style={{ color: "#60a5fa" }}>{disclosedCount}</strong> revealed /{" "}
-          <strong style={{ color: "#f87171" }}>{minimizedCount}</strong> omitted (policy minimized)
-        </span>
+      <div role="note" style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.35)", color: "#fcd34d", padding: "12px 14px", borderRadius: "8px", marginBottom: "16px", fontSize: "0.8rem", lineHeight: 1.5 }}>
+        This profile sends the complete signed credential. The current Data Integrity proof does not support claim-level cryptographic selective disclosure, so unselected claims cannot be hidden.
       </div>
 
-      {/* Field-by-field Checklist */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-        <div style={{ fontSize: "0.75rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-          Select claims to share:
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "18px" }}>
+        <div style={{ fontSize: "0.75rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Claims included in the complete credential
         </div>
-
-        {allClaimKeys.map((key) => {
-          const isSelected = !!selectedKeys[key];
-          const isRequired = requiredClaims.includes(key);
-
-          return (
-            <label
-              key={key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 14px",
-                borderRadius: "8px",
-                backgroundColor: isSelected ? "rgba(37, 99, 235, 0.08)" : "#0d131f",
-                border: isSelected ? "1px solid rgba(37, 99, 235, 0.4)" : "1px solid #1f2937",
-                cursor: "pointer",
-                transition: "all 0.15s ease"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleClaim(key)}
-                  style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
-                />
-                <div>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#f8fafc" }}>
-                    {key}
-                    {isRequired && (
-                      <span style={{ marginLeft: "6px", fontSize: "0.68rem", color: "#fbbf24", fontWeight: 500 }}>
-                        (Requested)
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: isSelected ? "#93c5fd" : "#64748b" }}>
-                    {isSelected ? String(credential.claims[key]) : "Omitted from presentation (claim minimization)"}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                {isSelected ? (
-                  <Eye size={16} color="#60a5fa" />
-                ) : (
-                  <EyeOff size={16} color="#64748b" />
-                )}
-              </div>
-            </label>
-          );
-        })}
+        {Object.entries(credential.claims || {}).map(([key, value]) => (
+          <div key={key} style={{ padding: "10px 12px", borderRadius: "8px", backgroundColor: "#0d131f", border: "1px solid #1f2937" }}>
+            <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
+              {key}{requiredClaims.includes(key) ? " (requested)" : ""}
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "#cbd5e1", overflowWrap: "anywhere" }}>
+              {typeof value === "string" ? value : JSON.stringify(value)}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Action Buttons */}
+      <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", color: "#e2e8f0", fontSize: "0.8rem", lineHeight: 1.5, marginBottom: "18px" }}>
+        <input
+          type="checkbox"
+          checked={consentConfirmed}
+          onChange={(event) => setConsentConfirmed(event.target.checked)}
+          style={{ marginTop: "3px", accentColor: "#2563eb" }}
+        />
+        I understand that approving shares this entire signed credential, including every claim listed above.
+      </label>
+
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", borderTop: "1px solid #1f2937", paddingTop: "16px" }}>
-        <button
-          onClick={onClose}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#1f2937",
-            color: "#e2e8f0",
-            border: "1px solid #374151",
-            borderRadius: "8px",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            cursor: "pointer"
-          }}
-        >
+        <button type="button" onClick={onClose} style={{ padding: "8px 16px", backgroundColor: "#1f2937", color: "#e2e8f0", border: "1px solid #374151", borderRadius: "8px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>
           Cancel
         </button>
-
         <button
-          onClick={handleApprove}
-          style={{
-            padding: "8px 20px",
-            backgroundColor: "#2563eb",
-            color: "#ffffff",
-            border: "none",
-            borderRadius: "8px",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px"
+          type="button"
+          disabled={!consentConfirmed}
+          onClick={() => {
+            onConfirmPresentation();
+            onClose();
           }}
+          style={{ padding: "8px 20px", backgroundColor: consentConfirmed ? "#2563eb" : "#334155", color: "#ffffff", border: "none", borderRadius: "8px", fontSize: "0.85rem", fontWeight: 600, cursor: consentConfirmed ? "pointer" : "not-allowed", display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
           <CheckCircle2 size={16} />
-          Approve & Present
+          Approve full credential
         </button>
       </div>
     </Modal>

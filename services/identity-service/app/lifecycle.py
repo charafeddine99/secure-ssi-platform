@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,9 @@ from app.application.services.managed_key_service import (
     ManagedKeyReconciliationBackgroundService,
 )
 from app.infrastructure.persistence.indexes import ensure_mongo_indexes
+from app.infrastructure.persistence.demo_seeder import seed_offline_demo_fixtures
+
+_logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -102,6 +106,13 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             manager.close()
             raise
+    else:
+        # Offline / host-dev mode: seed deterministic demo fixtures so the
+        # web app sees real-looking data without a MongoDB daemon.
+        try:
+            seed_offline_demo_fixtures(manager.database)
+        except Exception as exc:  # pragma: no cover
+            _logger.warning("Offline demo seeder failed (non-fatal): %s", exc)
     try:
         yield
     finally:

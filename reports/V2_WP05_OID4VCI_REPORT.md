@@ -1,5 +1,11 @@
 # V2.1 WP-05 — OpenID4VCI 1.0 Pre-Authorized Code, Token Endpoint & Holder Proof-of-Possession Report
 
+> **Historical, package-scoped report.** Its implementation and test claims
+> describe an earlier WP-05 snapshot; they are not project-wide G0–G16
+> acceptance or current source-state proof. See the current
+> [gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ## 1. Executive Summary
 
 Work Package 05 (WP-05) of the Secure SSI Platform V2.1 Remediation Plan establishes a standards-aligned, token-mediated, cryptographically holder-bound credential issuance architecture strictly adhering to the **OpenID for Verifiable Credential Issuance 1.0 Final (OID4VCI 1.0)** specification. 

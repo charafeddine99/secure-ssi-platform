@@ -101,6 +101,29 @@ class MongoUserRepository:
             else UserDocumentMapper.from_document(document)
         )
 
+    def list_all(
+        self,
+        *,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> tuple[PersistedUser, ...]:
+        bounded_limit = _bounded_limit(limit)
+        if skip < 0:
+            raise ValueError("Repository list offset cannot be negative.")
+        try:
+            cursor = (
+                self._collection.find({"deletedAt": None})
+                .sort("username", ASCENDING)
+                .skip(skip)
+                .limit(bounded_limit)
+            )
+            return tuple(
+                UserDocumentMapper.from_document(document)
+                for document in cursor
+            )
+        except PyMongoError as error:
+            raise _unavailable("user listing") from error
+
     def update(
         self,
         user: PersistedUser,

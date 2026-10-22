@@ -79,7 +79,7 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
               <span>Requested Claims</span>
               <span className="text-emerald-400 text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                W3C Verified
+                Synthetic sample · not verified
               </span>
             </div>
 
@@ -87,16 +87,16 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/40">
                 <span className="text-slate-400">Target DID:</span>
                 <span className="font-mono text-slate-200 text-[11px] truncate max-w-[190px]">
-                  {account ? `did:key:z6Mku${account.slice(2, 10)}...` : "did:key:z6MkuBesnaSubu"}
+                  {account ? `did:example:wallet-${account.slice(2, 10).toLowerCase()}` : "did:example:holder-001"}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/40">
                 <span className="text-slate-400">Degree Claim:</span>
-                <span className="text-slate-200 font-medium">B.Sc. Computer Engineering</span>
+                <span className="text-slate-200 font-medium">Synthetic demo degree</span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/40">
                 <span className="text-slate-400">KYC Status:</span>
-                <span className="text-emerald-400 font-medium">Tier 1 Authenticated</span>
+                <span className="text-slate-300 font-medium">Not assessed</span>
               </div>
             </div>
           </div>

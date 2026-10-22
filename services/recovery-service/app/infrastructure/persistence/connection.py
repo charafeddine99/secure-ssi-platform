@@ -32,6 +32,7 @@ class MongoRecoveryConnectionManager:
                 retryReads=True,
                 retryWrites=True,
                 appname="secure-ssi-recovery-service",
+                tz_aware=True,
             )
             client.admin.command("ping")
             self._client = client

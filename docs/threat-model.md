@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-This document defines the security assumptions for the academic prototype before identity, fraud, blockchain, or recovery logic is implemented. It covers the planned web client, API Gateway, internal services, data stores, blockchain workspace, and guardian interactions.
+This document records security assumptions and residual risks for the current academic prototype. It covers the web client, API Gateway, internal services, data stores, optional blockchain workspace, and Guardian recovery. Gate acceptance and test status are tracked separately in the [current G0–G16 completion audit](implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md).
 
 This is an initial design artifact, not a security certification. It must be reviewed whenever an API, trust relationship, stored data category, or cryptographic operation changes.
 
@@ -41,7 +41,7 @@ This is an initial design artifact, not a security certification. It must be rev
 | Zone | Components | Boundary rule |
 | --- | --- | --- |
 | Untrusted client zone | Browser, holder wallet, external verifier | All input is untrusted; never place secrets in browser-delivered configuration |
-| Public edge | API Gateway | The only planned production public boundary; production authentication, rate limits, request limits, and correlation IDs belong here |
+| Public edge | API Gateway | The only planned production public boundary; production authentication, rate limits, request limits, and correlation IDs belong here. Default Compose port publications bind to loopback only. |
 | Internal application zone | Identity, Fraud, Recovery services | Not publicly exposed in production; use authenticated service identities and explicit authorization |
 | Data zone | MongoDB, Redis | No direct client access; separate credentials and minimum retention |
 | Key-management zone | Provider-neutral ports, non-production development adapter, and configurable generic HTTPS KMS gateway | Development derivation is prohibited in production; provider secrets/private keys must not enter source, MongoDB, Redis, APIs, audit, metrics, or logs |
@@ -68,17 +68,17 @@ This is an initial design artifact, not a security certification. It must be rev
 | --- | --- | --- | --- | --- |
 | T01 | Credential or proof replay | Unauthorized acceptance | Nonces, audience binding, expiry, one-time challenge storage | Replay integration tests |
 | T02 | Forged issuer or credential | False identity claims | Trusted issuer policy, signature verification, status checking | Local signature, 15 tamper variants, and application status tests implemented; governance/interoperability planned |
-| T03 | Correlation through identifiers or ledger data | Privacy loss | Pairwise identifiers, selective disclosure, data minimization, never put claims/DIDs on-chain | Privacy review and ledger inspection |
-| T04 | Private-key disclosure | Identity takeover | Holder-side key custody, KMS/HSM for production issuer keys, rotation, no secret logging | Synthetic key redaction/output tests implemented; production secret scanning and rotation drills planned |
-| T05 | Fraud model manipulation or evasion | Incorrect risk decision | Input validation, signed signal provenance, model/version tracking, human-review policy | Adversarial and drift tests |
+| T03 | Correlation through identifiers or ledger data | Privacy loss | Current profile uses synthetic identifiers, presents the complete selected credential, and anchors approved digests only; pairwise identifiers and cryptographic selective disclosure remain deferred | Privacy review and ledger inspection; no selective-disclosure or real-user privacy acceptance is claimed |
+| T04 | Private-key disclosure | Identity takeover | Current holder signing is server-mediated through a provider boundary; independent holder custody and production issuer KMS/HSM are requirements, with rotation and no secret logging | Synthetic key redaction/output tests implemented; production secret scanning, hardware custody and rotation drills remain open |
+| T05 | Fraud heuristic manipulation or evasion | Incorrect advisory risk result | Input validation, server-derived signals where available, explicit heuristic version and advisory-only output; a production human-review policy remains open | Deterministic heuristic tests exist; no trained model, independent labeled evaluation, adversarial study or drift test is claimed |
 | T06 | Biased or unexplained risk decisions | Unfair denial and compliance risk | Reason codes, evaluation datasets, appeal path, prohibit autonomous irreversible recovery denial | Fairness and explainability review |
 | T07 | Guardian collusion or coercion | Account takeover | M-of-N approvals, persisted time lock, cancellation, independent channels and notification before production | Threshold/concurrency/time-lock tests implemented; independence/coercion operations planned |
-| T08 | Recovery request replay | Account takeover | Unique request/challenge/nonce, expiry, one decision per assignment, immutable snapshot, idempotency | State-transition, challenge, duplicate, wrong-assignee, cancellation, and replay tests implemented; Guardian signature verification planned |
+| T08 | Recovery request replay | Account takeover | Unique request/challenge/nonce, expiry, one decision per assignment, immutable snapshot, idempotency, and a short-lived DID-bound signature over the exact decision context | Current Recovery tests cover challenge, signature, decision/context mismatch, duplicate, wrong assignee, cancellation, and replay; independent Guardian-device custody remains open |
 | T09 | Internal service impersonation | Data alteration or disclosure | Workload identity, mutual authentication, least-privilege authorization | Unauthorized service-call tests |
-| T10 | API denial of service | Loss of availability | Rate limits, request size limits, timeouts, queues, circuit breakers | Load and fault-injection tests |
+| T10 | API denial of service | Loss of availability | Gateway sliding-window limits, bounded per-process client buckets, request size limits and service timeouts; production requires an explicit distributed edge policy | Gateway rate-limit/429/bucket-bound tests and loopback Compose config check pass; load/fault injection and production edge review remain open |
 | T11 | Log or database data leakage | Privacy loss | Redaction, field allowlists, encryption, retention limits, access audit | Log inspection and retention tests |
 | T12 | Smart-contract defect or privileged upgrade | Permanent loss or takeover | Minimal contract scope, independent review, tests, explicit upgrade governance | Static analysis and testnet review |
-| T13 | Compromised dependency or build | Code execution | Lockfiles, dependency review, reproducible builds, image scanning | CI supply-chain checks |
+| T13 | Compromised dependency or build | Code execution | Lockfiles, dependency review, reproducible builds, image scanning | Offline npm audit of the frontend lockfile reported 0 vulnerabilities; Python dependency and image scans are not available or run |
 | T14 | Stale or spoofed blockchain/RPC data | Incorrect state | Network allowlist, confirmation policy, multiple-provider strategy where justified | Reorg and provider-failure tests |
 | T15 | `did:web` DNS, TLS, or hosting compromise | Issuer impersonation | HTTPS, exact host/ID checks, controlled publishing, key rotation, monitoring | Local mismatch/size/private-material tests implemented; network tests planned |
 | T16 | Long-lived or reused `did:key` | Irrecoverable compromise and correlation | Synthetic short-lived use only; prohibit real users and recovery | Method/key allowlist tests implemented; lifecycle policy test planned |
@@ -111,33 +111,36 @@ This is an initial design artifact, not a security certification. It must be rev
 | T43 | KMS outage, timeout, or circuit exhaustion | Signing/provisioning outage or duplicate creation | Idempotency digest, bounded timeout/retry/backoff, circuit breaker, recoverable pending state, retry-limited worker | Timeout/unavailable/retry/circuit/recovery tests implemented |
 | T44 | Development provider enabled in production | Predictable non-secure custody used for real identities | Production-like startup rejection and explicit non-production provider capability | Configuration and provider-assurance tests implemented |
 | T45 | Immutable DID treated as mutable during rotation | Invalid controller/key claims | New `did:key` successor DID and application predecessor link; holder `did:web` update denied without a controlled publisher | `did:key` rotation and `did:web` fail-closed tests implemented |
-| T46 | Forged Guardian decision or stolen Guardian JWT | Unauthorized quorum | Exact assignee binding, short token lifetime, request challenge, one decision, time lock; require Guardian DID/device signature and MFA before production | RBAC/ownership/challenge tests implemented; independent signature/MFA tests planned |
+| T46 | Forged Guardian decision or stolen Guardian JWT | Unauthorized quorum | Exact assignee binding, short token lifetime, request challenge, one decision, time lock, and EdDSA signature against the registered Guardian `did:key`; require an independent device key and MFA before production | Current tests cover DID signature, invalid/tampered/context-mismatched proofs, RBAC and ownership; server-managed signing key, independent device proof, and MFA remain open |
 | T47 | Recovery envelope database or master-key compromise | Authorization-secret reconstruction | AES-GCM/HMAC envelopes, request/policy/version binding, secret redaction; production needs independent share custody and managed envelope key | Tamper/wrong-context/duplicate/insufficient-share tests implemented; custody separation planned |
 | T48 | Concurrent quorum or worker race | Early or duplicate key rotation | Unique approval indexes, optimistic request versions, explicit quorum/time-lock states, expiring execution lease, request idempotency key | Parallel approval, single-quorum-event, early-execution, stale-lease, retry, and repeat tests implemented |
 | T49 | Recovery service impersonates Identity or replays rotation | Unauthorized managed-key change | Short-lived grant bound to issuer/audience/scope/wallet/owner/request and exact idempotency header | Invalid grant, binding mismatch, ownership, and repeated-rotation tests implemented; mTLS/workload identity planned |
 | T50 | Recovery state/audit partial write | Missing forensic evidence | Deterministic append-only event IDs and reconciliation evidence; production transaction/outbox or audited backfill required | Event uniqueness and workflow audit tests implemented; crash-gap closure planned |
+| T51 | Anonymous legacy OID4VP consent, rejection, or signer request | Forged holder decision or presentation signed by platform fixture | Legacy routes return `410`; canonical writes require an authenticated holder and owned wallet; keep rejected sessions unchanged | Current wallet-consent/legacy-route/authz suite passed 80/80 on 15 October |
+| T52 | Caller-supplied verifier, purpose, nonce, or client ID in consent | Consent context substitution or misleading client contract | Derive all context from the stored verification session; reject those extra request fields | Context-override rejection is included in the current 80/80 wallet-consent/authz suite |
+| T53 | Process-local access-token revocation store | Revoked token accepted by another worker or after restart | Current-token JTI revocation is checked in the Identity process; production requires a shared durable store and operational expiry | Auth revocation regression exists; cross-worker and restart persistence are not implemented or claimed |
 
 ## Local authentication risk analysis
 
 | Risk | Current mitigation | Residual risk |
 | --- | --- | --- |
-| Credential stuffing | Generic login failures and Argon2id verification | No rate limiting, breached-password screening, or adaptive detection; public exposure remains unsafe |
-| Brute-force login | Argon2id cost and bounded login body | Unlimited attempts are possible because rate limiting is intentionally absent |
+| Credential stuffing | Generic login failures, Argon2id verification, and a bounded process-local Gateway limit | No independent Identity limiter, distributed enforcement, breached-password screening, or adaptive detection; public exposure remains unsafe |
+| Brute-force login | Argon2id, bounded login body, and Gateway sensitive-route limit (30 requests/minute per process/client bucket) | Identity has no independent limiter; Gateway state is process-local and Compose is local-only; production needs a distributed edge limiter and monitoring |
 | Password spraying | Same failure response for all fixture accounts | No attempt aggregation, lockout, CAPTCHA, or monitoring |
 | User enumeration | Unknown users verify against a fallback hash; wrong user/password/disabled login share one `401` | Network and runtime variance may still permit statistical inference without edge controls |
-| Stolen bearer token | 15-minute default lifetime, audience/issuer binding, current-user re-resolution | Tokens remain usable until expiry; no blacklist, device binding, sender constraint, or secure client storage |
+| Stolen bearer token | 15-minute default lifetime, audience/issuer binding, current-user re-resolution, and process-local JTI revocation on logout | Revocation is not shared across workers or durable across restart; no device binding, sender constraint, or secure client storage |
 | JWT tampering | PyJWT signature verification and required claim validation | Shared-secret compromise permits token forgery |
 | Algorithm confusion | Header algorithm must equal configured HS256; decode allowlist contains only HS256; `none` rejected | Future algorithm expansion could reintroduce confusion if not separately reviewed |
 | Weak JWT secret | Minimum 32-byte check; production-like mode requires explicit configuration | Development fallback is public and intentionally provides no production security |
-| Access-token replay | Short lifetime, audience, JTI, and token-use checks | JTI is not persisted or consumed; replay within the validity window is possible |
+| Access-token replay | Short lifetime, audience, JTI, token-use checks, and a volatile logout blacklist | A token can be replayed before revocation, on another worker, or after restart |
 | Excessive token lifetime | Config lifetime bounded to 60–3,600 seconds; signed token lifetime cannot exceed configured value | Even the maximum window may be too long for higher-risk deployments |
 | Role escalation | Closed role enum, signed claims, provider role comparison, current permission derivation | Compromise of the shared JWT secret or local registry process remains authoritative |
 | Stale authorization claims | Token roles must match current provider roles on every request | No distributed cache invalidation or durable user-version claim exists |
 | Disabled-user token reuse | Enabled state is checked against the selected provider on every protected request | Synthetic state is process-local; Mongo availability and database integrity become authentication dependencies when selected |
 | Secret leakage through logs | Application logs omit passwords, bodies, Authorization headers, full JWTs, hashes, and signing material | Infrastructure, proxy, crash dump, or third-party logging is outside this prototype |
-| Absence of rate limiting | Explicitly documented; request sizes are bounded | Brute force and denial of service remain unmitigated |
+| Partial rate limiting | API Gateway applies 180/minute standard and 30/minute sensitive tiers; per-process client state is bounded to 10,000 entries | Identity and Recovery do not independently limit requests; Gateway state is not shared between workers and is not a production DoS control |
 | Absence of MFA | Explicitly documented; synthetic users only | One password compromise is sufficient to obtain a token |
-| Absence of token revocation | Short-lived access tokens and current user-state checks | A stolen token cannot be individually revoked before expiry |
+| Non-durable token revocation | `/api/v1/auth/revoke` blacklists the current JTI in process memory | Revocation is not cluster-wide and is lost on process restart |
 
 ## Security invariants
 
@@ -189,8 +192,9 @@ The implementation must preserve these rules:
 29. Recovery key execution always passes through the existing
     `ManagedKeyService`; the Recovery Service cannot write managed-key state or
     call a provider directly.
-30. Production must not treat the optional Guardian proof as a verified
-    signature until a reviewed DID/device verification ceremony is added.
+30. A Guardian approval or rejection requires a cryptographically verified,
+    short-lived DID-bound EdDSA proof. The current signer is server-managed;
+    production must add an independent Guardian-device key and MFA ceremony.
 
 ## Privacy and data-retention baseline
 
@@ -209,8 +213,8 @@ The implementation must preserve these rules:
 - Privacy-preserving interoperable credential status and selective-disclosure mechanism.
 - Vendor-specific KMS/HSM selection, attestation, IAM, and production ceremony.
 - Production issuer trust registry and credential status policy.
-- Guardian DID/device signature format, independent share custody,
-  enrollment/attestation, notification, and production threshold governance.
+- Independent Guardian-device custody/attestation, `did:web` proof support,
+  independent share custody, notification, and production threshold governance.
 - Fraud-model family, features, and acceptance thresholds.
 - Blockchain network, contract governance, and finality policy.
 

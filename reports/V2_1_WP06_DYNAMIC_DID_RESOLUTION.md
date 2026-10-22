@@ -6,6 +6,12 @@
 **Date**: October 6, 2026  
 **Document Author**: Antigravity Lead Pair Programmer  
 
+> **Historical, package-scoped report.** Any verification label or test total
+> below describes the recorded WP-06 snapshot only, not project-wide G0–G16
+> acceptance or current source-state proof. See the current
+> [gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ---
 
 ## A. Objective

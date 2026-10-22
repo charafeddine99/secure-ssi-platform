@@ -21,36 +21,33 @@ router = APIRouter(prefix="/api/v1/fraud", tags=["Fraud Detection & Security"])
     "/evaluate",
     response_model=FraudEvaluationResponse,
     status_code=status.HTTP_200_OK,
-    summary="Kimlik doğrulama veya işlem için AI risk değerlendirmesi yapar"
+    summary="Synthetic prototype event için advisory heuristic risk değerlendirmesi yapar"
 )
 async def evaluate_transaction(request: FraudEvaluationRequest):
     """
-    SSI doğrulama veya işlem talebini hibrit AI motoruyla (XGBoost + Autoencoder) analiz eder.
-    Risk skoru, anomali durumu ve önerilen güvenlik aksiyonunu (ALLOW, REQUIRE_STEP_UP_AUTH, MANUAL_REVIEW, QUARANTINE_ACCOUNT) döner.
+    Applies deterministic rules to synthetic prototype event signals. This is
+    not a trained model and does not establish credential validity or trust.
     """
     try:
         return detector.evaluate(request)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI risk değerlendirmesi sırasında hata: {str(exc)}"
+            detail="Heuristic risk evaluation could not be completed."
         )
 
 @router.get(
     "/stats",
     response_model=ModelStatsResponse,
-    summary="AI modelinin performans, doğruluk ve konfüzyon matrisi istatistiklerini getirir"
+    summary="Returns heuristic engine version and measured-evaluation status"
 )
 async def get_model_stats():
-    """
-    Tasarım raporundaki %94.3 hedef doğruluk, F1-score, Precision, Recall ve Confusion Matrix metriklerini sunar.
-    """
     return detector.stats
 
 @router.post(
     "/quarantine",
     response_model=QuarantineResponse,
-    summary="Yüksek riskli bir hesabı manuel veya otomatik karantinaya alır"
+    summary="Records an explicit prototype quarantine action"
 )
 async def quarantine_account(request: QuarantineRequest):
     """
@@ -116,10 +113,6 @@ async def ingest_security_event(event: PlatformSecurityEvent):
         metadata=event.metadata,
     )
 
-    # Otomatik karantina kuralı: 10 dakikada 5'ten fazla başarısız deneme
-    if summary.get("failed_attempts", 0) >= 5:
-        detector.quarantine(event.did, f"Kritik sayıda başarısız oturum denemesi ({summary['failed_attempts']} kez)")
-
     return EventIngestionResponse(
         status="INGESTED",
         event_id=event.event_id,
@@ -148,9 +141,6 @@ async def ingest_batch_security_events(batch: EventBatchIngestionRequest):
             timestamp=event.timestamp,
             metadata=event.metadata,
         )
-        if summary.get("failed_attempts", 0) >= 5:
-            detector.quarantine(event.did, f"Kritik sayıda başarısız deneme ({summary['failed_attempts']} kez)")
-
     return EventBatchIngestionResponse(
         status="BATCH_INGESTED",
         ingested_count=len(batch.events),
@@ -173,12 +163,12 @@ async def get_did_behavioral_history(did: str):
 
 @router.get(
     "/dataset/metrics",
-    summary="1000 örnekli sentetik veri kümesi üzerinde model başarı metriklerini hesaplar"
+    summary="Computes a deterministic heuristic replay diagnostic on generated synthetic events"
 )
 async def evaluate_synthetic_dataset():
     """
-    Master Implementation Plan Bölüm 14 gereksinimi:
-    Sentetik veri seti (1000 örnek) üzerinde Precision, Recall, F1, ROC-AUC ve Confusion Matrix hesaplar.
+    Diagnostic only: metrics describe this fixed, generated synthetic replay.
+    They are not training metrics or evidence of real-world generalization.
     """
     df = generate_synthetic_ssi_dataset(n_samples=1000, fraud_ratio=0.30, seed=42)
     y_true = df["is_fraudulent"].to_numpy()
@@ -206,7 +196,14 @@ async def evaluate_synthetic_dataset():
 
     import numpy as np
     metrics = calculate_evaluation_metrics(y_true, np.array(y_preds), np.array(y_probs))
-    metrics["model_version"] = "hybrid-xgboost-ae-v1.3.0"
-    metrics["dataset_description"] = "1000 samples (700 normal, 300 multi-attack synthetic events)"
+    metrics["model_version"] = detector.MODEL_VERSION
+    metrics["model_type"] = detector.stats["model_type"]
+    metrics["dataset_label"] = "[DEMO LAB / SYNTHETIC]"
+    metrics["evaluation_scope"] = "deterministic heuristic replay on generated events"
+    metrics["trained_model"] = False
+    metrics["dataset_description"] = (
+        "1000 generated examples (700 normal, 300 attack-pattern events); "
+        "seed=42; not representative of production traffic."
+    )
     return metrics
 

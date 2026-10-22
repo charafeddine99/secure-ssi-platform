@@ -45,6 +45,9 @@ class UnsupportedProofTypeError(Oid4vciError):
 class UnsupportedCredentialConfigurationError(Oid4vciError):
     """Requested credential configuration ID is unsupported or not permitted by grant."""
 
+class InvalidCredentialSubjectError(Oid4vciError, ValueError):
+    """Credential subject claims are missing or invalid for the requested credential."""
+
 class IssuanceState(StrEnum):
     OFFER_CREATED = "OFFER_CREATED"
     OFFER_RETRIEVED = "OFFER_RETRIEVED"

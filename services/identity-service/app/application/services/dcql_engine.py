@@ -224,7 +224,11 @@ def build_dcql_query_from_types_and_fields(
         )
         for f in requested_fields
     ]
-    unique_types = list(dict.fromkeys(requested_types)) if requested_types else ["VerifiableCredential"]
+    unique_types = list(dict.fromkeys(requested_types))
+    if not unique_types:
+        raise MalformedDcqlQueryError(
+            "At least one credential type is required for a generated DCQL query."
+        )
     if len(unique_types) == 1:
         cred_query = DcqlCredentialQuery(
             id=query_id,

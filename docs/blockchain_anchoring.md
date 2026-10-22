@@ -3,6 +3,8 @@
 > **Implementation Context**: Academic SSI platform prototype / reference implementation.
 > **Scope**: Integrity anchoring layer for decentralized identifiers, W3C Bitstring status lists, on-chain emergency response, and security audit digests.
 
+> **Current G10 execution note (15 October 2026):** this document's earlier prose is historical where it conflicts with `docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md`. The current bridge anchors approved digests only. DID and status-list keys are hashed before contract calls. A quarantine event is a digest in `AuditLogger`; it does not call the contract's address-and-reason quarantine method. Chain state is optional and never establishes credential validity or status. The current scoped G10 contract, local receipt, and unanchored-policy evidence is in [test evidence](implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ---
 
 ## 1. Architectural Overview & MongoDB Decoupling
@@ -43,7 +45,7 @@ DIDRegistry.sol   RevocationRegistry.sol  EmergencyRecovery.sol     AuditLogger.
 ### Core Separation of Concerns
 * **MongoDB**: Remains the **authoritative application persistence layer**. All Verifiable Credentials, DID records, Status List bitstrings, user profiles, cryptographic key metadata, and complete audit event details live in MongoDB.
 * **Blockchain (Layer 1)**: Operates purely as a **tamper-evident integrity anchor**. The blockchain proves *when* a state existed and *verifies* that off-chain records have not been tampered with.
-* **Fail-Open Resilience**: Blockchain is **not an availability bottleneck**. If the blockchain node is offline, slow, or fails to confirm a transaction, credential issuance and verification **never fail**. Instead, the anchor state is marked `FAILED` or `RETRYABLE` in MongoDB, and administrative alerts are triggered.
+* **Fail-Open Resilience**: Blockchain is **not an availability bottleneck**. If the node is offline, a transaction is reverted, or a receipt times out, credential issuance and verification remain independent. Anchor records use `OFFLINE`, `FAILED`, `SUBMITTED`, or `SKIPPED` as applicable; a presentation reports `blockchainAnchored: false` when no confirmed receipt exists. A transaction hash is retained only when the node accepted a transaction. No alerting or retry worker is claimed.
 
 ---
 
@@ -57,10 +59,12 @@ Under strict European privacy regulations (GDPR) and academic security standards
 | **Verifiable Credentials** | ❌ **NEVER** | Stored in Holder Wallet / Issuer MongoDB |
 | **Identity Attributes (Name, DoB, Email)** | ❌ **NEVER** | Kept in off-chain verifiable credentials |
 | **Shamir Secret Shares / Recovery Data** | ❌ **NEVER** | Encrypted and distributed directly to designated guardians |
-| **DID Document Hashes** | ✅ **YES** | Deterministic SHA-256 hash (`bytes32`) |
-| **W3C Status List Root Hashes** | ✅ **YES** | Deterministic SHA-256 hash (`bytes32`) of bitstring bytes |
-| **Quarantine Status & Wallet Address** | ✅ **YES** | Ethereum address (`address`) and quarantine flag |
+| **DID Document Hashes** | ✅ **YES** | Deterministic SHA-256 digest (`bytes32`); DID registry key is also hashed |
+| **W3C Status List Root Hashes** | ✅ **YES** | Deterministic SHA-256 digest (`bytes32`) of bitstring bytes; status-list identifier is hashed |
+| **Quarantine Event** | ✅ **YES** | Digest and `ACCOUNT_QUARANTINED` category through `AuditLogger`; no wallet address or reason is passed |
 | **Audit Event Digests** | ✅ **YES** | SHA-256 hash (`bytes32`) and event category enum (`uint8`) |
+
+The application-side quarantine lock remains process-local prototype state. Its optional chain digest does not persist or define the lock and is not a credential-status authority.
 
 ---
 
@@ -68,7 +72,7 @@ Under strict European privacy regulations (GDPR) and academic security standards
 
 ### 1. `DIDRegistry.sol`
 * **Address**: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
-* **Purpose**: Binds DID strings (`did:key`, `did:web`) to credential/document hashes.
+* **Purpose**: Binds a hash of a DID key to a credential/document hash; the raw DID is not sent to the contract.
 * **Access Control**: Identity owner controls updates (`onlyDIDOwner` modifier). Unauthorized actors cannot overwrite or rebind another organization's or holder's DID.
 * **Reentrancy**: Protected by OpenZeppelin `ReentrancyGuard`.
 
@@ -79,9 +83,8 @@ Under strict European privacy regulations (GDPR) and academic security standards
 
 ### 3. `EmergencyRecovery.sol`
 * **Address**: `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
-* **Purpose**: Multi-sig social recovery (2-of-3 guardian consensus) inspired by EIP-4337, and AI-triggered emergency account quarantine.
-* **AI Security Policy**: When fraud risk exceeds critical thresholds ($\ge 85$), `quarantineWallet(address, reason)` is triggered by the authorized system signer.
-* **Authority Principle**: Blockchain does not calculate or override the AI risk score; it provides an immutable on-chain lock that prevents compromised wallets from signing transactions across the ecosystem.
+* **Purpose**: Prototype guardian recovery (2-of-3); the current optional integrity bridge does not invoke its address-and-reason quarantine method.
+* **Authority Principle**: Blockchain does not calculate or override a risk score. Credential verification and status do not depend on chain availability.
 
 ### 4. `AuditLogger.sol`
 * **Address**: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`
@@ -103,14 +106,18 @@ Every blockchain anchoring request creates a persistent MongoDB record in `block
 ```
     [PENDING] ──────► [SUBMITTED] ──────► [CONFIRMED]
         │                   │
-        ▼                   ▼
-     [FAILED] ◄──────── [FAILED]
+        ├──► [OFFLINE]
+        ├──► [FAILED] ◄─────┘
+        └──► [SKIPPED] (matching state; no new receipt)
 ```
 
 * **`PENDING`**: Request generated, canonical hash computed, ready for RPC transmission.
 * **`SUBMITTED`**: Transaction signed and broadcast to the mempool; transaction hash recorded.
 * **`CONFIRMED`**: Transaction included in a block; receipt verified with `status == 1`. Block number and confirmation timestamp stored.
-* **`FAILED`**: RPC node unreachable, timeout exceeded, or transaction reverted. Detailed `error_message` stored with retry counters.
+* **`SUBMITTED` after receipt timeout**: The RPC accepted a transaction hash, but no receipt was available before timeout. This is not a confirmation.
+* **`OFFLINE`**: The optional RPC or required contract is unavailable. No transaction was submitted and no transaction hash is reported.
+* **`SKIPPED`**: An on-chain read found the requested state already present; no synthetic transaction hash or receipt is recorded.
+* **`FAILED`**: A submitted transaction reverted or another anchoring operation failed. A real hash/block is retained only when the transaction was submitted/mined.
 
 ---
 
@@ -120,13 +127,13 @@ Every blockchain anchoring request creates a persistent MongoDB record in `block
 | :--- | :--- | :--- |
 | `BLOCKCHAIN_RPC_URL` | `http://127.0.0.1:8545` | JSON-RPC provider endpoint |
 | `BLOCKCHAIN_CHAIN_ID` | `1337` | Local Hardhat chain ID (`11155111` for Sepolia) |
-| `BLOCKCHAIN_PRIVATE_KEY` | Hardhat #0 Test Key | Transaction signer private key |
+| `BLOCKCHAIN_PRIVATE_KEY` | empty | Optional signer key; supply a secret explicitly only for a disposable local test network |
 | `DID_REGISTRY_ADDRESS` | `0x5FbDB2315678afecb367f032d93F642f64180aa3` | Deployed `DIDRegistry.sol` |
 | `REVOCATION_REGISTRY_ADDRESS`| `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` | Deployed `RevocationRegistry.sol` |
 | `EMERGENCY_RECOVERY_ADDRESS` | `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0` | Deployed `EmergencyRecovery.sol` |
 | `AUDIT_LOGGER_ADDRESS` | `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9` | Deployed `AuditLogger.sol` |
 | `BLOCKCHAIN_TIMEOUT_SECONDS` | `8.0` | Transaction receipt timeout before fail-open |
-| `BLOCKCHAIN_ENABLED` | `true` | Master switch for blockchain bridge |
+| `BLOCKCHAIN_ENABLED` | `false` | Master switch for optional blockchain anchoring |
 
 ---
 

@@ -426,6 +426,7 @@ class TrustRegistryService:
                     "VerifiableCredential",
                     "UniversityAffiliation",
                     "UniversityAffiliationCredential",
+                    "QualifiedElectronicAttestationCredential",
                     "EducationalID",
                     "DegreeCredential",
                     "TranscriptCredential",

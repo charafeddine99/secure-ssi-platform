@@ -89,11 +89,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       const eth = getEthereum();
       if (!eth) {
-        // Fallback demo account if MetaMask is absent
-        const demoAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-        setAccount(demoAddress);
-        setChainId(31337);
-        setError("MetaMask not detected in browser. Connected in Local Hardhat Demo mode.");
+        setError("No browser wallet provider is available. Connect a wallet to use wallet actions.");
         return;
       }
 

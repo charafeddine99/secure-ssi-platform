@@ -43,7 +43,7 @@ globalThis.localStorage = {
 };
 
 // Import verifyPresentation from api.ts
-import { verifyPresentation } from "../src/services/api.ts";
+import { fetchCredentials, verifyPresentation } from "../src/services/api.ts";
 
 async function runTests() {
   console.log("Starting WP-01 GAP-07 Frontend Fail-Closed Tests...\n");
@@ -192,6 +192,74 @@ async function runTests() {
       assert.strictEqual(result.challenge_valid, true);
       assert.strictEqual(result.claims?.degree, "MSc Computer Science");
       console.log("  ✓ PASSED: Authoritative ACCEPTED returned verified=true, status=VERIFIED\n");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Authoritative rejection overrides legacy success fields
+    // ------------------------------------------------------------------------
+    {
+      console.log("Test 6: finalPolicyResult rejection must override legacy success fields");
+      globalThis.fetch = async () => new Response(JSON.stringify({
+        valid: true,
+        status: "VERIFIED",
+        result: { finalPolicyResult: "REJECTED" }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const result = await verifyPresentation({
+        session_id: "test-session-6",
+        vp_token: { type: ["VerifiablePresentation"] },
+      });
+
+      assert.strictEqual(result.verified, false, "authoritative REJECTED MUST override legacy success fields");
+      assert.strictEqual(result.status, "REJECTED");
+      console.log("  ✓ PASSED: finalPolicyResult=REJECTED remained non-successful\n");
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Missing credential status must remain unknown
+    // ------------------------------------------------------------------------
+    {
+      console.log("Test 7: Missing backend credential status must not default to ACTIVE");
+      mockStorage.ssi_access_token = "mock-test-jwt-token";
+      globalThis.fetch = async () => new Response(JSON.stringify({
+        credentials: [{ credentialId: "credential-without-status" }]
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const credentials = await fetchCredentials(undefined, undefined, "wallet_test_1234567890123456");
+      assert.strictEqual(credentials[0]?.status, "UNKNOWN");
+      delete mockStorage.ssi_access_token;
+      console.log("  ✓ PASSED: Missing credential status normalized to UNKNOWN\n");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Malformed authoritative policy result cannot use legacy success fields
+    // ------------------------------------------------------------------------
+    {
+      console.log("Test 8: Missing finalPolicyResult must not fall back to legacy success fields");
+      globalThis.fetch = async () => new Response(JSON.stringify({
+        valid: true,
+        status: "VERIFIED",
+        result: {}
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const result = await verifyPresentation({
+        session_id: "test-session-8",
+        vp_token: { type: ["VerifiablePresentation"] },
+      });
+
+      assert.strictEqual(result.verified, false, "present but incomplete policy result MUST fail closed");
+      assert.strictEqual(result.status, "REJECTED");
+      assert.strictEqual(result.signature_valid, undefined, "overall acceptance must not synthesize a signature result");
+      console.log("  ✓ PASSED: Incomplete policy result remained non-successful\n");
     }
 
     console.log("=================================================");

@@ -104,11 +104,11 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
             json={
                 "walletId": WALLET_ID,
                 "guardianUserId": guardian_principal.user_id,
-                "guardianDid": f"did:key:zGoldenPathGuardian{index:02d}",
+                "guardianDid": runtime.guardian_dids[guardian_principal.user_id],
                 "displayName": f"Golden Path Guardian {index}",
                 "verificationMethod": (
-                    f"did:key:zGoldenPathGuardian{index:02d}#"
-                    f"zGoldenPathGuardian{index:02d}"
+                    f"{runtime.guardian_dids[guardian_principal.user_id]}#"
+                    f"{runtime.guardian_dids[guardian_principal.user_id][len('did:key:'):]}"
                 ),
             },
         )
@@ -160,7 +160,15 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
     app1 = client.post(
         f"/api/v1/recovery/requests/{request_id}/approve",
         headers=_headers(runtime.guardians[0].user_id),
-        json={"guardianId": guardian_ids[0], "challenge": challenge},
+        json={
+            "guardianId": guardian_ids[0],
+            "challenge": challenge,
+            "proof": runtime.sign_decision(
+                guardian_id=guardian_ids[0],
+                request_id=request_id,
+                challenge=challenge,
+            ),
+        },
     )
     assert app1.status_code == 200, app1.text
     state1 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()
@@ -171,7 +179,15 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
     app2 = client.post(
         f"/api/v1/recovery/requests/{request_id}/approve",
         headers=_headers(runtime.guardians[1].user_id),
-        json={"guardianId": guardian_ids[1], "challenge": challenge},
+        json={
+            "guardianId": guardian_ids[1],
+            "challenge": challenge,
+            "proof": runtime.sign_decision(
+                guardian_id=guardian_ids[1],
+                request_id=request_id,
+                challenge=challenge,
+            ),
+        },
     )
     assert app2.status_code == 200, app2.text
     state2 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()
@@ -182,7 +198,15 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
     app3 = client.post(
         f"/api/v1/recovery/requests/{request_id}/approve",
         headers=_headers(runtime.guardians[2].user_id),
-        json={"guardianId": guardian_ids[2], "challenge": challenge},
+        json={
+            "guardianId": guardian_ids[2],
+            "challenge": challenge,
+            "proof": runtime.sign_decision(
+                guardian_id=guardian_ids[2],
+                request_id=request_id,
+                challenge=challenge,
+            ),
+        },
     )
     assert app3.status_code == 200, app3.text
     state3 = client.get(f"/api/v1/recovery/requests/{request_id}", headers=owner_headers).json()

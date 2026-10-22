@@ -85,6 +85,12 @@ class CredentialApiService:
             return self.issuance_service.issue(credential)
         return self.proof_service.sign_credential(credential)
 
+    def supports_issuer(self, issuer_did: str) -> bool:
+        return (
+            self.issuance_service is not None
+            and self.issuance_service.supports_issuer(issuer_did)
+        )
+
     def verify_credential(
         self,
         credential: Mapping[str, Any],

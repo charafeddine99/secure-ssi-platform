@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
+import { Link } from "react-router-dom";
 import { StatusChip } from "../../components/common/StatusChip";
 import { 
   fetchGatewayStatus, 
   fetchBlockchainStatus, 
+  fetchBlockchainContracts,
   fetchFraudStats,
   fetchDatabaseStats,
   fetchAuditLogs,
   GatewayStatus, 
   BlockchainStatus,
+  SmartContractInfo,
   FraudModelStats
 } from "../../services/api";
 import { 
@@ -21,7 +22,6 @@ import {
   Server, 
   ArrowRight,
   Download,
-  Trash2,
   CheckCircle2,
   HardDrive
 } from "lucide-react";
@@ -47,9 +47,9 @@ interface DbStatsInfo {
 }
 
 export const AdminDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const [gateway, setGateway] = useState<GatewayStatus | null>(null);
   const [blockchain, setBlockchain] = useState<BlockchainStatus | null>(null);
+  const [contracts, setContracts] = useState<SmartContractInfo[]>([]);
   const [fraudStats, setFraudStats] = useState<FraudModelStats | null>(null);
   const [dbStats, setDbStats] = useState<DbStatsInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,14 +58,16 @@ export const AdminDashboard: React.FC = () => {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [gw, bc, fs, ds] = await Promise.all([
+      const [gw, bc, contractDirectory, fs, ds] = await Promise.all([
         fetchGatewayStatus().catch(() => null),
         fetchBlockchainStatus().catch(() => null),
+        fetchBlockchainContracts().catch(() => []),
         fetchFraudStats().catch(() => null),
         fetchDatabaseStats().catch(() => null)
       ]);
       setGateway(gw);
       setBlockchain(bc || gw?.blockchain || null);
+      setContracts(contractDirectory);
       setFraudStats(fs);
       setDbStats((ds as DbStatsInfo | null) || (gw?.database as DbStatsInfo | null) || null);
     } finally {
@@ -95,88 +97,60 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleFlushDemoCache = () => {
-    localStorage.removeItem("ssi_presentation_history");
-    localStorage.removeItem("mock_oid4vp_sessions");
-    setActionNotice("Demo session & presentation cache cleared.");
-    setTimeout(() => setActionNotice(null), 4000);
-  };
-
   const microservices = [
     { 
       name: "API Gateway & Proxy", 
       port: 8000, 
-      status: gateway?.gateway_status || "ONLINE", 
+      status: gateway?.gateway_status || "UNKNOWN",
       role: "Central Ingress, CORS, & Context Propagation" 
     },
     { 
       name: "SSI Core & Identity Service", 
       port: 8001, 
-      status: gateway?.services?.identity_service || "HEALTHY", 
+      status: gateway?.services?.identity_service || "UNKNOWN",
       role: "W3C VC 2.0, Ed25519 & Bitstring Status List" 
     },
     { 
-      name: "AI Fraud & Threat Engine", 
+      name: "Risk Evaluation Service",
       port: 8002, 
-      status: gateway?.services?.fraud_service || "HEALTHY", 
-      role: "XGBoost + Autoencoder Hybrid ML" 
+      status: gateway?.services?.fraud_service || "UNKNOWN",
+      role: "Deterministic advisory risk heuristic"
     },
     { 
       name: "Social Recovery Service", 
       port: 8003, 
-      status: gateway?.services?.recovery_service || "HEALTHY", 
-      role: "Shamir 3-of-5 Secret Sharing & Time-Lock" 
+      status: gateway?.services?.recovery_service || "UNKNOWN",
+      role: "Guardian recovery service"
     },
     { 
       name: "Ethereum Hardhat Node", 
       port: 8545, 
-      status: blockchain?.connected ? "ONLINE" : "ONLINE", 
-      role: `EVM Chain ID 1337 • Block #${blockchain?.block_number ?? 68}` 
+      status: blockchain ? (blockchain.connected ? "ONLINE" : "OFFLINE") : "UNKNOWN",
+      role: blockchain
+        ? `${blockchain.network || "Network not reported"} • Chain ${blockchain.chainId ?? "unknown"}`
+        : "Optional integrity anchor; status unavailable"
     }
   ];
 
-  const dbCounts = dbStats?.sqlite_fallback_stats || dbStats?.stats || {
-    users: 5,
-    credentials: 22,
-    guardians: 3,
-    audit_logs: 31
-  };
+  const dbCounts = dbStats?.sqlite_fallback_stats || dbStats?.stats || dbStats;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div className="admin-dashboard">
       {/* Top Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+      <div className="admin-dashboard__header">
         <div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" />
-            <TrustBadge level="BLOCKCHAIN_ANCHORED" />
-            <TrustBadge level="DEMO_TRUST_LEVEL" />
-          </div>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            System Infrastructure & Security Cockpit
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Unified operational telemetry across microservices, blockchain nodes, and AI threat mitigation.
+          <p className="admin-dashboard__eyebrow">Platform administration</p>
+          <h1>Administration</h1>
+          <p className="admin-dashboard__description">
+            Service health, audit records and optional EVM telemetry.
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <div className="admin-dashboard__header-actions">
           <button
             onClick={loadStatus}
             disabled={loading}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              color: "#e2e8f0",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
+            className="workspace-secondary-action"
           >
             <RefreshCw size={14} className={loading ? "spin" : ""} />
             Refresh Telemetry
@@ -185,7 +159,7 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {actionNotice && (
-        <div style={{ backgroundColor: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", borderRadius: "8px", padding: "10px 14px", color: "#34d399", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className="admin-dashboard__notice" role="status">
           <CheckCircle2 size={16} />
           {actionNotice}
         </div>
@@ -193,6 +167,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Microservice Health Matrix */}
       <div
+        className="admin-dashboard__health-panel"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -200,22 +175,23 @@ export const AdminDashboard: React.FC = () => {
           padding: "20px"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <div className="admin-dashboard__section-heading">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Server size={18} color="#60a5fa" />
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
               Connected Platform Microservices
             </h3>
           </div>
-          <span style={{ fontSize: "0.75rem", color: "#34d399", fontWeight: 600 }}>
-            System Health: OPTIMAL (5/5 Services Operational)
+          <span className="admin-dashboard__system-health">
+            System Health: {gateway?.system_health || "UNKNOWN"}
           </span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+        <div className="admin-dashboard__service-grid">
           {microservices.map((m) => (
             <div
               key={m.name}
+              className="admin-dashboard__service-card"
               style={{
                 backgroundColor: "#0d131f",
                 borderRadius: "10px",
@@ -224,15 +200,15 @@ export const AdminDashboard: React.FC = () => {
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#f8fafc" }}>
+                <span className="admin-dashboard__service-name">
                   {m.name}
                 </span>
-                <StatusChip status="ACTIVE" size="sm" />
+                <StatusChip status={m.status} size="sm" />
               </div>
-              <div style={{ fontSize: "0.72rem", color: "#60a5fa", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
+              <div className="admin-dashboard__service-port">
                 Port :{m.port}
               </div>
-              <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "2px" }}>
+              <div className="admin-dashboard__service-description">
                 {m.role}
               </div>
             </div>
@@ -241,9 +217,9 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Operational Deep-Dive Cards: Database, Blockchain, AI Engine */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+      <div className="admin-dashboard__detail-grid">
         {/* 1. Database & Persistence Layer */}
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
+        <div className="admin-dashboard__detail-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#38bdf8", marginBottom: "12px" }}>
             <HardDrive size={18} />
             <h4 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
@@ -251,109 +227,95 @@ export const AdminDashboard: React.FC = () => {
             </h4>
           </div>
           <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginBottom: "12px" }}>
-            Target: <span style={{ color: "#38bdf8", fontWeight: 600 }}>MongoDB Enterprise (secure_identity)</span>
+            Persistence telemetry
             <br />
-            Active Runtime: <span style={{ color: "#34d399", fontWeight: 600 }}>{String(dbStats?.active_runtime || "MongoDB / SQLite Fallback")}</span>
+            Active Runtime: <span style={{ color: "#34d399", fontWeight: 600 }}>{String(dbStats?.active_runtime || "Unknown")}</span>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+          <div className="admin-dashboard__metric-grid">
+            <div className="admin-dashboard__metric">
               <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Persisted VCs</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts.credentials ?? 22}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts?.credentials ?? "—"}</div>
             </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+            <div className="admin-dashboard__metric">
               <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Audit Events</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts.audit_logs ?? 31}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts?.audit_logs ?? "—"}</div>
             </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+            <div className="admin-dashboard__metric">
               <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Registered DIDs</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts.users ?? 5}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts?.users ?? "—"}</div>
             </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+            <div className="admin-dashboard__metric">
               <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Enrolled Guardians</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts.guardians ?? 3}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f8fafc" }}>{dbCounts?.guardians ?? "—"}</div>
             </div>
           </div>
         </div>
 
         {/* 2. Blockchain EVM Node */}
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
+        <div className="admin-dashboard__detail-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#c084fc", marginBottom: "12px" }}>
             <Database size={18} />
             <h4 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-              Hardhat EVM Blockchain Anchor
+              Optional Blockchain Integrity Anchor
             </h4>
           </div>
           <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginBottom: "12px" }}>
-            Network: <span style={{ color: "#c084fc", fontWeight: 600 }}>Localhost EVM (Chain ID 1337)</span>
+            Network: <span style={{ color: "#c084fc", fontWeight: 600 }}>{blockchain?.network || "Not reported"}</span>
             <br />
-            Current Height: <span style={{ color: "#34d399", fontWeight: 600 }}>Block #{blockchain?.block_number ?? 68}</span>
-            {" • "}
-            Gas Price: <span style={{ color: "#60a5fa" }}>{blockchain?.gas_price_gwei ?? 1.25} Gwei</span>
+            Chain ID: <span style={{ color: "#c084fc", fontWeight: 600 }}>{blockchain?.chainId ?? "Not reported"}</span>
+            <br />
+            Current Height: <span style={{ color: "#34d399", fontWeight: 600 }}>{blockchain?.connected && blockchain.currentBlockNumber != null ? `Block #${blockchain.currentBlockNumber}` : "Unavailable"}</span>
+            <br />
+            Connection: <span style={{ color: blockchain?.connected ? "#34d399" : "#fbbf24" }}>{blockchain ? (blockchain.connected ? "Connected" : "Offline / unavailable") : "Unknown"}</span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            {[
-              { name: "DIDRegistry.sol", addr: "0x5FbDB2315678afecb367f032d93F642f64180aa3" },
-              { name: "RevocationRegistry.sol", addr: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" },
-              { name: "EmergencyRecovery.sol", addr: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0" },
-              { name: "AuditLogger.sol", addr: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9" }
-            ].map(c => (
-              <div key={c.name} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", backgroundColor: "#0d131f", padding: "6px 8px", borderRadius: "6px", border: "1px solid #1f2937" }}>
-                <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{c.name}</span>
-                <span style={{ color: "#94a3b8", fontFamily: "var(--font-mono)" }}>{c.addr.slice(0, 10)}...</span>
+          <div className="admin-dashboard__contract-list">
+            {contracts.length === 0 && <p style={{ color: "#94a3b8", fontSize: "0.75rem" }}>No contract directory response is available.</p>}
+            {contracts.map((c) => (
+              <div key={c.name} className="admin-dashboard__contract-row">
+                <span className="admin-dashboard__contract-name">{c.name}</span>
+                <code className="admin-dashboard__contract-address">{c.address || "Not configured"}</code>
+                <span className="admin-dashboard__contract-status">{c.status || "Unknown"}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* 3. AI Threat & Fraud Engine Telemetry */}
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
+        {/* 3. Risk evaluation service metadata */}
+        <div className="admin-dashboard__detail-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f87171", marginBottom: "12px" }}>
             <Cpu size={18} />
             <h4 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-              AI Threat Engine Telemetry
+              Risk Evaluation Service
             </h4>
           </div>
           <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginBottom: "12px" }}>
-            Model: <span style={{ color: "#f87171", fontWeight: 600 }}>{fraudStats?.model_type || "Hybrid (XGBoost + Autoencoder)"}</span>
-            <br />
-            Quantization: <span style={{ color: "#34d399", fontWeight: 600 }}>{fraudStats?.model_quantization || "FP16"}</span>
+            {fraudStats?.model_type || "Risk heuristic unavailable"} · version {fraudStats?.model_version || "—"}
           </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Accuracy</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#10b981" }}>
-                {fraudStats ? `${(fraudStats.accuracy * 100).toFixed(1)}%` : "94.3%"}
-              </div>
+          <div className="admin-dashboard__risk-grid">
+            <div className="admin-dashboard__metric">
+              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Training status</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#fbbf24" }}>{fraudStats?.model_status || "UNKNOWN"}</div>
             </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>F1-Score</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#10b981" }}>
-                {fraudStats?.f1_score ?? 0.943}
-              </div>
+            <div className="admin-dashboard__metric">
+              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Evaluation</div>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#f8fafc" }}>{fraudStats?.evaluation_status || "Not reported"}</div>
             </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Avg Latency</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#60a5fa" }}>
-                {fraudStats?.latency_ms_avg ?? 4.2} ms
-              </div>
-            </div>
-            <div style={{ backgroundColor: "#0d131f", padding: "10px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Precision / Recall</div>
-              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#f8fafc", marginTop: "4px" }}>
-                93.8% / 94.8%
-              </div>
+            <div className="admin-dashboard__metric admin-dashboard__metric--wide">
+              <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Configured signals</div>
+              <div style={{ fontSize: "0.72rem", color: "#cbd5e1", marginTop: "4px" }}>{fraudStats?.risk_signals?.join(" · ") || "Unavailable"}</div>
+              <div style={{ fontSize: "0.68rem", color: "#fbbf24", marginTop: "5px" }}>{fraudStats?.dataset_label || "Dataset not reported"} · advisory only</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Quick Navigation Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-        <div
-          onClick={() => navigate("/admin/contracts")}
+      <div className="admin-dashboard__action-grid">
+        <Link
+          to="/admin/contracts"
+          className="admin-dashboard__action-card portal-card-hover"
           style={{
             backgroundColor: "#111827",
             borderRadius: "14px",
@@ -364,7 +326,6 @@ export const AdminDashboard: React.FC = () => {
             flexDirection: "column",
             justifyContent: "space-between"
           }}
-          className="portal-card-hover"
         >
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#c084fc", marginBottom: "8px" }}>
@@ -374,17 +335,18 @@ export const AdminDashboard: React.FC = () => {
               </h4>
             </div>
             <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: 0, lineHeight: 1.5 }}>
-              View deployed contract addresses, query contract view functions, and inspect recent on-chain anchors.
+              View configured contract addresses and receipt-backed anchor records. Contract deployment is reported only when checked against a connected node.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "16px", color: "#c084fc", fontSize: "0.8rem", fontWeight: 700 }}>
             <span>Inspect Contracts</span>
             <ArrowRight size={14} />
           </div>
-        </div>
+        </Link>
 
-        <div
-          onClick={() => navigate("/admin/audit")}
+        <Link
+          to="/admin/audit"
+          className="admin-dashboard__action-card portal-card-hover"
           style={{
             backgroundColor: "#111827",
             borderRadius: "14px",
@@ -395,27 +357,27 @@ export const AdminDashboard: React.FC = () => {
             flexDirection: "column",
             justifyContent: "space-between"
           }}
-          className="portal-card-hover"
         >
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#38bdf8", marginBottom: "8px" }}>
               <History size={20} />
               <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-                Immutable Audit Explorer
+                Audit Event Viewer
               </h4>
             </div>
             <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: 0, lineHeight: 1.5 }}>
-              Browse security logs, issuance events, cryptographic verification receipts, and export compliance reports.
+              Browse audit events returned by the service. This view does not certify immutable storage or compliance.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "16px", color: "#38bdf8", fontSize: "0.8rem", fontWeight: 700 }}>
             <span>Explore Logs</span>
             <ArrowRight size={14} />
           </div>
-        </div>
+        </Link>
 
-        <div
-          onClick={() => navigate("/admin/fraud-monitor")}
+        <Link
+          to="/admin/fraud-monitor"
+          className="admin-dashboard__action-card portal-card-hover"
           style={{
             backgroundColor: "#111827",
             borderRadius: "14px",
@@ -426,31 +388,30 @@ export const AdminDashboard: React.FC = () => {
             flexDirection: "column",
             justifyContent: "space-between"
           }}
-          className="portal-card-hover"
         >
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f87171", marginBottom: "8px" }}>
               <Cpu size={20} />
               <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-                Real-Time AI Threat Stream
+                Synthetic Risk Heuristic
               </h4>
             </div>
             <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: 0, lineHeight: 1.5 }}>
-              Monitor incoming verification traffic, XGBoost decision margins, and execute on-chain wallet quarantine.
+              Inspect versioned rule-based risk signals. Scores are advisory and do not establish credential trust or validity.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "16px", color: "#f87171", fontSize: "0.8rem", fontWeight: 700 }}>
             <span>View Threat Stream</span>
             <ArrowRight size={14} />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Admin Quick System Tools */}
-      <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+      <div className="admin-dashboard__tools">
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <Settings size={18} color="#94a3b8" />
-          <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Administrative Quick Actions:</span>
+          <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Audit tools</span>
         </div>
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
           <button
@@ -471,25 +432,6 @@ export const AdminDashboard: React.FC = () => {
           >
             <Download size={13} />
             Export Audit Trail (JSON)
-          </button>
-          <button
-            onClick={handleFlushDemoCache}
-            style={{
-              padding: "6px 12px",
-              borderRadius: "6px",
-              backgroundColor: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              color: "#f87171",
-              fontSize: "0.78rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <Trash2 size={13} />
-            Flush Demo Cache
           </button>
         </div>
       </div>

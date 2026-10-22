@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class FraudDetectionRequest(BaseModel):
     """
-    JSON request payload for the AI Fraud Detection evaluation.
+    JSON request payload for the synthetic heuristic evaluation.
     """
     did_id: str = Field(..., description="Decentralized Identifier string, e.g. did:key:z6Mku...")
     timestamp: int = Field(..., description="Unix epoch timestamp in seconds")
@@ -26,10 +26,12 @@ class FraudDetectionRequest(BaseModel):
 
 class FraudDetectionResponse(BaseModel):
     """
-    JSON response payload returned by the AI Fraud Detection endpoint.
+    JSON response payload returned by the advisory heuristic endpoint.
     """
     risk_score: int = Field(..., ge=0, le=100, description="Evaluated risk score between 0 and 100")
-    is_fraudulent: bool = Field(..., description="True if risk exceeds the security threshold (>70)")
+    is_fraudulent: bool = Field(..., description="Thresholded heuristic flag; advisory only")
     did_id: Optional[str] = Field(None, description="Echo of evaluated DID")
-    anomaly_score: Optional[float] = Field(None, description="Autoencoder reconstruction anomaly score in [0.0, 1.0]")
+    anomaly_score: Optional[float] = Field(None, description="Rule-derived behavioral anomaly score in [0.0, 1.0]")
     reasons: Optional[List[str]] = Field(None, description="Diagnostic risk rationale factors")
+    model_version: str = Field(..., description="Version of the deterministic heuristic rules")
+    advisory_only: bool = Field(True, description="Risk output never establishes credential validity or trust")

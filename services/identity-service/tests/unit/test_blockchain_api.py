@@ -57,6 +57,24 @@ def test_get_blockchain_status(blockchain_client):
     assert "AuditLogger" in data["contracts"]
 
 
+def test_chain_status_and_contract_directory_do_not_require_mongo():
+    app.dependency_overrides.clear()
+    app.dependency_overrides[get_blockchain_anchor_repository] = lambda: pytest.fail(
+        "read-only chain status must not resolve MongoDB anchor storage"
+    )
+    client = TestClient(app)
+    try:
+        status_response = client.get("/api/v1/blockchain/status")
+        assert status_response.status_code == 200
+        assert isinstance(status_response.json()["connected"], bool)
+
+        contracts_response = client.get("/api/v1/blockchain/contracts")
+        assert contracts_response.status_code == 200
+        assert contracts_response.json()["status"] == "SUCCESS"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_anchor_by_id_and_hash(blockchain_client):
     client, repo = blockchain_client
 

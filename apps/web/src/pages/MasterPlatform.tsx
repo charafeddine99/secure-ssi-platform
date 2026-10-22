@@ -20,11 +20,10 @@ export const MasterPlatform: React.FC = () => {
   const [guardianScreen, setGuardianScreen] = useState<GuardianScreen>("REQUESTS");
   const [adminScreen, setAdminScreen] = useState<AdminScreen>("SYSTEM");
 
-  const [showAuthGate, setShowAuthGate] = useState<boolean>(!isAuthenticated);
-
-  // If user unauthenticates or toggles auth
-  if (!isAuthenticated && showAuthGate) {
-    return <AuthPage onComplete={() => setShowAuthGate(false)} />;
+  // This legacy composition is not used by the routed application. Keep its
+  // sign-in gate compatible with the server-authenticated page component.
+  if (!isAuthenticated) {
+    return <AuthPage />;
   }
 
   return (
@@ -36,7 +35,7 @@ export const MasterPlatform: React.FC = () => {
           <div className="brand-titles">
             <div className="brand-main-title">
               SECURE SSI PLATFORM
-              <span className="brand-tag">EUDI & W3C VC 2.0</span>
+              <span className="brand-tag">W3C VC 2.0 · OpenID4VC</span>
             </div>
             <div className="brand-sub-title">
               OpenID for Verifiable Credential Issuance & Presentations (OID4VCI / OID4VP 1.0)
@@ -103,7 +102,7 @@ export const MasterPlatform: React.FC = () => {
           }}>
             <span style={{ fontWeight: "700", color: "var(--text-main)" }}>{user?.name || "Sovereign User"}</span>
             <span style={{ color: "#60a5fa", fontFamily: "var(--font-mono)" }}>
-              {user?.did ? `${user.did.slice(0, 16)}...` : "did:key:z6Mku..."}
+              {user?.did ? `${user.did.slice(0, 16)}...` : "No DID assigned"}
             </span>
           </div>
 

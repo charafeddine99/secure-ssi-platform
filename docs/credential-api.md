@@ -25,10 +25,12 @@ These routes are a local academic prototype. Signing requires the local Bearer
 authentication and RBAC foundation. Revocation additionally requires
 `credentials:revoke`; only `admin` and `issuer` have it. Validation,
 verification, status, and capabilities remain public. They must not be exposed
-to the public internet or used with real credentials. They do not add rate
-limiting, external DID resolution, externally certified status-list
-interoperability, Presentation Exchange, selective disclosure, or production
-identity/key management.
+to the public internet or used with real credentials. They do not add an
+independent per-Identity-service rate limiter, external DID resolution,
+externally certified status-list interoperability, Presentation Exchange,
+claim-level selective disclosure, or production identity/key management. The
+API Gateway applies a bounded, process-local request limiter; it is not
+distributed and does not replace a production edge control.
 
 Interactive OpenAPI documentation is available at `/docs` while the service is
 running. The API description also repeats the prototype limitations.
@@ -392,10 +394,12 @@ correlation only; it is not an authentication or audit mechanism.
 
 Local synthetic authentication and sign RBAC are implemented as documented in
 [authentication-and-rbac.md](authentication-and-rbac.md). There is no API key,
-rate limiting, automatic user registration, refresh token,
-MFA, production identity provider, Redis integration, external W3C
-conformance validation, Presentation Exchange, selective disclosure,
-external wallet protocols, external DID resolution, blockchain anchoring, or
-real KMS/HSM custody. The implementation uses RFC 8785/JCS, not
+independent Identity-service rate limiter, automatic user registration,
+refresh token, MFA, production identity provider, Redis integration, external
+W3C conformance validation, Presentation Exchange, selective disclosure,
+external wallet protocols, or external DID resolution. The API Gateway has a
+bounded process-local limiter; it is not distributed. Blockchain anchoring is
+separate from these credential routes and is optional at platform level. There
+is no deployed vendor KMS/HSM custody. The implementation uses RFC 8785/JCS, not
 JSON-LD RDF dataset canonicalization. Do not deploy these endpoints as a public
 production service.

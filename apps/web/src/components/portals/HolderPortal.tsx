@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useWallet } from "../../context/WalletContext";
-import { fetchCredentials } from "../../services/api";
+import { fetchCredentials, type CredentialStatus } from "../../services/api";
 
 export type HolderScreen = 
   | "DASHBOARD" | "IDENTITY" | "WALLET" | "CREDENTIALS" | "CREDENTIAL_DETAIL" 
@@ -16,10 +16,10 @@ export interface VerifiableCredentialItem {
   issuerName: string;
   issuedDate: string;
   expiryDate: string;
-  status: "ACTIVE" | "REVOKED";
+  status: CredentialStatus;
   claims: Record<string, unknown>;
   proofValue: string;
-  statusListIndex: number;
+  statusListIndex?: number;
   aiRiskScore: number;
   policyRule: {
     description: string;
@@ -30,57 +30,55 @@ export interface VerifiableCredentialItem {
 
 const INITIAL_FALLBACK_CREDENTIALS: VerifiableCredentialItem[] = [
   {
-    id: "urn:uuid:eudi-natid-2026-tr-9021",
-    title: "eIDAS Yüksek Güvenlikli Ulusal Kimlik Kartı",
+    id: "urn:uuid:demo-identity-0001",
+    title: "Synthetic Demo Identity Credential",
     category: "IDENTITY",
     type: "NationalIdentityCredential",
-    issuer: "did:gov:eudi:nvi-authority",
-    issuerName: "T.C. Nüfus ve Vatandaşlık İşleri / EUDI Trust Framework",
+    issuer: "did:web:issuer.example",
+    issuerName: "Demo Issuer (not independently trusted)",
     issuedDate: "2025-01-15",
     expiryDate: "2035-01-15",
-    status: "ACTIVE",
-    statusListIndex: 104,
+    status: "UNKNOWN",
     claims: {
-      "Adı Soyadı": "Charaf Eddine Bessanane",
-      "Ulusal Kimlik No": "TR-10293847561",
-      "Uyruk": "T.C. & AB Uygunluk",
-      "Doğum Tarihi": "1999-04-12",
-      "Doğum Yeri": "İstanbul",
-      "Güven Seviyesi (LoA)": "eIDAS High (Qualified)",
-      "Seri No": "A92K81029"
+      "Example name": "Synthetic Demo Holder",
+      "Example identifier": "DEMO-0001",
+      "Example nationality": "Not a real identity",
+      "Example date": "2000-01-01",
+      "Example location": "Example City",
+      "Assurance level": "Not assessed",
+      "Example serial": "SAMPLE-01"
     },
-    proofValue: "z3s9PqRtXvM8EUDINationalIdentityProof2026Ed25519Signature",
+    proofValue: "DEMO-ONLY-NOT-A-VALID-SIGNATURE",
     aiRiskScore: 4,
     policyRule: {
-      description: "Reşit Olma ve Vatandaşlık İspatı (Minimizasyon)",
-      predicate: "Yaş >= 18 && Uyruk == 'T.C.' (DCQL Politikasıyla Seçili Aktarım)",
-      hiddenFields: ["Ulusal Kimlik No", "Seri No", "Doğum Tarihi", "Doğum Yeri"]
+      description: "Illustrative rule only",
+      predicate: "No credential verification is performed for this fallback sample",
+      hiddenFields: []
     }
   },
   {
-    id: "urn:uuid:qeaa-arch-2026-cert-4401",
-    title: "Nitelikli Sistem Mimarı Nitelik Tasdiki (QEAA)",
+    id: "urn:uuid:demo-qualification-0002",
+    title: "Synthetic Demo Qualification Credential",
     category: "QUALIFIED",
     type: "QualifiedElectronicAttestationCredential",
-    issuer: "did:web:trust.eudi.europa.eu",
-    issuerName: "European Cybersecurity & Identity Certification Body",
+    issuer: "did:web:issuer.example",
+    issuerName: "Demo Issuer (not independently trusted)",
     issuedDate: "2025-06-20",
     expiryDate: "2028-06-20",
-    status: "ACTIVE",
-    statusListIndex: 288,
+    status: "UNKNOWN",
     claims: {
-      "Sertifika Sahibi": "Charaf Eddine Bessanane",
-      "Unvan": "Senior Distributed Systems & SSI Security Architect",
-      "Yetki Kapsamı": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
-      "Akreditasyon No": "EU-QEAA-9981-SEC",
-      "Veriliş Standardı": "eIDAS Regulation (EU) 910/2014 Annex V"
+      "Example subject": "Synthetic Demo Holder",
+      "Example title": "Prototype systems engineer",
+      "Example scope": "Local SSI demonstration",
+      "Example reference": "DEMO-QEAA-0002",
+      "Example standard": "Not assessed"
     },
-    proofValue: "z4r8NmKyTwJ7QEAAEuCybersecurityArchitectSignedEd25519",
+    proofValue: "DEMO-ONLY-NOT-A-VALID-SIGNATURE",
     aiRiskScore: 6,
     policyRule: {
-      description: "Kıdemli Mimar Lisans Doğrulaması",
-      predicate: "Unvan == 'Senior Distributed Systems Architect' (DCQL Seçili Aktarım)",
-      hiddenFields: ["Akreditasyon No"]
+      description: "Illustrative rule only",
+      predicate: "No credential verification is performed for this fallback sample",
+      hiddenFields: []
     }
   }
 ];
@@ -100,23 +98,23 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
     fetchCredentials()
       .then((backendCreds) => {
         if (backendCreds && backendCreds.length > 0) {
-          const mapped: VerifiableCredentialItem[] = backendCreds.map((c, idx) => ({
+          const mapped: VerifiableCredentialItem[] = backendCreds.map((c) => ({
             id: c.id,
             title: c.title,
             category: (c.category as VerifiableCredentialItem["category"]) || "IDENTITY",
             type: c.credential_type,
             issuer: c.issuer,
-            issuerName: c.issuer_name || "Official EUDI Issuer",
+            issuerName: c.issuer_name || "Issuer not provided by service",
             issuedDate: c.issued_date,
             expiryDate: c.expiry_date || "Süresiz",
             status: c.status,
-            statusListIndex: (idx + 1) * 64,
+            statusListIndex: c.status_list_index,
             claims: typeof c.claims === "string" ? JSON.parse(c.claims) : (c.claims || {}),
-            proofValue: c.proof_value || "z3sProofValEd25519SignedW3C",
-            aiRiskScore: c.ai_risk_score || 5,
+            proofValue: c.proof_value || "Proof not provided by service",
+            aiRiskScore: c.ai_risk_score ?? 0,
             policyRule: {
               description: `${c.title} DCQL Minimizasyon Kuralı`,
-              predicate: c.zkp_predicate || "W3C VC 2.0 Valid",
+              predicate: c.zkp_predicate || "No cryptographic validity claim is provided by this metadata",
               hiddenFields: []
             }
           }));
@@ -127,18 +125,17 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
   }, []);
   
   // Present & Consent state
-  const [requestUri, setRequestUri] = useState("openid4vp://authorize?client_id=did:web:enterprise-verifier.eu&response_uri=http://localhost:8000/api/v1/identity/presentations/verify&nonce=n-88a91c7f&dcql_query=eudi_kyc_req");
+  const [requestUri, setRequestUri] = useState("openid4vp://authorize?client_id=did:web:verifier.example&response_uri=http://localhost:8000/api/v1/identity/presentations/verify&nonce=demo-nonce&dcql_query=demo-query");
   const [disclosedFields, setDisclosedFields] = useState<Record<string, boolean>>({
-    "Adı Soyadı": true,
-    "Güven Seviyesi (LoA)": true,
-    "Ulusal Kimlik No": false,
-    "Seri No": false,
-    "Doğum Tarihi": false,
-    "Doğum Yeri": false,
-    "Uyruk": true
+    "Example name": true,
+    "Assurance level": true,
+    "Example identifier": false,
+    "Example serial": false,
+    "Example date": false,
+    "Example location": false,
+    "Example nationality": true
   });
   const [presentationSuccess, setPresentationSuccess] = useState<boolean>(false);
-  const [revealSeed, setRevealSeed] = useState<boolean>(false);
   const [keyRotatedMsg, setKeyRotatedMsg] = useState<string | null>(null);
 
   const handleToggleField = (field: string) => {
@@ -153,12 +150,15 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
   };
 
   const handleRotateKey = () => {
-    setKeyRotatedMsg("Yeni Ed25519 anahtar çifti oluşturuldu. Eski anahtar başarıyla revize edildi ve DID Document güncellendi.");
+    setKeyRotatedMsg("Bu gömülü demo yalnızca ekrandaki durumu simüle eder; gerçek anahtar veya DID değiştirilmedi.");
     setTimeout(() => setKeyRotatedMsg(null), 5000);
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <aside role="note" style={{ padding: "12px 16px", border: "1px solid rgba(245, 158, 11, 0.45)", borderRadius: "8px", backgroundColor: "rgba(245, 158, 11, 0.1)", color: "#fbbf24", fontSize: "0.82rem" }}>
+        DEMO SIMULATION: this embedded portal uses synthetic credential values, not official identity data or a trusted issuer. Its presentation, consent, key-rotation, and recovery controls do not submit a signed presentation or change a backend key. The connected wallet pages provide server-backed workflows.
+      </aside>
       {/* 1. DASHBOARD */}
       {activeScreen === "DASHBOARD" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -229,7 +229,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
             }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Doğrulanabilir Kimlikler (VC)</div>
               <div style={{ fontSize: "24px", fontWeight: "800", color: "#60a5fa", marginTop: "6px" }}>{credentials.length} Adet</div>
-              <div style={{ fontSize: "11px", color: "var(--color-success)", marginTop: "4px" }}>✓ W3C VC 2.0 Tam Uyumlu</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Synthetic credential fixtures · not validated</div>
             </div>
 
             <div style={{
@@ -239,8 +239,8 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               borderRadius: "8px"
             }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Güven Seviyesi (LoA)</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "6px" }}>eIDAS High</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Kriptografik Donanım İmzalı</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "6px" }}>Not assessed</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>No independent assurance assessment</div>
             </div>
 
             <div style={{
@@ -250,8 +250,8 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               borderRadius: "8px"
             }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>AI Davranışsal Risk Puanı</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#38bdf8", marginTop: "6px" }}>0.04 (DÜŞÜK)</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>XGBoost + Autoencoder Temiz</div>
+              <div style={{ fontSize: "17px", fontWeight: "800", color: "#38bdf8", marginTop: "6px" }}>Değerlendirme yok</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>[DEMO LAB / SYNTHETIC] Canlı skor değil</div>
             </div>
 
             <div style={{
@@ -260,9 +260,9 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               border: "1px solid var(--border-default)",
               borderRadius: "8px"
             }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Sosyal Kurtarma Vasileri</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#a855f7", marginTop: "6px" }}>3/5 Quorum</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>EIP-4337 Aktif</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Demo Recovery Display</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "#a855f7", marginTop: "6px" }}>Illustrative</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>No live quorum state or chain transaction</div>
             </div>
           </div>
 
@@ -337,28 +337,28 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           padding: "24px"
         }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            W3C DID Document & Kriptografik Kimlik
+            Synthetic DID document example
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            W3C Decentralized Identifiers (DIDs) v1.0 spesifikasyonuna göre üretilmiş egemen kimlik belgesi.
+            This embedded portal renders a local example only; it does not create, resolve, or publish a DID document.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>Aktif DID Metodu</div>
-              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>did:key (Ed25519 Cryptosuite)</div>
-              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>W3C Data Integrity Ed25519Signature2020 / eddsa-jcs-2022</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>Example DID method</div>
+              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>did:example (reserved sample method)</div>
+              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>No key or proof is generated in this embedded portal.</div>
             </div>
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>On-Chain EVM Adresi</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>Demo wallet address</div>
               <div style={{ fontSize: "13px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{user?.walletAddress || account || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"}</div>
-              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>Hardhat Yerel EVM Zinciri / EIP-4337 Akıllı Hesap</div>
+              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>Illustrative value; no deployed contract or EIP-4337 account is implied.</div>
             </div>
           </div>
 
           <div style={{ marginBottom: "16px" }}>
             <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
-              W3C DID Document JSON-LD Temsili
+              Illustrative JSON-LD only — not a published DID document
             </label>
             <pre style={{
               padding: "16px",
@@ -376,20 +376,20 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
     "https://www.w3.org/ns/did/v1",
     "https://w3id.org/security/suites/ed25519-2020/v1"
   ],
-  "id": user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+  "id": user?.did || "did:example:holder-001",
   "verificationMethod": [
     {
-      "id": `${user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519"}#key-1`,
+      "id": `${user?.did || "did:example:holder-001"}#key-1`,
       "type": "Ed25519VerificationKey2020",
-      "controller": user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-      "publicKeyMultibase": "z6MkuBesnaPublicKeyMultibaseRepresentationValid2026"
+      "controller": user?.did || "did:example:holder-001",
+      "publicKeyMultibase": "z6MkExampleDemoPublicKeyMultibase"
     }
   ],
   "authentication": [
-    `${user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519"}#key-1`
+    `${user?.did || "did:example:holder-001"}#key-1`
   ],
   "assertionMethod": [
-    `${user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519"}#key-1`
+    `${user?.did || "did:example:holder-001"}#key-1`
   ]
 }, null, 2)}
             </pre>
@@ -470,44 +470,14 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 </div>
               </div>
 
-              {/* Seed Backup */}
+              {/* Key recovery is not implemented in this embedded prototype portal. */}
               <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
                 <div style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)", marginBottom: "4px" }}>
-                  12 Kelimelik Kurtarma Tohum İfadesi (BIP-39 Mnemonic)
+                  Cüzdan kurtarma bu prototipte kullanılabilir değil
                 </div>
                 <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
-                  Cihaz kaybı durumunda cüzdanınızı yeniden yüklemek için tohum ifadenizi yedekleyin.
+                  Bu ekran anahtar dışa aktaramaz veya geri yükleyemez. Gerçek bir kurtarma ifadesini buraya girmeyin.
                 </p>
-
-                {revealSeed ? (
-                  <div style={{
-                    padding: "12px",
-                    backgroundColor: "var(--bg-input)",
-                    border: "1px solid var(--border-default)",
-                    borderRadius: "6px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "12px",
-                    color: "#fcd34d",
-                    lineHeight: "1.6"
-                  }}>
-                    {user?.seedPhrase || "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard"}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setRevealSeed(true)}
-                    style={{
-                      padding: "8px 14px",
-                      backgroundColor: "var(--bg-input)",
-                      color: "var(--text-main)",
-                      border: "1px solid var(--border-default)",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    👁️ Tohum İfadesini Göster
-                  </button>
-                )}
               </div>
             </div>
 
@@ -517,10 +487,10 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 Güvenlik Prensipleri (Master Plan)
               </h4>
               <ul style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.7", paddingLeft: "16px" }}>
-                <li>Private key hiçbir zaman HTTP isteğinde veya yanıtında yer almaz.</li>
-                <li>Veritabanına yalnızca public key referansı ve key metadata yazılır.</li>
-                <li>Anahtar döndürme durumunda eski anahtar W3C DID dokümanında iptal edilir.</li>
-                <li>Şüpheli davranış durumunda AI Fraud Engine anahtarı otomatik askıya alabilir.</li>
+                <li>This embedded portal creates no signing key and exports no wallet secret.</li>
+                <li>Key rotation and DID document updates are not implemented by these demo controls.</li>
+                <li>Risk examples shown here do not change credential status.</li>
+                <li>Use the connected service pages to inspect backend-reported state.</li>
               </ul>
             </div>
           </div>
@@ -587,7 +557,9 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                     }}>
                       {vc.category}
                     </span>
-                    <span style={{ fontSize: "10px", color: "var(--color-success)", fontWeight: "600" }}>✓ {vc.status}</span>
+                    <span style={{ fontSize: "10px", color: vc.status === "ACTIVE" ? "var(--color-success)" : "#fbbf24", fontWeight: "600" }}>
+                      {vc.status === "ACTIVE" ? "✓ " : ""}{vc.status}
+                    </span>
                   </div>
                   <h4 style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginBottom: "6px" }}>
                     {vc.title}
@@ -596,7 +568,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                     İhraççı: {vc.issuerName}
                   </div>
                   <div style={{ fontSize: "11px", color: "#64748b" }}>
-                    StatusList2021 İndeksi: #{vc.statusListIndex}
+                    Status-list index: #{vc.statusListIndex ?? "Not provided"}
                   </div>
                 </div>
 
@@ -696,8 +668,10 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                   <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-main)", marginTop: "2px" }}>eddsa-jcs-2022 (Data Integrity)</div>
                 </div>
                 <div>
-                  <span style={{ color: "var(--text-muted)" }}>Bitstring StatusList2021 İndeksi:</span>
-                  <div style={{ fontFamily: "var(--font-mono)", color: "#10b981", marginTop: "2px" }}>Slot #{selectedCredential.statusListIndex} (Status: 0x00 Active)</div>
+                  <span style={{ color: "var(--text-muted)" }}>Status-list index:</span>
+                  <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-main)", marginTop: "2px" }}>
+                    {selectedCredential.statusListIndex ?? "Not provided"}; status not evaluated in this view
+                  </div>
                 </div>
                 <div>
                   <span style={{ color: "var(--text-muted)" }}>İmza Kanıtı (Proof):</span>
@@ -735,14 +709,8 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
   "validFrom": `${selectedCredential.issuedDate}T00:00:00Z`,
   "validUntil": `${selectedCredential.expiryDate}T23:59:59Z`,
   "credentialSubject": {
-    "id": user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+    "id": user?.did || "did:example:holder-001",
     ...selectedCredential.claims
-  },
-  "credentialStatus": {
-    "id": "http://localhost:8000/api/v1/identity/status-lists/status-list-2026",
-    "type": "BitstringStatusListEntry",
-    "statusPurpose": "revocation",
-    "statusListIndex": selectedCredential.statusListIndex
   },
   "proof": {
     "type": "DataIntegrityProof",
@@ -801,9 +769,9 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 Doğrulayıcı Talep Özeti (Ayrıştırılan Parametreler)
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px" }}>
-                <div><span style={{ color: "var(--text-muted)" }}>Relying Party:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>did:web:enterprise-verifier.eu</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Relying Party:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>did:web:verifier.example (sample)</span></div>
                 <div><span style={{ color: "var(--text-muted)" }}>Response URI:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>/api/v1/identity/presentations/verify</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>Tazelik Challenge / Nonce:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#10b981" }}>n-88a91c7f (Anti-Replay Korumalı)</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Demo Challenge / Nonce:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#10b981" }}>demo-nonce (not validated)</span></div>
                 <div><span style={{ color: "var(--text-muted)" }}>Sorgu Standardı:</span> <span style={{ fontWeight: "600", color: "var(--text-main)" }}>DCQL (Digital Credentials Query Language)</span></div>
               </div>
             </div>
@@ -828,7 +796,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
         </div>
       )}
 
-      {/* 7. CONSENT (SELECTIVE DISCLOSURE) */}
+      {/* 7. LEGACY CONSENT SCREEN (DEMO SIMULATION) */}
       {activeScreen === "CONSENT" && (
         <div style={{
           backgroundColor: "var(--bg-surface)",
@@ -842,7 +810,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 Kullanıcı Rızası & Veri Minimizasyonu (Consent Screen)
               </h3>
               <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>
-                GDPR ve eIDAS 2.0 uyarınca yalnızca izin verdiğiniz iddialar şifreli sunum zarfına eklenir.
+                Bu örnek paneldeki anahtarlar yalnızca yerel önizlemeyi değiştirir. Tam imzalı credential paylaşılır; claim-level cryptographic selective disclosure desteklenmez.
               </p>
             </div>
             <span style={{
@@ -853,7 +821,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               fontSize: "12px",
               fontWeight: "600"
             }}>
-              DCQL Selective Disclosure
+              Demo DCQL match · full-credential profile
             </span>
           </div>
 
@@ -865,7 +833,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
             marginBottom: "20px"
           }}>
             <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)", marginBottom: "12px" }}>
-              Paylaşılacak Bilgileri Seçin (İddia Maskeleme)
+              Demo Alan Görünümü (Aktarılan Credential'ı Değiştirmez)
             </h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {Object.entries(disclosedFields).map(([field, isAllowed]) => (
@@ -894,7 +862,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                     fontWeight: "600",
                     color: isAllowed ? "var(--color-primary)" : "var(--text-tertiary)"
                   }}>
-                    {isAllowed ? "AÇIKÇA İFŞA ET" : "GİZLE (MİNİMİZE ET)"}
+                    {isAllowed ? "ÖNİZLEMEDE GÖSTER" : "ÖNİZLEMEDE GİZLE"}
                   </span>
                 </div>
               ))}
@@ -915,7 +883,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 cursor: "pointer"
               }}
             >
-              {presentationSuccess ? "Sunum İmzalanıyor..." : "✓ Rıza Ver ve Kriptografik Sunumu İmzala"}
+              {presentationSuccess ? "Demo akışı simüle ediliyor…" : "Demo sunum akışını simüle et"}
             </button>
             <button
               onClick={() => onNavigate("DASHBOARD")}
@@ -956,13 +924,13 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
             fontWeight: "700",
             marginBottom: "12px"
           }}>
-            ✓ SUNUM BAŞARIYLA TAMAMLANDI
+            DEMO SIMULATION · Backend sonucu değildir
           </div>
           <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Kriptografik Sunum Makbuzu (Holder Receipt)
+            Örnek Sunum Özeti (Demo Only)
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Doğrulayıcı kurum sunumunuzu doğruladı ve kabul etti. Olay denetim günlüğünüze kaydedildi.
+            Bu yerel akış sunumu doğrulamaz, backend'e göndermez veya denetim olayı oluşturmaz.
           </p>
 
           <div style={{
@@ -977,11 +945,11 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
             gap: "8px",
             marginBottom: "20px"
           }}>
-            <div><span style={{ color: "var(--text-muted)" }}>Presentation ID:</span> <span style={{ color: "#60a5fa" }}>urn:uuid:vp-2026-902184-eudi</span></div>
-            <div><span style={{ color: "var(--text-muted)" }}>Verifier DID:</span> <span style={{ color: "#cbd5e1" }}>did:web:enterprise-verifier.eu</span></div>
-            <div><span style={{ color: "var(--text-muted)" }}>Nonce / Challenge:</span> <span style={{ color: "#10b981" }}>n-88a91c7f (Doğrulandı)</span></div>
-            <div><span style={{ color: "var(--text-muted)" }}>Nihai Karar:</span> <span style={{ color: "#4ade80", fontWeight: "700" }}>ACCEPTED (KABUL EDİLDİ)</span></div>
-            <div><span style={{ color: "var(--text-muted)" }}>Blokzincir Anchor TX:</span> <span style={{ color: "#a855f7" }}>0x7a8f12c49b0198de76cae931b204eef0129a</span></div>
+            <div><span style={{ color: "var(--text-muted)" }}>Presentation ID:</span> <span style={{ color: "#60a5fa" }}>No backend presentation created</span></div>
+            <div><span style={{ color: "var(--text-muted)" }}>Verifier:</span> <span style={{ color: "#cbd5e1" }}>Synthetic example</span></div>
+            <div><span style={{ color: "var(--text-muted)" }}>Nonce / Challenge:</span> <span style={{ color: "#10b981" }}>Not validated</span></div>
+            <div><span style={{ color: "var(--text-muted)" }}>Nihai Karar:</span> <span style={{ color: "var(--text-muted)", fontWeight: "700" }}>No backend result</span></div>
+            <div><span style={{ color: "var(--text-muted)" }}>Blockchain Anchor TX:</span> <span style={{ color: "var(--text-muted)" }}>None reported</span></div>
           </div>
 
           <button
@@ -1011,19 +979,19 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           padding: "24px"
         }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Cüzdan Denetim İzi (Activity Ledger)
+            Demo Activity Examples
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            W3C SSI Domain Event modeline uygun, yerel ve değiştirilemez denetim kayıtları.
+            Aşağıdakiler statik örnek satırlardır; gerçek kullanıcı etkinliği veya değiştirilemez kayıt değildir.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {[
-              { type: "CREDENTIAL_PRESENTED", time: "2 dakika önce", desc: "eIDAS Ulusal Kimlik Belgesi sunuldu (did:web:enterprise-verifier.eu)", status: "SUCCESS" },
-              { type: "CONSENT_GRANTED", time: "2 dakika önce", desc: "Seçici ifşa onayı verildi (3 iddia gizlendi)", status: "SUCCESS" },
-              { type: "KEY_ACTIVE", time: "1 saat önce", desc: "Ed25519 anahtarı başarıyla doğrulandı", status: "INFO" },
-              { type: "CREDENTIAL_RECEIVED", time: "Dün 14:30", desc: "Nitelikli Sistem Mimarı Tasdiki (QEAA) alındı", status: "SUCCESS" },
-              { type: "LOGIN", time: "Dün 09:12", desc: "Biyometrik / Yerel tohum ile oturum açıldı", status: "INFO" }
+              { type: "DEMO_CREDENTIAL_PRESENTED", time: "Sample", desc: "Synthetic example; no verifier request was sent", status: "DEMO" },
+              { type: "DEMO_CONSENT_PREVIEW", time: "Sample", desc: "Preview toggles do not change transmitted credential claims", status: "DEMO" },
+              { type: "DEMO_KEY_STATE", time: "Sample", desc: "No device key or backend key rotation is proven", status: "DEMO" },
+              { type: "DEMO_CREDENTIAL_RECEIVED", time: "Sample", desc: "Illustrative credential only", status: "DEMO" },
+              { type: "DEMO_LOGIN", time: "Sample", desc: "No biometric or local-seed login is implemented by this screen", status: "DEMO" }
             ].map((ev, idx) => (
               <div
                 key={idx}
@@ -1082,16 +1050,16 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
             <div style={{ padding: "18px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)", marginBottom: "12px" }}>
-                AI Davranışsal Risk Skoru (XGBoost + Autoencoder)
+                Risk Heuristiği (sentetik demo)
               </h4>
               <div style={{ fontSize: "32px", fontWeight: "800", color: "var(--color-success)", marginBottom: "4px" }}>
-                0.04
+                Değerlendirme yok
               </div>
               <div style={{ fontSize: "12px", color: "#10b981", fontWeight: "600", marginBottom: "8px" }}>
-                DÜŞÜK RİSK SEVİYESİ (NORMAL DAVRANIŞ)
+                Canlı skor üretilmedi
               </div>
               <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.6" }}>
-                Model sürümü: v2.4-hybrid. Son oturum açma, imzalama hızı ve IP korelasyonunda hiçbir anomali veya bot aktivitesi tespit edilmedi.
+                Eğitilmiş model yoktur. Sentetik prototip sinyalleri dışında oturum veya cihaz gözlemi yapılmamıştır.
               </p>
             </div>
 
@@ -1102,19 +1070,19 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "var(--text-muted)" }}>Private Key İzolasyonu:</span>
-                  <span style={{ color: "#10b981", fontWeight: "600" }}>✓ Donanım Seviyesi Koruma</span>
+                  <span style={{ color: "var(--text-muted)", fontWeight: "600" }}>Not available in this embedded demo</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "var(--text-muted)" }}>Replay Koruması (Anti-Replay):</span>
-                  <span style={{ color: "#10b981", fontWeight: "600" }}>✓ 120s Challenge/Nonce</span>
+                  <span style={{ color: "var(--text-muted)", fontWeight: "600" }}>Backend session required; not measured here</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "var(--text-muted)" }}>Zararlı Yazılım Karantinası:</span>
-                  <span style={{ color: "var(--text-main)", fontWeight: "600" }}>Aktif (Trigger: Risk &gt; 0.85)</span>
+                  <span style={{ color: "var(--text-muted)", fontWeight: "600" }}>No malware quarantine status is queried here</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "var(--text-muted)" }}>On-Chain Güvenlik Sözleşmesi:</span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>EmergencyRecovery.sol</span>
+                  <span style={{ color: "var(--text-muted)" }}>Blockchain state:</span>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>No deployed contract is assumed</span>
                 </div>
               </div>
             </div>
@@ -1131,10 +1099,10 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
           padding: "24px"
         }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Sosyal Kurtarma (Guardian Recovery — EIP-4337 M-of-N Quorum)
+            Sosyal Kurtarma Akışı (UI demo; no live recovery state)
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Cüzdan veya özel anahtar kaybında 3-of-5 vasi onayı ve 24 saatlik timelock ile yeni anahtar atanır.
+            Bu örnek görünüm Guardian onayı, timelock, DID imzası veya anahtar rotasyonu doğrulamaz. Gerçek durum Recovery Service ekranından alınmalıdır.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
@@ -1144,16 +1112,16 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>0x70997970C51812dc3A010C7d01b50e0d17dc79C8</span>
-                  <span style={{ color: "#10b981" }}>Vasi #1 (Onaylı)</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>guardian-1.example</span>
+                  <span style={{ color: "var(--text-muted)" }}>Sample only · not approved</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC</span>
-                  <span style={{ color: "#10b981" }}>Vasi #2 (Onaylı)</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>guardian-2.example</span>
+                  <span style={{ color: "var(--text-muted)" }}>Sample only · not approved</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>0x90F79bf6EB2c4f870365E785982E1f101E93b906</span>
-                  <span style={{ color: "#10b981" }}>Vasi #3 (Onaylı)</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>guardian-3.example</span>
+                  <span style={{ color: "var(--text-muted)" }}>Sample only · not approved</span>
                 </div>
               </div>
             </div>
@@ -1163,15 +1131,15 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
                 Kurtarma Parametreleri
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px" }}>
-                <div><span style={{ color: "var(--text-muted)" }}>Quorum Eşiği:</span> <span style={{ fontWeight: "700", color: "var(--text-main)" }}>2 / 3 (Çoğunluk İmzası)</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>Zaman Kilidi (Timelock):</span> <span style={{ fontWeight: "700", color: "#f59e0b" }}>24 Saat Güvenlik Beklemesi</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>Shamir Secret Sharing:</span> <span style={{ color: "#10b981" }}>Şifreli Zarf Aktif</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Demo Eşik Değeri:</span> <span style={{ fontWeight: "700", color: "var(--text-main)" }}>2 / 3 (UI sample)</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Timelock:</span> <span style={{ fontWeight: "700", color: "var(--text-muted)" }}>Not verified in this screen</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Shamir backend workflow:</span> <span style={{ color: "var(--text-muted)" }}>This screen does not verify its state</span></div>
               </div>
             </div>
           </div>
 
           <button
-            onClick={() => alert("Kurtarma talebi API Gateway (:8000/api/v1/recovery) üzerinden başlatıldı. Vasiler bilgilendirildi.")}
+            onClick={() => alert("Demo only: no recovery request was sent and no guardian was notified.")}
             style={{
               padding: "12px 20px",
               backgroundColor: "rgba(220, 38, 38, 0.15)",
@@ -1183,7 +1151,7 @@ export const HolderPortal: React.FC<{ activeScreen: HolderScreen; onNavigate: (s
               cursor: "pointer"
             }}
           >
-            ⚠️ Acil Durum Cüzdan Kurtarma Talebi Başlat
+            ⚠️ Demo Kurtarma Akışını Simüle Et (İstek Gönderilmez)
           </button>
         </div>
       )}

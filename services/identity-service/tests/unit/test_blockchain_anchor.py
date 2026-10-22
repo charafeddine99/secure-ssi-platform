@@ -10,6 +10,7 @@ Verifies:
 """
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 import pytest
 
 from app.domain.blockchain_anchor import (
@@ -23,7 +24,11 @@ from app.infrastructure.blockchain.canonical import (
     redact_sensitive_fields,
     to_bytes32,
 )
-from app.infrastructure.blockchain.web3_bridge import BlockchainBridge
+from app.infrastructure.blockchain.web3_bridge import (
+    BlockchainBridge,
+    TransactionReceiptPending,
+    TransactionReverted,
+)
 from app.infrastructure.persistence.blockchain_anchor_repository import (
     MongoBlockchainAnchorRepository,
 )
@@ -117,6 +122,21 @@ def test_blockchain_anchor_state_machine():
     assert confirmed.confirmed_at is not None
     assert confirmed.error_message is None
 
+    with pytest.raises(ValueError, match="non-zero"):
+        record.mark_confirmed("0x" + "0" * 64, block_number=42)
+    with pytest.raises(ValueError, match="must not be negative"):
+        record.mark_confirmed(tx_hash, block_number=-1)
+
+    skipped = record.mark_skipped("matching chain state; no new receipt")
+    assert skipped.status == BlockchainAnchorStatus.SKIPPED
+    assert skipped.tx_hash is None
+    assert skipped.block_number is None
+
+    offline = record.mark_offline("RPC endpoint is disabled")
+    assert offline.status == BlockchainAnchorStatus.OFFLINE
+    assert offline.tx_hash is None
+    assert offline.block_number is None
+
     # Test FAILED transition
     failed = record.mark_failed("RPC node timed out")
     assert failed.status == BlockchainAnchorStatus.FAILED
@@ -177,7 +197,7 @@ def test_mongo_blockchain_anchor_repository():
 
 
 def test_blockchain_bridge_offline_resilience():
-    """Verifies fail-open behavior: when blockchain is offline, methods return FAILED record without throwing."""
+    """Offline optional anchoring is reported without inventing a receipt."""
     settings = BlockchainSettings(
         rpc_url="http://127.0.0.1:9999",  # unreachable port
         timeout_seconds=0.5,
@@ -189,16 +209,71 @@ def test_blockchain_bridge_offline_resilience():
 
     # DID anchor when offline
     record = bridge.anchor_did_document("did:key:z6MkuOfflineTest", {"test": "data"})
-    assert record.status == BlockchainAnchorStatus.FAILED
+    assert record.status == BlockchainAnchorStatus.OFFLINE
     assert "offline" in record.error_message.lower() or "not configured" in record.error_message.lower()
 
     # Status list anchor when offline
     sl_record = bridge.anchor_status_list("https://example.com/sl", b"\x00" * 16)
-    assert sl_record.status == BlockchainAnchorStatus.FAILED
+    assert sl_record.status == BlockchainAnchorStatus.OFFLINE
 
     # Quarantine anchor when offline
     q_record = bridge.anchor_quarantine("did:key:z6MkuAttacker", "AI fraud score > 70")
-    assert q_record.status == BlockchainAnchorStatus.FAILED
+    assert q_record.status == BlockchainAnchorStatus.OFFLINE
 
     # Verify DID anchor returns False when offline
     assert bridge.verify_did_anchor("did:key:z6MkuOfflineTest", {"test": "data"}) is False
+
+
+def test_transaction_receipt_timeout_retains_real_submitted_hash():
+    record = BlockchainAnchorRecord.create_pending(
+        event_type=AnchorEventType.AUDIT_EVENT,
+        event_hash="0x" + "a" * 64,
+        contract_type="AuditLogger",
+        contract_address="0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+        network="localhost",
+        chain_id=1337,
+    )
+    bridge = BlockchainBridge(settings=BlockchainSettings(enabled=False))
+    tx_hash = "0x" + "b" * 64
+
+    pending = bridge._record_tx_failure(record, TransactionReceiptPending(tx_hash))
+    assert pending.status == BlockchainAnchorStatus.SUBMITTED
+    assert pending.tx_hash == tx_hash
+    assert pending.block_number is None
+    assert pending.error_message
+
+    reverted = bridge._record_tx_failure(record, TransactionReverted(tx_hash, 42))
+    assert reverted.status == BlockchainAnchorStatus.FAILED
+    assert reverted.tx_hash == tx_hash
+    assert reverted.block_number == 42
+    assert "reverted" in reverted.error_message.lower()
+
+
+def test_chain_subject_keys_are_hashed_and_quarantine_uses_digest_only():
+    bridge = BlockchainBridge(settings=BlockchainSettings(enabled=False))
+    bridge.is_connected = lambda: True
+    did = "did:key:z6MkuPrivacyFixture"
+    document = {"id": did, "publicKeyMultibase": "synthetic-public-key"}
+    did_contract = MagicMock()
+    did_contract.functions.isDIDRegistered.return_value.call.return_value = False
+    bridge.did_contract = did_contract
+    bridge._send_tx = lambda _call: ("0x" + "c" * 64, 17)
+
+    did_record = bridge.anchor_did_document(did, document)
+    registered_key = did_contract.functions.registerDID.call_args.args[0]
+    expected_key = compute_deterministic_hash(did.encode("utf-8"))[1]
+    assert registered_key == expected_key
+    assert did not in registered_key
+    assert did_record.status == BlockchainAnchorStatus.CONFIRMED
+
+    audit_contract = MagicMock()
+    bridge.audit_contract = audit_contract
+    reason = "Synthetic review reason"
+    quarantine_record = bridge.anchor_quarantine(did, reason)
+    logged_hash, logged_category = audit_contract.functions.logEvent.call_args.args
+    assert logged_hash == bytes.fromhex(quarantine_record.event_hash[2:])
+    assert logged_category == 4
+    assert did not in repr(audit_contract.functions.logEvent.call_args)
+    assert reason not in repr(audit_contract.functions.logEvent.call_args)
+    assert quarantine_record.contract_type == "AuditLogger"
+    assert "reason" not in quarantine_record.metadata

@@ -44,6 +44,9 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div role="note" style={{ padding: "9px 12px", borderRadius: "7px", backgroundColor: "rgba(245, 158, 11, 0.10)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#fbbf24", fontSize: "12px" }}>
+        DEMO SIMULATION: the embedded portal uses local illustrative state and fixed sample values; its request, verification, and risk controls do not call the backend. Sample issuers are not EUDI/eIDAS trusted entities. Use the dedicated verifier pages for backend workflows.
+      </div>
       {/* 1. DASHBOARD */}
       {activeScreen === "DASHBOARD" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -86,27 +89,27 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Toplam Doğrulanan</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)", marginTop: "6px" }}>1,428 Sunum</div>
-              <div style={{ fontSize: "11px", color: "var(--color-success)", marginTop: "4px" }}>✓ %99.8 Başarı Oranı</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Demo Sayaçları</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)", marginTop: "6px" }}>1,428 (sample)</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Gerçek kullanım metriği değildir</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Ortalama Doğrulama Hızı</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#60a5fa", marginTop: "6px" }}>84 ms</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Ed25519 JCS + StatusList</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Verification Latency</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "#60a5fa", marginTop: "6px" }}>Not measured</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>No performance claim</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>AI Engellenen Anomali</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#f59e0b", marginTop: "6px" }}>14 Tehdit</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Otomatik Karantinaya Alındı</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Synthetic Risk Scenario</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "#f59e0b", marginTop: "6px" }}>Sample only</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>No live threat count or quarantine is shown</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Sorgu Protokolü</div>
               <div style={{ fontSize: "24px", fontWeight: "800", color: "#a855f7", marginTop: "6px" }}>OID4VP 1.0</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>DCQL Seçici İfşa Desteği</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Full signed credential profile</div>
             </div>
           </div>
 
@@ -121,10 +124,10 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
           }}>
             <div>
               <h4 style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>
-                Hızlı Doğrulama Matrisini İnceleyin (Bölüm 13)
+                Sentetik Sunum Sonucunu Görüntüleyin
               </h4>
               <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                Master Plan Bölüm 13'te belirtilen resmî 9 adımlı kriptografik ve AI risk karar matrisi.
+                Ayrı kontrol ayrıntısı dönmeyen endpoint'e gönderilen demo sunumun aggregate backend sonucu.
               </p>
             </div>
             <button
@@ -174,7 +177,7 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
                   fontSize: "13px"
                 }}
               >
-                <option value="NationalIdentityCredential">eIDAS Ulusal Kimlik Belgesi (High LoA)</option>
+                <option value="NationalIdentityCredential">Synthetic National Identity Example</option>
                 <option value="QualifiedElectronicAttestationCredential">Nitelikli Sistem Mimarı Tasdiki (QEAA)</option>
                 <option value="FinancialComplianceCredential">Kurumsal Bankacılık AML / KYC Tasdiki</option>
               </select>
@@ -182,7 +185,7 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
 
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "6px" }}>
-                İstenen İddialar (DCQL Selective Disclosure)
+                İstenen İddialar (DCQL sorgusu; claim-level cryptographic disclosure desteklenmez)
               </label>
               <input
                 type="text"
@@ -381,24 +384,24 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
   "type": ["VerifiablePresentation"],
   "verifiableCredential": [
     {
-      "id": "urn:uuid:eudi-natid-2026-tr-9021",
+      "id": "urn:uuid:synthetic-identity-demo-001",
       "type": ["VerifiableCredential", "NationalIdentityCredential"],
-      "issuer": "did:gov:eudi:nvi-authority",
+      "issuer": "did:web:issuer.example",
       "credentialSubject": {
-        "id": "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-        "Adı Soyadı": "Charaf Eddine Bessanane",
-        "Uyruk": "T.C. & AB Uygunluk",
-        "Güven Seviyesi (LoA)": "eIDAS High (Qualified)"
+        "id": "did:key:example-holder",
+        "Example name": "Synthetic Demo Holder",
+        "Example nationality": "Not a real identity",
+        "Assurance level": "Not assessed (synthetic example)"
       }
     }
   ],
   "proof": {
     "type": "DataIntegrityProof",
     "cryptosuite": "eddsa-jcs-2022",
-    "verificationMethod": "did:key:z6MkuBesnaSecureHolder2026Ed25519#key-1",
-    "challenge": "n-88a91c7f",
-    "domain": "enterprise-verifier.eu",
-    "proofValue": "z3VPProofHolderSignatureValidEd25519NonceBound2026"
+    "verificationMethod": "did:key:example-holder#key-1",
+    "challenge": "demo-nonce",
+    "domain": "verifier.example",
+    "proofValue": "DEMO-ONLY-NOT-A-VALID-SIGNATURE"
   }
 }, null, 2)}
           </pre>
@@ -535,7 +538,7 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
           </div>
 
           <div style={{ marginTop: "20px", fontSize: "12px", color: "var(--text-muted)", maxWidth: "520px" }}>
-            * Kriptografik doğrulama ile AI risk sonucu ayrı değerlendirilir. AI trust proof'un yerine değil, risk intelligence katmanına aittir.
+            * [DEMO LAB / SYNTHETIC] Portal senaryoları sabit örnek değerler kullanır. Risk heuristiği issuer trust veya credential proof'u kanıtlamaz.
           </div>
         </div>
       )}
@@ -563,8 +566,8 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
             </thead>
             <tbody>
               {[
-                { id: "sess-9021a", did: "did:key:z6MkuBesna...", type: "NationalIdentityCredential", risk: "LOW (0.04)", time: "Az önce", res: "ACCEPTED" },
-                { id: "sess-8812c", did: "did:key:z6MkuBesna...", type: "QualifiedElectronicAttestation", risk: "LOW (0.06)", time: "10 dk önce", res: "ACCEPTED" },
+                { id: "demo-session-001", did: "did:key:example-holder", type: "SyntheticCredentialExample", risk: "sample", time: "Sample", res: "DEMO" },
+                { id: "demo-session-002", did: "did:key:example-holder", type: "SyntheticQualificationExample", risk: "sample", time: "Sample", res: "DEMO" },
                 { id: "sess-7719b", did: "did:key:z6MkuAnom...", type: "NationalIdentityCredential", risk: "HIGH (0.92)", time: "1 saat önce", res: "REJECTED" }
               ].map(item => (
                 <tr key={item.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
@@ -579,8 +582,8 @@ export const VerifierPortal: React.FC<{ activeScreen: VerifierScreen; onNavigate
                       fontWeight: "700",
                       padding: "2px 8px",
                       borderRadius: "4px",
-                      backgroundColor: item.res === "ACCEPTED" ? "rgba(22, 163, 74, 0.15)" : "rgba(220, 38, 38, 0.15)",
-                      color: item.res === "ACCEPTED" ? "#4ade80" : "#ef4444"
+                      backgroundColor: "rgba(148, 163, 184, 0.12)",
+                      color: "var(--text-muted)"
                     }}>
                       {item.res}
                     </span>

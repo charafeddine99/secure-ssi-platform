@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import {
   fetchRecoveryRequests,
+  fetchGuardians,
+  fetchCurrentUserId,
   cancelRecoveryRequest,
   RecoveryRequest,
 } from "../../services/api";
@@ -19,13 +20,25 @@ export const RecoveryRequestsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("ALL");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [guardianWallets, setGuardianWallets] = useState<Set<string>>(new Set());
 
   const loadPetitions = async () => {
     setLoading(true);
     setActionError(null);
     try {
-      const data = await fetchRecoveryRequests(50);
+      const [data, userId, guardians] = await Promise.all([
+        fetchRecoveryRequests(50),
+        fetchCurrentUserId(),
+        fetchGuardians(),
+      ]);
       setPetitions(data);
+      setCurrentUserId(userId);
+      setGuardianWallets(new Set(
+        guardians
+          .filter((guardian) => guardian.guardian_user_id === userId && guardian.approved === 1)
+          .map((guardian) => guardian.wallet_address)
+      ));
     } catch {
       setActionError("Failed to fetch recovery requests from Recovery Service.");
     } finally {
@@ -47,6 +60,9 @@ export const RecoveryRequestsPage: React.FC = () => {
   };
 
   const filteredPetitions = petitions.filter((p) => {
+    const ownedByCurrentUser = Boolean(currentUserId && p.ownerUserId === currentUserId);
+    const assignedToCurrentUser = guardianWallets.has(p.walletId);
+    if (!ownedByCurrentUser && !assignedToCurrentUser) return false;
     if (filter === "ALL") return true;
     return p.status === filter;
   });
@@ -56,14 +72,13 @@ export const RecoveryRequestsPage: React.FC = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
         <div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" />
-            <TrustBadge level="BLOCKCHAIN_ANCHORED" />
+            <span className="workspace-eyebrow">Recovery</span>
           </div>
           <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Active Recovery Petitions
+            Recovery Requests
           </h1>
           <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            M-of-N Shamir Secret Sharing social recovery consensus and time-locked key rotation.
+            Requests owned by this account or linked to an active Guardian assignment.
           </p>
         </div>
 
@@ -104,7 +119,7 @@ export const RecoveryRequestsPage: React.FC = () => {
 
       {/* Filter Tabs */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", borderBottom: "1px solid #1f2937", paddingBottom: "10px" }}>
-        {["ALL", "PENDING", "APPROVED", "TIMELOCKED", "EXECUTED", "CANCELLED"].map((f) => (
+        {["ALL", "PENDING_APPROVALS", "QUORUM_REACHED", "WAITING_TIMELOCK", "READY_FOR_EXECUTION", "EXECUTING", "COMPLETED", "REJECTED", "CANCELLED", "EXPIRED", "FAILED", "RECONCILIATION_REQUIRED", "UNKNOWN"].map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -146,7 +161,8 @@ export const RecoveryRequestsPage: React.FC = () => {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {filteredPetitions.map((p) => {
-            const quorumMet = p.approvalsCount >= p.requiredCount;
+            const quorumKnown = p.approvalsCount != null && p.requiredCount != null;
+            const quorumMet = quorumKnown && p.approvalsCount! >= p.requiredCount!;
             return (
               <div
                 key={p.requestId}
@@ -198,7 +214,7 @@ export const RecoveryRequestsPage: React.FC = () => {
                   <div>
                     <span style={{ color: "#94a3b8" }}>Quorum Progress:</span>
                     <div style={{ fontWeight: 700, color: quorumMet ? "#34d399" : "#fbbf24", marginTop: "2px" }}>
-                      {p.approvalsCount} of {p.requiredCount} Guardians Approved
+                      {p.approvalsCount ?? "Unknown"} of {p.requiredCount ?? "Unknown"} Guardians Approved
                     </div>
                   </div>
 
@@ -213,23 +229,15 @@ export const RecoveryRequestsPage: React.FC = () => {
                     <div>
                       <span style={{ color: "#94a3b8" }}>Time-lock Window:</span>
                       <div style={{ color: "#fbbf24", fontWeight: 600, marginTop: "2px" }}>
-                        Expires {new Date(p.timelockExpiresAt).toLocaleTimeString()}
+                        Execution available after {new Date(p.timelockExpiresAt).toLocaleString()}
                       </div>
                     </div>
                   )}
 
-                  {p.txHash && (
-                    <div>
-                      <span style={{ color: "#94a3b8" }}>On-Chain TX Hash:</span>
-                      <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "2px" }}>
-                        {p.txHash.slice(0, 18)}...
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                  {p.status === "PENDING" && (
+                  {p.status === "PENDING_APPROVALS" && guardianWallets.has(p.walletId) && (
                     <button
                       onClick={() => navigate(`/guardian/approve/${p.requestId}`)}
                       style={{
@@ -246,12 +254,12 @@ export const RecoveryRequestsPage: React.FC = () => {
                         gap: "6px",
                       }}
                     >
-                      <span>Review & Sign Petition</span>
+                      <span>Review & Submit Decision</span>
                       <ArrowRight size={14} />
                     </button>
                   )}
 
-                  {(p.status === "PENDING" || p.status === "TIMELOCKED") && (
+                  {p.ownerUserId === currentUserId && ["PENDING_APPROVALS", "QUORUM_REACHED", "WAITING_TIMELOCK", "READY_FOR_EXECUTION"].includes(p.status) && (
                     <button
                       onClick={() => handleCancel(p.requestId)}
                       style={{

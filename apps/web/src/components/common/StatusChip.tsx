@@ -1,8 +1,10 @@
 import React from "react";
+import { ShieldCheck, XCircle, AlertTriangle, Clock, RefreshCw, HelpCircle } from "lucide-react";
 
 export type StatusType = 
   | "ACTIVE"
   | "REVOKED"
+  | "EXPIRED"
   | "SUSPENDED"
   | "QUARANTINED"
   | "PENDING"
@@ -16,64 +18,82 @@ interface StatusChipProps {
 
 export const StatusChip: React.FC<StatusChipProps> = ({ status, size = "md" }) => {
   const norm = (status || "").toUpperCase();
+  const isSm = size === "sm";
+  const iconSize = isSm ? 12 : 14;
 
   const getConfig = () => {
     switch (norm) {
       case "ACTIVE":
       case "VERIFIED":
         return {
-          bg: "rgba(16, 185, 129, 0.12)",
-          color: "#34d399",
-          border: "rgba(16, 185, 129, 0.25)",
-          dot: "#10b981",
+          bg: "rgba(22, 163, 74, 0.15)",
+          color: "#4ade80",
+          border: "rgba(22, 163, 74, 0.4)",
+          icon: <ShieldCheck size={iconSize} />,
           label: norm === "ACTIVE" ? "Active" : "Verified"
         };
       case "REVOKED":
       case "REJECTED":
         return {
-          bg: "rgba(239, 68, 68, 0.12)",
+          bg: "rgba(220, 38, 38, 0.15)",
           color: "#f87171",
-          border: "rgba(239, 68, 68, 0.25)",
-          dot: "#ef4444",
+          border: "rgba(220, 38, 38, 0.4)",
+          icon: <XCircle size={iconSize} />,
           label: norm === "REVOKED" ? "Revoked" : "Rejected"
         };
       case "QUARANTINED":
+      case "QUARANTINE":
         return {
-          bg: "rgba(220, 38, 38, 0.2)",
-          color: "#fca5a5",
-          border: "rgba(220, 38, 38, 0.4)",
-          dot: "#dc2626",
-          label: "Quarantined"
+          bg: "rgba(234, 88, 12, 0.15)",
+          color: "#fb923c",
+          border: "rgba(234, 88, 12, 0.4)",
+          icon: <AlertTriangle size={iconSize} />,
+          label: "Quarantine"
+        };
+      case "EXPIRED":
+        return {
+          bg: "rgba(217, 119, 6, 0.15)",
+          color: "#fbbf24",
+          border: "rgba(217, 119, 6, 0.4)",
+          icon: <Clock size={iconSize} />,
+          label: "Expired"
         };
       case "SUSPENDED":
+        return {
+          bg: "rgba(217, 119, 6, 0.15)",
+          color: "#fbbf24",
+          border: "rgba(217, 119, 6, 0.4)",
+          icon: <AlertTriangle size={iconSize} />,
+          label: "Suspended"
+        };
       case "PENDING":
         return {
-          bg: "rgba(245, 158, 11, 0.12)",
-          color: "#fbbf24",
-          border: "rgba(245, 158, 11, 0.25)",
-          dot: "#f59e0b",
-          label: norm === "PENDING" ? "Pending" : "Suspended"
+          bg: "rgba(37, 99, 235, 0.15)",
+          color: "#60a5fa",
+          border: "rgba(37, 99, 235, 0.4)",
+          icon: <RefreshCw size={iconSize} className="spin" />,
+          label: "Pending"
         };
       default:
         return {
-          bg: "rgba(148, 163, 184, 0.12)",
+          bg: "rgba(100, 116, 139, 0.15)",
           color: "#cbd5e1",
-          border: "rgba(148, 163, 184, 0.25)",
-          dot: "#94a3b8",
-          label: norm
+          border: "rgba(100, 116, 139, 0.35)",
+          icon: <HelpCircle size={iconSize} />,
+          label: norm.replace(/_/g, " ") || "Unknown"
         };
     }
   };
 
   const config = getConfig();
-  const isSm = size === "sm";
 
   return (
     <span
+      role="status"
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "6px",
+        gap: "5px",
         padding: isSm ? "2px 8px" : "4px 10px",
         borderRadius: "9999px",
         fontSize: isSm ? "0.7rem" : "0.75rem",
@@ -84,15 +104,10 @@ export const StatusChip: React.FC<StatusChipProps> = ({ status, size = "md" }) =
         letterSpacing: "0.03em"
       }}
     >
-      <span
-        style={{
-          width: isSm ? "5px" : "6px",
-          height: isSm ? "5px" : "6px",
-          borderRadius: "50%",
-          backgroundColor: config.dot
-        }}
-      />
-      {config.label}
+      <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center" }}>
+        {config.icon}
+      </span>
+      <span>{config.label}</span>
     </span>
   );
 };

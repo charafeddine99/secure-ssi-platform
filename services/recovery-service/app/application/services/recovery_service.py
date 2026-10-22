@@ -15,6 +15,10 @@ from app.application.ports.secret_sharing import (
     SecretSharingProvider,
 )
 from app.application.services.metrics import RecoveryMetrics
+from app.application.services.guardian_proof import (
+    GuardianDecisionProofVerifier,
+    GuardianProofError,
+)
 from app.core.config import RecoverySettings
 from app.domain.auth import Permission, RecoveryPrincipal
 from app.domain.recovery import (
@@ -76,6 +80,7 @@ class RecoveryService:
         self._managed_keys = managed_keys
         self._settings = settings
         self._metrics = metrics
+        self._guardian_proof_verifier = GuardianDecisionProofVerifier()
         self._clock = clock
         self._ids = id_generator
         self._worker_id = worker_id or secure_id("worker")
@@ -451,7 +456,7 @@ class RecoveryService:
         *,
         guardian_id: str,
         challenge: str,
-        proof: str | None = None,
+        proof: str,
     ) -> tuple[RecoveryApproval, RecoveryRequest]:
         principal.require(Permission.RECOVERY_APPROVE)
         return self._decide(
@@ -470,7 +475,7 @@ class RecoveryService:
         *,
         guardian_id: str,
         challenge: str,
-        proof: str | None = None,
+        proof: str,
     ) -> tuple[RecoveryApproval, RecoveryRequest]:
         principal.require(Permission.RECOVERY_REJECT)
         return self._decide(
@@ -548,7 +553,7 @@ class RecoveryService:
         *,
         guardian_id: str,
         challenge: str,
-        proof: str | None,
+        proof: str,
         decision: RecoveryDecision,
     ) -> tuple[RecoveryApproval, RecoveryRequest]:
         started = perf_counter()
@@ -563,7 +568,7 @@ class RecoveryService:
         ):
             self._audit_unauthorized(request_id, principal.user_id)
             raise RecoveryNotFoundError("Recovery request was not found.")
-        proof_digest = None if proof is None else _digest(proof)
+        proof_digest = _digest(proof)
         existing = next(
             (
                 item
@@ -574,13 +579,42 @@ class RecoveryService:
         )
         if existing is not None:
             if (
-                existing.decision is decision
-                and existing.challenge_digest == _digest(challenge)
-                and existing.proof_digest == proof_digest
+                existing.decision is not decision
+                or existing.challenge_digest != _digest(challenge)
             ):
+                raise RecoveryConflictError("Guardian already submitted another decision.")
+            if existing.proof_digest == proof_digest:
                 return existing, request
-            raise RecoveryConflictError("Guardian already submitted another decision.")
         now = self._now()
+        supplied_digest = _digest(challenge)
+        if not compare_digest(supplied_digest, request.challenge.digest):
+            self._audit_unauthorized(request_id, principal.user_id)
+            raise RecoveryConflictError("Recovery challenge does not match.")
+        try:
+            self._guardian_proof_verifier.verify(
+                proof,
+                guardian_did=guardian.guardian_did,
+                verification_method=guardian.verification_method,
+                guardian_id=guardian.guardian_id,
+                request_id=request.request_id,
+                session_id=request.session.session_id,
+                wallet_id=request.wallet_id,
+                decision=decision.value,
+                challenge=challenge,
+                now=now,
+            )
+        except GuardianProofError as error:
+            self._audit(
+                RecoveryAuditEventType.GUARDIAN_PROOF_REJECTED,
+                aggregate_id=request_id,
+                actor_id=principal.user_id,
+                at=now,
+                discriminator=proof_digest,
+                metadata={"guardianId": guardian_id},
+            )
+            raise RecoveryConflictError("Guardian DID proof is invalid.") from error
+        if existing is not None:
+            return existing, request
         if request.session.state is not RecoveryState.PENDING_APPROVALS:
             raise RecoveryConflictError("Recovery is not accepting Guardian decisions.")
         if now >= request.session.approval_expires_at or now >= request.session.expires_at:
@@ -588,10 +622,6 @@ class RecoveryService:
             raise RecoveryConflictError("Recovery approval window has expired.")
         if not guardian.can_approve:
             raise RecoveryConflictError("Guardian is not active.")
-        supplied_digest = _digest(challenge)
-        if not compare_digest(supplied_digest, request.challenge.digest):
-            self._audit_unauthorized(request_id, principal.user_id)
-            raise RecoveryConflictError("Recovery challenge does not match.")
         context = self._sharing_context(request)
         share = self._share_for(request, guardian_id)
         try:

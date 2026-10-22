@@ -1,176 +1,160 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
+import { ArrowRight, FileText, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { fetchIssuerOffers, type Oid4vciOffer } from "../../services/api";
 import { StatusChip } from "../../components/common/StatusChip";
-import { fetchCredentials, BackendCredential } from "../../services/api";
-import { Building2, PlusCircle, FileText, RotateCcw, CheckCircle2 } from "lucide-react";
+
+type OffersState = "loading" | "ready" | "error";
+
+const formatExpiry = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not supplied" : date.toLocaleString();
+};
 
 export const IssuerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [issuedCreds, setIssuedCreds] = useState<BackendCredential[]>([]);
+  const [offers, setOffers] = useState<Oid4vciOffer[]>([]);
+  const [state, setState] = useState<OffersState>("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchCredentials()
-      .then((data) => {
-        if (data) setIssuedCreds(data);
-      })
-      .catch(() => {});
+  const loadOffers = useCallback(async () => {
+    setState("loading");
+    setLoadError(null);
+    try {
+      setOffers(await fetchIssuerOffers());
+      setState("ready");
+    } catch (error) {
+      setOffers([]);
+      setLoadError(error instanceof Error ? error.message : "Could not load credential offers.");
+      setState("error");
+    }
   }, []);
 
-  const stats = [
-    { label: "Total Active Credentials", value: issuedCreds.length || 7, change: "+2 this week", icon: FileText, color: "#60a5fa" },
-    { label: "Approved Issuance Rate", value: "98.4%", change: "NIST AI RMF Verified", icon: CheckCircle2, color: "#34d399" },
-    { label: "Active Status List Entries", value: "1,024 bits", change: "Bitstring 2021 Root", icon: RotateCcw, color: "#c084fc" },
-    { label: "AI Threat Interceptions", value: "3 Blocked", change: "Auto-quarantined on EVM", icon: Building2, color: "#f87171" }
-  ];
+  useEffect(() => { void loadOffers(); }, [loadOffers]);
+
+  const pendingCount = useMemo(
+    () => offers.filter((offer) => offer.status.toUpperCase() === "PENDING").length,
+    [offers],
+  );
+  const visibleOffers = offers.slice(0, 10);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+    <main className="workspace-page issuer-page issuer-dashboard">
+      <header className="workspace-page-header issuer-page-header">
         <div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" />
-            <TrustBadge level="DEMO_TRUST_LEVEL" />
+          <p className="workspace-eyebrow">Issuer workspace</p>
+          <h1>Issuance overview</h1>
+          <p>Manage credential offer configurations, create new offers and review their latest service-reported status.</p>
+        </div>
+        <div className="workspace-header-actions issuer-page-actions">
+          <button className="workspace-secondary-action" type="button" onClick={() => void loadOffers()} disabled={state === "loading"}>
+            <RefreshCw size={16} aria-hidden="true" className={state === "loading" ? "spin" : undefined} />
+            Refresh offers
+          </button>
+          <button className="workspace-primary-action" type="button" onClick={() => navigate("/issuer/issue")}>
+            <Plus size={17} aria-hidden="true" />
+            Create offer
+          </button>
+        </div>
+      </header>
+
+      <section className="issuer-overview-strip" aria-label="Issuer account scope">
+        <span className="issuer-overview-strip__icon"><ShieldCheck size={18} aria-hidden="true" /></span>
+        <div>
+          <strong>Issuer account records</strong>
+          <p>Offers shown here are returned by the Identity Service for the authenticated issuer. Access scope is enforced by the service.</p>
+        </div>
+        <button type="button" className="issuer-overview-strip__link" onClick={() => navigate("/issuer/templates")}>
+          View configurations <ArrowRight size={15} aria-hidden="true" />
+        </button>
+      </section>
+
+      <section className="workspace-metrics issuer-metrics" aria-label="Credential offer summary" aria-busy={state === "loading"}>
+        <article className={`workspace-metric-card issuer-metric-card${state === "loading" ? " is-loading" : ""}`}>
+          <span>Offers returned</span>
+          <strong>{state === "loading" ? "Loading" : state === "error" ? "Unavailable" : offers.length}</strong>
+          <small>Offers in this issuer account response</small>
+        </article>
+        <article className={`workspace-metric-card issuer-metric-card${state === "loading" ? " is-loading" : ""}`}>
+          <span>Pending claims</span>
+          <strong>{state === "loading" ? "Loading" : state === "error" ? "Unavailable" : pendingCount}</strong>
+          <small>Offers whose current status is pending</small>
+        </article>
+      </section>
+
+      <section className="workspace-panel issuer-offers-panel" aria-labelledby="issuer-offers-title" aria-busy={state === "loading"}>
+        <div className="workspace-panel-header issuer-offers-heading">
+          <div>
+            <p className="workspace-eyebrow">Offer activity</p>
+            <h2 id="issuer-offers-title">Recent credential offers</h2>
+            <p>Up to ten offers returned by the authenticated issuer endpoint.</p>
           </div>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Issuer Operations Console
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Institutional issuance authority for W3C Verifiable Credentials 2.0 with integrated AI risk gate.
-          </p>
+          <span className="issuer-record-count">{state === "ready" ? `${visibleOffers.length} shown` : state === "loading" ? "Loading" : "Unavailable"}</span>
         </div>
 
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={() => navigate("/issuer/templates")}
-            style={{
-              padding: "10px 16px",
-              borderRadius: "8px",
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              color: "#e2e8f0",
-              fontWeight: 600,
-              fontSize: "0.85rem",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <FileText size={16} />
-            View Templates
-          </button>
+        {state === "loading" && (
+          <div className="issuer-data-state" role="status">
+            <span className="issuer-loading-mark" aria-hidden="true"><RefreshCw size={17} /></span>
+            <div><strong>Loading issuer offers</strong><p>Waiting for the authenticated Identity Service response.</p></div>
+          </div>
+        )}
 
-          <button
-            onClick={() => navigate("/issuer/issue")}
-            style={{
-              padding: "10px 18px",
-              borderRadius: "8px",
-              backgroundColor: "#2563eb",
-              border: "none",
-              color: "#ffffff",
-              fontWeight: 700,
-              fontSize: "0.85rem",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 4px 12px rgba(37,99,235,0.3)"
-            }}
-          >
-            <PlusCircle size={16} />
-            Issue New Credential
-          </button>
-        </div>
-      </div>
+        {state === "error" && (
+          <div className="issuer-data-state issuer-data-state--error" role="alert">
+            <span className="issuer-loading-mark" aria-hidden="true"><ShieldCheck size={18} /></span>
+            <div className="issuer-data-state__copy"><strong>Offers could not be loaded</strong><p>{loadError}</p></div>
+            <button type="button" className="workspace-secondary-action" onClick={() => void loadOffers()}>Try again</button>
+          </div>
+        )}
 
-      {/* Stats Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-        {stats.map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <div
-              key={i}
-              style={{
-                backgroundColor: "#111827",
-                borderRadius: "14px",
-                border: "1px solid #1f2937",
-                padding: "20px"
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 600 }}>{s.label}</span>
-                <Icon size={18} color={s.color} />
-              </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", lineHeight: 1 }}>
-                {s.value}
-              </div>
-              <div style={{ fontSize: "0.72rem", color: s.color, marginTop: "8px", fontWeight: 500 }}>
-                {s.change}
-              </div>
+        {state === "ready" && offers.length === 0 && (
+          <div className="issuer-data-state issuer-data-state--empty">
+            <span className="issuer-loading-mark" aria-hidden="true"><FileText size={18} /></span>
+            <div><strong>No credential offers returned</strong><p>Create an offer to start a holder claim flow. A created offer is not yet an issued credential.</p></div>
+            <button type="button" className="workspace-primary-action" onClick={() => navigate("/issuer/issue")}><Plus size={16} aria-hidden="true" /> Create offer</button>
+          </div>
+        )}
+
+        {state === "ready" && offers.length > 0 && (
+          <>
+            <div className="workspace-table-wrap issuer-offers-desktop">
+              <table className="workspace-table issuer-offers-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Offer ID</th>
+                    <th scope="col">Credential configuration</th>
+                    <th scope="col">Service status</th>
+                    <th scope="col">Offer expiry</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleOffers.map((offer) => (
+                    <tr key={offer.offerId}>
+                      <td><code className="issuer-offer-id">{offer.offerId}</code></td>
+                      <td>{offer.credentialConfigurationIds.length ? offer.credentialConfigurationIds.join(", ") : "Not supplied"}</td>
+                      <td><StatusChip status={offer.status} size="sm" /></td>
+                      <td>{offer.expiresAt ? formatExpiry(offer.expiresAt) : "Not supplied"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Recent Issuances Table */}
-      <div
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "14px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-            Recent Credential Issuances
-          </h3>
-          <span style={{ fontSize: "0.75rem", color: "#60a5fa" }}>
-            Anchored on Hardhat EVM
-          </span>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", textAlign: "left" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #1f2937", color: "#94a3b8" }}>
-                <th style={{ padding: "10px 12px" }}>Credential Title</th>
-                <th style={{ padding: "10px 12px" }}>Category</th>
-                <th style={{ padding: "10px 12px" }}>Subject Wallet</th>
-                <th style={{ padding: "10px 12px" }}>Issue Date</th>
-                <th style={{ padding: "10px 12px" }}>AI Risk</th>
-                <th style={{ padding: "10px 12px" }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {issuedCreds.slice(0, 6).map((c) => (
-                <tr key={c.id} style={{ borderBottom: "1px solid #1f2937" }}>
-                  <td style={{ padding: "12px", fontWeight: 600, color: "#f8fafc" }}>
-                    {c.title}
-                  </td>
-                  <td style={{ padding: "12px", color: "#93c5fd" }}>
-                    {c.category}
-                  </td>
-                  <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#94a3b8" }}>
-                    {c.wallet_address ? `${c.wallet_address.slice(0, 10)}...` : "0xf39Fd6e..."}
-                  </td>
-                  <td style={{ padding: "12px", color: "#cbd5e1" }}>
-                    {c.issued_date}
-                  </td>
-                  <td style={{ padding: "12px", fontWeight: 600, color: c.ai_risk_score > 50 ? "#f87171" : "#34d399" }}>
-                    {c.ai_risk_score} / 100
-                  </td>
-                  <td style={{ padding: "12px" }}>
-                    <StatusChip status={c.status} size="sm" />
-                  </td>
-                </tr>
+            <ul className="issuer-offers-mobile" aria-label="Recent credential offers">
+              {visibleOffers.map((offer) => (
+                <li className="issuer-offer-card" key={offer.offerId}>
+                  <div className="issuer-offer-card__top"><span>Offer</span><StatusChip status={offer.status} size="sm" /></div>
+                  <code className="issuer-offer-id">{offer.offerId}</code>
+                  <dl>
+                    <div><dt>Configuration</dt><dd>{offer.credentialConfigurationIds.join(", ") || "Not supplied"}</dd></div>
+                    <div><dt>Expires</dt><dd>{offer.expiresAt ? formatExpiry(offer.expiresAt) : "Not supplied"}</dd></div>
+                  </dl>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+            </ul>
+            {offers.length > visibleOffers.length && <p className="issuer-list-footnote">Showing the first {visibleOffers.length} of {offers.length} offers returned.</p>}
+          </>
+        )}
+      </section>
+    </main>
   );
 };

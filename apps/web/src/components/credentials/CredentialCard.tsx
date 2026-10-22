@@ -1,7 +1,7 @@
 import React from "react";
-import { Eye, QrCode } from "lucide-react";
-import { TrustBadge } from "../common/TrustBadge";
+import { Building2, CalendarDays, Eye, FileBadge2, QrCode } from "lucide-react";
 import { StatusChip } from "../common/StatusChip";
+import type { CredentialStatus } from "../../services/api";
 
 export interface CredentialCardData {
   id: string;
@@ -11,11 +11,10 @@ export interface CredentialCardData {
   issuer: string;
   issuedDate: string;
   expiryDate: string;
-  status: "ACTIVE" | "REVOKED";
+  status: CredentialStatus;
   claims: Record<string, unknown>;
   proofValue: string;
   aiRiskScore?: number;
-  statusListIndex?: number;
 }
 
 interface CredentialCardProps {
@@ -24,189 +23,56 @@ interface CredentialCardProps {
   onPresent?: (cred: CredentialCardData) => void;
 }
 
-export const CredentialCard: React.FC<CredentialCardProps> = ({
-  credential,
-  onViewDetails,
-  onPresent
-}) => {
-  // Category styling gradients
-  const getCategoryGradient = (cat: string) => {
-    switch (cat.toUpperCase()) {
-      case "IDENTITY":
-        return "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)";
-      case "QUALIFIED":
-        return "linear-gradient(135deg, #312e81 0%, #111827 100%)";
-      case "FINANCE":
-        return "linear-gradient(135deg, #064e3b 0%, #0f172a 100%)";
-      case "TRAVEL":
-        return "linear-gradient(135deg, #701a75 0%, #0f172a 100%)";
-      case "TRANSPORT":
-        return "linear-gradient(135deg, #7c2d12 0%, #0f172a 100%)";
-      case "HEALTH":
-        return "linear-gradient(135deg, #134e4a 0%, #0f172a 100%)";
-      default:
-        return "linear-gradient(135deg, #1f2937 0%, #111827 100%)";
-    }
-  };
+function displayDate(value: string): string {
+  if (!value) return "Not supplied";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
-  const claimEntries = Object.entries(credential.claims || {}).slice(0, 3);
+function displayCategory(value: string): string {
+  return value.replace(/[_-]+/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
-  return (
-    <div
-      style={{
-        position: "relative",
-        borderRadius: "16px",
-        background: getCategoryGradient(credential.category),
-        border: "1px solid rgba(255, 255, 255, 0.1)",
-        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
-        padding: "20px",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        minHeight: "220px",
-        transition: "transform 0.2s ease, box-shadow 0.2s ease",
-        overflow: "hidden"
-      }}
-      className="credential-card-hover"
-    >
-      {/* Decorative Card Chip */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {/* SIM/Chip visual */}
-          <div
-            style={{
-              width: "36px",
-              height: "28px",
-              borderRadius: "5px",
-              background: "linear-gradient(135deg, #d97706 0%, #fbbf24 50%, #b45309 100%)",
-              border: "1px solid #78350f",
-              boxShadow: "inset 0 0 3px rgba(0,0,0,0.4)"
-            }}
-          />
-          <div>
-            <span style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8" }}>
-              {credential.category} CREDENTIAL
-            </span>
-            <h4 style={{ margin: "2px 0 0 0", fontSize: "1rem", fontWeight: 700, color: "#ffffff" }}>
-              {credential.title}
-            </h4>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          {(credential.id.includes("prototype") || credential.id.includes("subu") || credential.id.includes("bank")) && (
-            <span
-              style={{
-                fontSize: "0.62rem",
-                fontWeight: 700,
-                color: "#fbbf24",
-                backgroundColor: "rgba(245, 158, 11, 0.15)",
-                border: "1px solid rgba(245, 158, 11, 0.3)",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                letterSpacing: "0.04em"
-              }}
-            >
-              DEMO LAB
-            </span>
-          )}
-          <StatusChip status={credential.status} size="sm" />
+export const CredentialCard: React.FC<CredentialCardProps> = ({ credential, onViewDetails, onPresent }) => (
+  <article className="holder-credential-card" data-category={credential.category.toLowerCase()}>
+    <header className="holder-credential-card__header">
+      <div className="holder-credential-card__identity">
+        <span className="holder-credential-card__mark" aria-hidden="true"><FileBadge2 size={21} /></span>
+        <div className="holder-credential-card__title-wrap">
+          <p className="holder-credential-card__category">{displayCategory(credential.category)} credential</p>
+          <h3>{credential.title}</h3>
         </div>
       </div>
+      <StatusChip status={credential.status} size="sm" />
+    </header>
 
-      {/* Claims Preview */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-          gap: "8px",
-          backgroundColor: "rgba(0, 0, 0, 0.25)",
-          padding: "10px 12px",
-          borderRadius: "10px",
-          border: "1px solid rgba(255, 255, 255, 0.05)",
-          margin: "10px 0"
-        }}
-      >
-        {claimEntries.map(([key, val]) => (
-          <div key={key}>
-            <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{key}</div>
-            <div
-              style={{
-                fontSize: "0.82rem",
-                fontWeight: 600,
-                color: "#f1f5f9",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              }}
-            >
-              {typeof val === "object" ? JSON.stringify(val) : String(val)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Footer Info & Actions */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          <span style={{ fontSize: "0.68rem", color: "#cbd5e1" }}>
-            {credential.issuerName}
-          </span>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
-            <span style={{ fontSize: "0.65rem", color: "#64748b" }}>
-              Exp: {credential.expiryDate}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px" }}>
-          {onPresent && (
-            <button
-              onClick={() => onPresent(credential)}
-              title="Present Credential (OID4VP)"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                padding: "6px 10px",
-                backgroundColor: "rgba(37, 99, 235, 0.8)",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                cursor: "pointer"
-              }}
-            >
-              <QrCode size={14} />
-              Share
-            </button>
-          )}
-
-          {onViewDetails && (
-            <button
-              onClick={() => onViewDetails(credential)}
-              title="Inspect Proof & JSON-LD"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                padding: "6px 10px",
-                backgroundColor: "rgba(255, 255, 255, 0.08)",
-                color: "#e2e8f0",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                borderRadius: "8px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                cursor: "pointer"
-              }}
-            >
-              <Eye size={14} />
-              Proof
-            </button>
-          )}
-        </div>
+    <div className="holder-credential-card__issuer">
+      <Building2 size={17} aria-hidden="true" />
+      <div>
+        <span>Issued by</span>
+        <strong>{credential.issuerName || credential.issuer || "Issuer not supplied"}</strong>
+        {credential.issuerName && credential.issuer && <code title={credential.issuer}>{credential.issuer}</code>}
       </div>
     </div>
-  );
-};
+
+    <dl className="holder-credential-card__dates">
+      <div><dt><CalendarDays size={14} aria-hidden="true" /> Issued</dt><dd>{displayDate(credential.issuedDate)}</dd></div>
+      <div><dt><CalendarDays size={14} aria-hidden="true" /> Expires</dt><dd>{displayDate(credential.expiryDate)}</dd></div>
+    </dl>
+
+    <footer className="holder-credential-card__actions">
+      {onPresent && (
+        <button type="button" className="holder-primary-action" onClick={() => onPresent(credential)} aria-label={`Open a verifier request for ${credential.title}`}>
+          <QrCode size={16} aria-hidden="true" /> Open request
+        </button>
+      )}
+      {onViewDetails && (
+        <button type="button" className="holder-secondary-action" onClick={() => onViewDetails(credential)} aria-label={`View details for ${credential.title}`}>
+          <Eye size={16} aria-hidden="true" /> View details
+        </button>
+      )}
+    </footer>
+  </article>
+);

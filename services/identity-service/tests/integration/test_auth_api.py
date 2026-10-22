@@ -13,6 +13,8 @@ from app.api.v1.dependencies import (
     get_clock,
     get_credential_api_service,
     get_credential_issuance_repository,
+    get_current_principal,
+    get_holder_wallet_repository,
     get_status_list_entry_repository,
 )
 from app.application.services.authentication_service import AuthenticationService
@@ -27,12 +29,17 @@ from app.infrastructure.auth.local_synthetic_user_provider import (
     LocalAuthenticationRecord,
     LocalSyntheticUserProvider,
 )
+from app.infrastructure.auth.token_revocation import TokenRevocationStore
 from app.infrastructure.persistence.issuance_repository import (
     MongoCredentialIssuanceRepository,
+)
+from app.infrastructure.persistence.holder_wallet_repositories import (
+    MongoHolderWalletRepository,
 )
 from app.infrastructure.persistence.status_list_repositories import (
     MongoCredentialStatusEntryRepository,
 )
+from app.infrastructure.crypto.local_issuer_key_provider import SYNTHETIC_ISSUER_DID
 from app.main import app
 from tests.support.fake_mongo import FakeDatabase
 
@@ -47,6 +54,7 @@ PASSWORDS = {
     "admin": "Admin-Prototype-2026!",
     "issuer": "Issuer-Prototype-2026!",
     "verifier": "Verifier-Prototype-2026!",
+    "holder": "Holder-Prototype-2026!",
     "disabled": "Disabled-Prototype-2026!",
 }
 
@@ -74,12 +82,14 @@ def auth_context() -> AuthContext:
     )
     provider = LocalSyntheticUserProvider.default()
     token_service = JwtAccessTokenService(settings)
+    revocation_store = TokenRevocationStore(clock=lambda: FIXED_TIME)
     service = AuthenticationService(
         user_provider=provider,
         password_hasher=Argon2PasswordHasher(),
         access_token_service=token_service,
         clock=lambda: FIXED_TIME,
         jti_generator=lambda: "fixed-integration-jti",
+        revocation_store=revocation_store,
     )
     return AuthContext(
         settings=settings,
@@ -106,6 +116,11 @@ def client(auth_context: AuthContext) -> TestClient:
     ] = lambda: MongoCredentialStatusEntryRepository(
         database["credential_status_entries"],  # type: ignore[arg-type]
         database["credentials"],  # type: ignore[arg-type]
+    )
+    app.dependency_overrides[
+        get_holder_wallet_repository
+    ] = lambda: MongoHolderWalletRepository(
+        database["holder_wallets"]  # type: ignore[arg-type]
     )
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
@@ -219,6 +234,256 @@ def test_login_response_is_non_cacheable_and_secret_free(
     assert PASSWORDS["issuer"] not in response.text
     assert TEST_SECRET not in response.text
     assert "$argon2" not in response.text
+
+
+def test_audit_log_listing_requires_admin_operations_permission(
+    client: TestClient,
+) -> None:
+    assert client.get("/api/v1/audit/logs").status_code == 401
+    assert client.get("/api/v1/database/stats").status_code == 401
+
+    issuer_token, _ = login(client, "issuer")
+    issuer_response = client.get(
+        "/api/v1/audit/logs",
+        headers=bearer(issuer_token),
+    )
+    assert issuer_response.status_code == 403
+    assert client.get(
+        "/api/v1/audit_logs",
+        headers=bearer(issuer_token),
+    ).status_code == 403
+    assert client.get(
+        "/api/v1/database/stats",
+        headers=bearer(issuer_token),
+    ).status_code == 403
+
+    admin_token, admin_session = login(client, "admin")
+    assert "admin:operations:read" in admin_session["user"]["permissions"]
+    admin_response = client.get(
+        "/api/v1/audit/logs",
+        headers=bearer(admin_token),
+    )
+    assert admin_response.status_code == 200
+    legacy_alias_response = client.get(
+        "/api/v1/audit_logs",
+        headers=bearer(admin_token),
+    )
+    assert legacy_alias_response.status_code == 200
+
+
+def test_local_synthetic_issuer_uses_only_its_explicit_test_did_mapping(
+    client: TestClient,
+) -> None:
+    issuer_token, _ = login(client, "issuer")
+    headers = bearer(issuer_token)
+    payload = {
+        "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+        "subjectData": {
+            "affiliation": "staff",
+            "programCode": "SYN-CS-2026",
+            "degree": "Master of Science",
+            "graduationYear": 2026,
+        },
+    }
+
+    create_response = client.post(
+        "/api/v1/oid4vci/offers",
+        json=payload,
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    created_offer_id = create_response.json()["offerId"]
+
+    list_response = client.get(
+        "/api/v1/oid4vci/offers?as_issuer=true",
+        headers=headers,
+    )
+    assert list_response.status_code == 200
+    assert created_offer_id in {
+        offer["offerId"] for offer in list_response.json()
+    }
+
+
+def test_university_offer_rejects_missing_subject_claims(
+    client: TestClient,
+) -> None:
+    issuer_token, _ = login(client, "issuer")
+    response = client.post(
+        "/api/v1/oid4vci/offers",
+        json={
+            "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+            "subjectData": {"affiliation": "staff"},
+        },
+        headers=bearer(issuer_token),
+    )
+
+    assert response.status_code == 422
+    message = response.json()["error"]["message"]
+    assert "programCode" in message
+    assert "degree" in message
+    assert "graduationYear" in message
+
+
+def test_unassigned_offer_is_not_listed_in_holder_wallet(
+    client: TestClient,
+) -> None:
+    issuer_token, _ = login(client, "issuer")
+    holder_token, _ = login(client, "holder")
+    wallet_response = client.post(
+        "/api/v1/wallets",
+        json={},
+        headers=bearer(holder_token),
+    )
+    assert wallet_response.status_code == 201, wallet_response.text
+    subject_data = {
+        "affiliation": "staff",
+        "programCode": "SYN-CS-2026",
+        "degree": "Master of Science",
+        "graduationYear": 2026,
+    }
+    unassigned_response = client.post(
+        "/api/v1/oid4vci/offers",
+        json={
+            "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+            "subjectData": subject_data,
+        },
+        headers=bearer(issuer_token),
+    )
+    assert unassigned_response.status_code == 201, unassigned_response.text
+    assigned_response = client.post(
+        "/api/v1/oid4vci/offers",
+        json={
+            "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+            "subjectData": subject_data,
+            "recipientDid": wallet_response.json()["holderDid"],
+        },
+        headers=bearer(issuer_token),
+    )
+    assert assigned_response.status_code == 201, assigned_response.text
+
+    list_response = client.get(
+        "/api/v1/oid4vci/offers",
+        headers=bearer(holder_token),
+    )
+
+    assert list_response.status_code == 200
+    visible_offer_ids = {offer["offerId"] for offer in list_response.json()}
+    assert unassigned_response.json()["offerId"] not in visible_offer_ids
+    assert assigned_response.json()["offerId"] in visible_offer_ids
+
+
+def test_persistent_issuer_without_server_bound_did_cannot_create_or_list_offers(
+    client: TestClient,
+) -> None:
+    unbound_issuer = AuthenticatedPrincipal.from_user(
+        User(
+            id="65b6d65dc6a2a614d63be031",
+            username="unbound-issuer@example.test",
+            display_name="Unbound Issuer",
+            roles=(Role.ISSUER,),
+        ),
+        authentication_source="mongodb",
+    )
+    app.dependency_overrides[get_current_principal] = (
+        lambda: unbound_issuer
+    )
+    payload = {
+        "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+        "subjectData": {
+            "affiliation": "staff",
+            "programCode": "SYN-CS-2026",
+            "degree": "Master of Science",
+            "graduationYear": 2026,
+        },
+    }
+
+    create_response = client.post(
+        "/api/v1/oid4vci/offers",
+        json=payload,
+    )
+    list_response = client.get("/api/v1/oid4vci/offers?as_issuer=true")
+    sign_response = client.post(
+        "/api/v1/credentials/sign",
+        json={"credential": load_json(UNSIGNED_PATH)},
+    )
+
+    assert create_response.status_code == 403
+    assert create_response.json()["error"]["code"] == "PERMISSION_DENIED"
+    assert list_response.status_code == 403
+    assert list_response.json()["error"]["code"] == "PERMISSION_DENIED"
+    assert sign_response.status_code == 403
+    assert sign_response.json()["error"]["code"] == "PERMISSION_DENIED"
+
+
+def test_persistent_issuer_can_sign_only_for_server_bound_issuer(
+    client: TestClient,
+) -> None:
+    bound_principal = AuthenticatedPrincipal.from_user(
+        User(
+            id="65b6d65dc6a2a614d63be031",
+            username="bound-issuer@example.test",
+            display_name="Bound Issuer",
+            roles=(Role.ISSUER,),
+            issuer_did=SYNTHETIC_ISSUER_DID,
+        ),
+        authentication_source="mongodb",
+    )
+    app.dependency_overrides[get_current_principal] = lambda: bound_principal
+
+    allowed = client.post(
+        "/api/v1/credentials/sign",
+        json={"credential": load_json(UNSIGNED_PATH)},
+    )
+
+    assert allowed.status_code == 201, allowed.text
+    assert allowed.json()["credential"]["issuer"] == SYNTHETIC_ISSUER_DID
+
+    offer_payload = {
+        "credentialConfigurationIds": ["UniversityAffiliationCredential"],
+        "subjectData": {
+            "affiliation": "staff",
+            "programCode": "SYN-CS-2026",
+            "degree": "Master of Science",
+            "graduationYear": 2026,
+        },
+    }
+    own_offer = client.post("/api/v1/oid4vci/offers", json=offer_payload)
+    own_offer_list = client.get("/api/v1/oid4vci/offers?as_issuer=true")
+    assert own_offer.status_code == 201, own_offer.text
+    assert own_offer.json()["offerId"] in {
+        item["offerId"] for item in own_offer_list.json()
+    }
+
+    foreign_principal = AuthenticatedPrincipal.from_user(
+        User(
+            id="65b6d65dc6a2a614d63be032",
+            username="foreign-issuer@example.test",
+            display_name="Foreign Issuer",
+            roles=(Role.ISSUER,),
+            issuer_did="did:web:foreign-issuer.example.test",
+        ),
+        authentication_source="mongodb",
+    )
+    app.dependency_overrides[get_current_principal] = lambda: foreign_principal
+
+    denied = client.post(
+        "/api/v1/credentials/sign",
+        json={"credential": load_json(UNSIGNED_PATH)},
+    )
+
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "PERMISSION_DENIED"
+    foreign_offer_list = client.get("/api/v1/oid4vci/offers?as_issuer=true")
+    foreign_offer_create = client.post(
+        "/api/v1/oid4vci/offers",
+        json=offer_payload,
+    )
+    assert foreign_offer_list.status_code == 200
+    assert own_offer.json()["offerId"] not in {
+        item["offerId"] for item in foreign_offer_list.json()
+    }
+    assert foreign_offer_create.status_code == 403
+
 
 
 @pytest.mark.parametrize(
@@ -369,6 +634,21 @@ def test_auth_me_returns_current_public_user(
     assert token not in response.text
 
 
+def test_auth_me_reports_the_configured_user_provider_source(
+    client: TestClient,
+    auth_context: AuthContext,
+) -> None:
+    # MongoUserProvider exposes this same source value. Simulate it here to
+    # ensure the response schema does not reject non-fixture providers.
+    auth_context.provider.authentication_source = "mongodb"
+    token, _ = login(client, "issuer")
+
+    response = client.get("/api/v1/auth/me", headers=bearer(token))
+
+    assert response.status_code == 200
+    assert response.json()["authenticationSource"] == "mongodb"
+
+
 def test_auth_me_without_or_with_malformed_token_returns_401(
     client: TestClient,
 ) -> None:
@@ -384,6 +664,20 @@ def test_auth_me_without_or_with_malformed_token_returns_401(
     assert malformed.json()["error"]["code"] == "INVALID_ACCESS_TOKEN"
     assert missing.headers["www-authenticate"] == "Bearer"
     assert malformed.headers["www-authenticate"] == "Bearer"
+
+
+def test_logout_revokes_the_current_bearer_token(
+    client: TestClient,
+) -> None:
+    token, _ = login(client, "issuer")
+
+    revoked = client.post("/api/v1/auth/revoke", headers=bearer(token))
+
+    assert revoked.status_code == 200
+    assert revoked.json()["status"] == "SUCCESS"
+    current = client.get("/api/v1/auth/me", headers=bearer(token))
+    assert current.status_code == 401
+    assert current.json()["error"]["code"] == "ACCESS_TOKEN_REVOKED"
 
 
 @pytest.mark.parametrize(

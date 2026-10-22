@@ -15,6 +15,8 @@ RISK_THRESHOLD_MEDIUM = float(os.getenv("RISK_THRESHOLD_MEDIUM", "0.50"))
 RISK_THRESHOLD_HIGH = float(os.getenv("RISK_THRESHOLD_HIGH", "0.75"))
 RISK_THRESHOLD_QUARANTINE = float(os.getenv("RISK_THRESHOLD_QUARANTINE", "0.80"))
 
-# Model Ağırlıkları (XGBoost + Autoencoder Hibrit Modeli)
-XGB_WEIGHT = float(os.getenv("XGB_WEIGHT", "0.60"))
-AE_WEIGHT = float(os.getenv("AE_WEIGHT", "0.40"))
+# Weights for the deterministic rule-based heuristic. Legacy environment
+# variable names remain accepted for local compatibility; they do not
+# represent trained model components.
+RULE_SCORE_WEIGHT = float(os.getenv("RULE_SCORE_WEIGHT", os.getenv("XGB_WEIGHT", "0.60")))
+BEHAVIORAL_DEVIATION_WEIGHT = float(os.getenv("BEHAVIORAL_DEVIATION_WEIGHT", os.getenv("AE_WEIGHT", "0.40")))

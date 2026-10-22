@@ -6,6 +6,16 @@
 **Target Milestone:** Pre-WP08 Release Baseline Freeze  
 **Mission Rule:** Absolute Freeze — **WP-08 IS NOT STARTED / OUT OF SCOPE**
 
+> **Historical pre-WP-08 baseline — 7 October 2026.** “Release ready” here
+> refers only to the earlier WP-01–WP-07 snapshot and does not represent current
+> project completion. WP-08 and subsequent gates were executed later; current
+> status is controlled by the
+> [G0–G16 gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [dated test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+> This report's claim/attribute omission is not cryptographic selective
+> disclosure; the current Data Integrity profile presents complete selected
+> credentials. Its suite totals are historical, not current regression results.
+
 ---
 
 ## 1. Executive Summary & Mission Scope

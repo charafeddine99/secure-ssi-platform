@@ -10,6 +10,16 @@
 **Git Branch**: `main`  
 **Baseline HEAD**: `62f6459` (`docs(s25): add documentation audit and finalize release readiness report`)  
 
+> **Historical delivery snapshot — 1 October 2026.** This document follows an
+> older S0–S25 plan and a different baseline commit; its “all engineering
+> complete” and screenshot verification statements do not establish current
+> G0–G16 acceptance. Use the current
+> [gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md)
+> for the present source state. The current prototype discloses complete
+> selected credentials and does not implement claim-level cryptographic
+> selective disclosure. No thesis PDF/source is present in this repository.
+
 ---
 
 ## 1. Executive Summary & Verification Context

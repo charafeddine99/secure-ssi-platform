@@ -18,7 +18,9 @@ MAX_PRESENTATION_BYTES = 65_536
 
 _OBJECT_ID_PATTERN = re.compile(r"^[0-9a-f]{24}$")
 _WALLET_ID_PATTERN = re.compile(r"^wallet_[A-Za-z0-9_-]{16,80}$")
-_CHALLENGE_ID_PATTERN = re.compile(r"^challenge_[A-Za-z0-9_-]{16,80}$")
+_CHALLENGE_ID_PATTERN = re.compile(
+    r"^(?:challenge|session)_[A-Za-z0-9_-]{16,80}$"
+)
 _CHALLENGE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _DOMAIN_PATTERN = re.compile(
     r"^(?=.{1,253}$)"

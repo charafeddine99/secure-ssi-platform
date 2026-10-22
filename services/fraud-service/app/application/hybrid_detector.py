@@ -7,36 +7,38 @@ from app.core.config import (
     RISK_THRESHOLD_MEDIUM,
     RISK_THRESHOLD_HIGH,
     RISK_THRESHOLD_QUARANTINE,
-    XGB_WEIGHT,
-    AE_WEIGHT
+    RULE_SCORE_WEIGHT,
+    BEHAVIORAL_DEVIATION_WEIGHT
 )
-from app.schemas.fraud import FraudEvaluationRequest, FraudEvaluationResponse, ModelBreakdown
+from app.schemas.fraud import FraudEvaluationRequest, FraudEvaluationResponse, HeuristicBreakdown
 
 class HybridFraudDetector:
     """
-    Tasarım Raporunda (Bölüm 3.2.3 & 3.6) belirtilen hibrit AI model motoru:
-    - Autoencoder: Davranışsal rekonstrüksiyon hatası ile anomali tespiti
-    - XGBoost: Sınıflandırma ve dolandırıcılık/saldırı örüntü skoru
+    Deterministic rule-based heuristic scorer for the synthetic prototype.
+
+    The implementation is not a trained ML model. It combines explicit risk
+    rules with a weighted behavioral-deviation formula and remains advisory.
     """
+
+    MODEL_VERSION = "rule-heuristic-v1"
+    RISK_SIGNALS = [
+        "impossible_travel",
+        "failed_attempt_velocity",
+        "presentation_frequency",
+        "device_fingerprint_mismatch",
+        "tor_or_proxy_indicator",
+    ]
 
     def __init__(self):
         self._quarantined_dids: Dict[str, Dict] = {}
         self.stats = {
-            "model_type": "Hybrid (XGBoost + Autoencoder)",
-            "accuracy": 0.943,
-            "precision": 0.938,
-            "recall": 0.948,
-            "f1_score": 0.943,
-            "confusion_matrix": {
-                "true_positives": 474,
-                "true_negatives": 469,
-                "false_positives": 31,
-                "false_negatives": 26
-            },
-            "sample_count": 1000,
-            "latency_ms_avg": 4.2,
-            "model_quantization": "FP16",
-            "last_trained": datetime.now(timezone.utc).isoformat()
+            "model_type": "Deterministic rule-based heuristic engine",
+            "model_version": self.MODEL_VERSION,
+            "model_status": "NOT_TRAINED",
+            "evaluation_status": "NO_INDEPENDENT_LABELLED_EVALUATION",
+            "dataset_label": "[DEMO LAB / SYNTHETIC]",
+            "advisory_only": True,
+            "risk_signals": list(self.RISK_SIGNALS),
         }
 
     def _extract_features(self, req: FraudEvaluationRequest) -> Tuple[List[float], List[str]]:
@@ -88,20 +90,15 @@ class HybridFraudDetector:
         feature_vector = [geo_risk, failure_risk, freq_risk, device_risk, proxy_risk]
         return feature_vector, reasons
 
-    def _autoencoder_predict(self, features: List[float]) -> Tuple[float, float]:
-        """
-        Autoencoder: Normal davranış profiline göre rekonstrüksiyon hatası.
-        """
+    def _behavioral_deviation(self, features: List[float]) -> Tuple[float, float]:
+        """Return a deterministic weighted deviation heuristic, not ML inference."""
         weights = [0.25, 0.25, 0.20, 0.15, 0.15]
-        recon_error = math.sqrt(sum(w * (f ** 2) for w, f in zip(weights, features)))
-        # Sigmoid anomali skoru
-        ae_score = 1.0 / (1.0 + math.exp(-8.0 * (recon_error - 0.25)))
-        return round(recon_error, 4), round(ae_score, 4)
+        weighted_deviation = math.sqrt(sum(w * (f ** 2) for w, f in zip(weights, features)))
+        deviation_score = 1.0 / (1.0 + math.exp(-8.0 * (weighted_deviation - 0.25)))
+        return round(weighted_deviation, 4), round(deviation_score, 4)
 
-    def _xgboost_predict(self, features: List[float]) -> float:
-        """
-        XGBoost: Karar kuralları ve özellik etkileşim skoru.
-        """
+    def _rule_score(self, features: List[float]) -> float:
+        """Apply explicit weighted rules and fixed interaction multipliers."""
         geo, fail, freq, dev, proxy = features
         raw_score = (0.35 * geo) + (0.30 * fail) + (0.25 * freq) + (0.15 * dev) + (0.30 * proxy)
 
@@ -115,41 +112,25 @@ class HybridFraudDetector:
         if proxy > 0.7:
             raw_score += 0.20
 
-        xgb_score = 1.0 - math.exp(-2.5 * raw_score)
-        return round(min(max(xgb_score, 0.0), 1.0), 4)
+        score = 1.0 - math.exp(-2.5 * raw_score)
+        return round(min(max(score, 0.0), 1.0), 4)
 
     def evaluate(self, request: FraudEvaluationRequest) -> FraudEvaluationResponse:
-        # Karantina kontrolü
-        if request.did in self._quarantined_dids:
-            return FraudEvaluationResponse(
-                evaluation_id=str(uuid.uuid4()),
-                did=request.did,
-                risk_score=1.0,
-                risk_level="CRITICAL",
-                is_anomaly=True,
-                recommended_action="QUARANTINE_ACCOUNT",
-                reasons=["Hesap aktif karantinada."],
-                model_breakdown=ModelBreakdown(
-                    xgboost_score=1.0,
-                    autoencoder_recon_error=1.0,
-                    autoencoder_score=1.0
-                ),
-                evaluated_at=datetime.now(timezone.utc).isoformat()
-            )
-
         features, reasons = self._extract_features(request)
-        recon_error, ae_score = self._autoencoder_predict(features)
-        xgb_score = self._xgboost_predict(features)
+        _, behavioral_deviation_score = self._behavioral_deviation(features)
+        rule_score = self._rule_score(features)
 
-        # Hibrit kombinasyon
-        combined_risk = round((XGB_WEIGHT * xgb_score) + (AE_WEIGHT * ae_score), 4)
+        combined_risk = round(
+            (RULE_SCORE_WEIGHT * rule_score)
+            + (BEHAVIORAL_DEVIATION_WEIGHT * behavioral_deviation_score),
+            4,
+        )
 
         # Karar eşikleri
         if combined_risk >= RISK_THRESHOLD_QUARANTINE:
             risk_level = "CRITICAL"
             recommended_action = "QUARANTINE_ACCOUNT"
             is_anomaly = True
-            self.quarantine(request.did, f"Otomatik risk skoru aşıldı: {combined_risk}")
         elif combined_risk >= RISK_THRESHOLD_HIGH:
             risk_level = "HIGH"
             recommended_action = "MANUAL_REVIEW"
@@ -173,11 +154,14 @@ class HybridFraudDetector:
             is_anomaly=is_anomaly,
             recommended_action=recommended_action,
             reasons=reasons,
-            model_breakdown=ModelBreakdown(
-                xgboost_score=xgb_score,
-                autoencoder_recon_error=recon_error,
-                autoencoder_score=ae_score
+            heuristic_breakdown=HeuristicBreakdown(
+                rule_score=rule_score,
+                behavioral_deviation=behavioral_deviation_score,
+                combined_score=combined_risk,
             ),
+            model_version=self.MODEL_VERSION,
+            risk_signals=list(self.RISK_SIGNALS),
+            advisory_only=True,
             evaluated_at=datetime.now(timezone.utc).isoformat()
         )
 

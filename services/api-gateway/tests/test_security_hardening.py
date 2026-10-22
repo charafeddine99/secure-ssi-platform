@@ -66,6 +66,25 @@ def test_rate_limit_exceeded_returns_429():
     assert r_exceeded.json()["error"]["code"] == "RATE_LIMIT_EXCEEDED"
 
 
+def test_rate_limiter_bounds_client_state_and_ignores_forwarded_ip():
+    limiter_app = RateLimiterMiddleware(app, max_requests=20, max_clients=2)
+
+    for client_ip in ("192.0.2.1", "192.0.2.2", "192.0.2.3"):
+        test_client = TestClient(
+            limiter_app,
+            client=(client_ip, 50000),
+            headers={"X-Forwarded-For": "198.51.100.99"},
+        )
+        response = test_client.get("/api/v1/unknown-rate-limit-probe")
+        assert response.status_code == 404
+
+    assert len(limiter_app.clients) == 2
+    assert set(limiter_app.clients) == {
+        "192.0.2.2:standard",
+        "192.0.2.3:standard",
+    }
+
+
 def test_payload_size_limit():
     large_payload = b"X" * (1024 * 1024 + 10)  # > 1 MB
     res = client.post("/api/v1/identity/credentials", content=large_payload)

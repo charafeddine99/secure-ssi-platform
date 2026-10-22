@@ -51,7 +51,7 @@ class TokenResponse(ApiModel):
 
 
 class CurrentUserResponse(PublicUserResponse):
-    authentication_source: Literal["local-synthetic-fixture"]
+    authentication_source: str
 
     @classmethod
     def from_principal(
@@ -64,7 +64,7 @@ class CurrentUserResponse(PublicUserResponse):
             display_name=principal.display_name,
             roles=list(principal.roles),
             permissions=list(principal.permissions),
-            authentication_source="local-synthetic-fixture",
+            authentication_source=principal.authentication_source,
         )
 
 

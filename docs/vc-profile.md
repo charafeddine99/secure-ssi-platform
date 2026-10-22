@@ -78,12 +78,13 @@ The result model exposes individual outcomes for:
 - issuer trust.
 
 `verified` is derived, not caller supplied. It is true only when all required
-checks pass. Credential status remains `notApplicable` inside this
-cryptographic verification result because verification does not call MongoDB;
-clients must query the separate local status endpoint for an already persisted
-credential. Issuer trust means only that the issuer and public key match
-the local synthetic allowlist; it does not establish real institutional trust
-or claim truth.
+cryptographic/profile checks pass. The standalone cryptographic verification
+result reports persisted lifecycle status as `notApplicable` because that
+proof service does not call MongoDB. The credential status endpoint and the
+OID4VP verification policy separately enforce stored credential/status-list
+state. Issuer trust means only that the issuer and public key match the local
+synthetic allowlist; it does not establish real institutional trust or claim
+truth.
 
 Results contain check states and reason codes. They do not echo credential
 claims, DIDs, proof values, or private key material.
@@ -124,22 +125,24 @@ The infrastructure fixture builders also create 15 deterministic tamper
 variants covering claims, identifiers, proof metadata, contexts, signatures,
 unknown fields, key mismatch, and another issuer key. All values are synthetic.
 
-## Deferred work
+## Deferred work and boundaries
 
-Not implemented:
+This list describes the narrow VC proof profile, not every platform feature:
 
-- automatic persistence of signed credentials;
-- JSON-LD RDF canonicalization;
-- external `did:web` resolution;
-- persistent key storage;
-- KMS, HSM, or secure wallet integration;
-- key rotation;
-- credential-status integration into cryptographic verification;
-- interoperable W3C Bitstring Status List publication;
-- selective disclosure;
-- presentation challenge, audience, nonce, or holder binding;
-- blockchain anchoring;
-- production issuer governance.
+- JSON-LD RDF canonicalization and arbitrary network context/DID resolution;
+- claim-level cryptographic selective disclosure, predicate proofs, and ZKPs;
+- production issuer/Status List key custody through a deployed KMS/HSM;
+- independently held wallet keys or a certified external wallet;
+- independent wallet/verifier conformance testing and production issuer governance.
+
+The HTTP signing flow persists successful credentials and status assignments;
+managed holder-key metadata and recovery state have persistence/lifecycle APIs;
+holder key rotation is supported by the current prototype. These features do
+not make the local development key provider secure custody. Status List
+publication/signature verification and OID4VP lifecycle checks are separate
+platform services, not checks performed by this standalone cryptographic
+profile result. Optional local blockchain anchoring is also separate from this
+profile.
 
 Production use requires a reviewed trust policy, status mechanism, replay
 controls, secure key custody, external interoperability testing, and a new

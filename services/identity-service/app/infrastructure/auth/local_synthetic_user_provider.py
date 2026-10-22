@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from app.application.ports.user_provider import AuthenticationRecord
 from app.domain.auth import User
 from app.domain.permissions import Role
+from app.infrastructure.crypto.local_issuer_key_provider import (
+    SYNTHETIC_ISSUER_DID,
+)
 
 
 _ADMIN_HASH = (
@@ -86,6 +89,7 @@ class LocalSyntheticUserProvider:
                         username="issuer@example.test",
                         display_name="Local Issuer",
                         roles=(Role.ISSUER,),
+                        issuer_did=SYNTHETIC_ISSUER_DID,
                     ),
                     password_hash=_ISSUER_HASH,
                 ),

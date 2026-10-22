@@ -8,10 +8,8 @@ import { RoleGuard } from "./RoleGuard";
 
 // Loading placeholder for async route transitions
 const PageLoader: React.FC = () => (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "350px" }}>
-    <div style={{ padding: "1.5rem 2rem", borderRadius: "10px", background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8", fontSize: "0.95rem" }}>
-      Yükleniyor...
-    </div>
+  <div className="page-loader" role="status" aria-live="polite">
+    <div className="page-loader__message">Loading</div>
   </div>
 );
 
@@ -52,6 +50,7 @@ const AdminDashboard = React.lazy(() => import("../pages/admin/AdminDashboard").
 const SmartContractsPage = React.lazy(() => import("../pages/admin/SmartContractsPage").then(m => ({ default: m.SmartContractsPage })));
 const AuditExplorerPage = React.lazy(() => import("../pages/admin/AuditExplorerPage").then(m => ({ default: m.AuditExplorerPage })));
 const AiFraudMonitorPage = React.lazy(() => import("../pages/admin/AiFraudMonitorPage").then(m => ({ default: m.AiFraudMonitorPage })));
+const AdminUsersPage = React.lazy(() => import("../pages/admin/AdminUsersPage").then(m => ({ default: m.AdminUsersPage })));
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -70,54 +69,76 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="wallet"
           element={
-            <RoleGuard allowedRole="HOLDER" requireAuth={false}>
+            <RoleGuard allowedRole="HOLDER" requiredPermission="wallets:read" requireAuth={true}>
               <HolderLayout />
             </RoleGuard>
           }
         >
           <Route index element={<WalletDashboard />} />
-          <Route path="credentials/:id" element={<CredentialDetailPage />} />
-          <Route path="scan" element={<ScanQrPage />} />
-          <Route path="consent" element={<PresentationConsentPage />} />
-          <Route path="activity" element={<ActivityHistoryPage />} />
-          <Route path="security" element={<SecuritySettingsPage />} />
+          <Route path="credentials/:id" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallets:credentials:read"><CredentialDetailPage /></RoleGuard>} />
+          <Route path="scan" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallets:read"><ScanQrPage /></RoleGuard>} />
+          <Route path="consent" element={<RoleGuard allowedRole="HOLDER" requiredPermission="presentations:create"><PresentationConsentPage /></RoleGuard>} />
+          <Route path="activity" element={<RoleGuard allowedRole="HOLDER" requiredPermission="presentations:read"><ActivityHistoryPage /></RoleGuard>} />
+          <Route path="security" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallet:key:read"><SecuritySettingsPage /></RoleGuard>} />
+        </Route>
+
+        {/* 2b. Direct Holder Canonical URLs */}
+        <Route
+          path="credentials/:id"
+          element={
+            <RoleGuard allowedRole="HOLDER" requiredPermission="wallets:credentials:read" requireAuth={true}>
+              <HolderLayout />
+            </RoleGuard>
+          }
+        >
+          <Route index element={<CredentialDetailPage />} />
+        </Route>
+        <Route
+          path="consent/presentation"
+          element={
+            <RoleGuard allowedRole="HOLDER" requiredPermission="presentations:create" requireAuth={true}>
+              <HolderLayout />
+            </RoleGuard>
+          }
+        >
+          <Route index element={<PresentationConsentPage />} />
         </Route>
 
         {/* 3. Issuer Portal Routes */}
         <Route
           path="issuer"
           element={
-            <RoleGuard allowedRole="ISSUER" requireAuth={false}>
+            <RoleGuard allowedRole="ISSUER" requireAuth={true}>
               <InstitutionalLayout />
             </RoleGuard>
           }
         >
-          <Route index element={<IssuerDashboard />} />
-          <Route path="templates" element={<CredentialTemplatesPage />} />
-          <Route path="issue" element={<IssueCredentialPage />} />
-          <Route path="revocations" element={<RevocationRegistryPage />} />
+          <Route index element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><IssuerDashboard /></RoleGuard>} />
+          <Route path="templates" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><CredentialTemplatesPage /></RoleGuard>} />
+          <Route path="issue" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><IssueCredentialPage /></RoleGuard>} />
+          <Route path="revocations" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:revoke"><RevocationRegistryPage /></RoleGuard>} />
         </Route>
 
         {/* 4. Verifier Portal Routes */}
         <Route
           path="verifier"
           element={
-            <RoleGuard allowedRole="VERIFIER" requireAuth={false}>
+            <RoleGuard allowedRole="VERIFIER" requireAuth={true}>
               <InstitutionalLayout />
             </RoleGuard>
           }
         >
-          <Route index element={<VerifierDashboard />} />
-          <Route path="request" element={<CreateRequestPage />} />
-          <Route path="verify" element={<VerifyPresentationPage />} />
-          <Route path="history" element={<VerificationHistoryPage />} />
+          <Route index element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:verify"><VerifierDashboard /></RoleGuard>} />
+          <Route path="request" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentation-challenges:create"><CreateRequestPage /></RoleGuard>} />
+          <Route path="verify" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:verify"><VerifyPresentationPage /></RoleGuard>} />
+          <Route path="history" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:read"><VerificationHistoryPage /></RoleGuard>} />
         </Route>
 
-        {/* 5. Guardian Portal Routes */}
+        {/* Guardian recovery is an assigned Holder capability, not a global Identity role. */}
         <Route
           path="guardian"
           element={
-            <RoleGuard allowedRole="GUARDIAN" requireAuth={false}>
+            <RoleGuard allowedRole="HOLDER" requireAuth={true}>
               <InstitutionalLayout />
             </RoleGuard>
           }
@@ -131,12 +152,13 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="admin"
           element={
-            <RoleGuard allowedRole="ADMIN" requireAuth={false}>
+            <RoleGuard allowedRole="ADMIN" requiredPermission="admin:operations:read" requireAuth={true}>
               <InstitutionalLayout />
             </RoleGuard>
           }
         >
           <Route index element={<AdminDashboard />} />
+          <Route path="users" element={<RoleGuard allowedRole="ADMIN" requiredPermission="admin:users:read"><AdminUsersPage /></RoleGuard>} />
           <Route path="contracts" element={<SmartContractsPage />} />
           <Route path="audit" element={<AuditExplorerPage />} />
           <Route path="fraud-monitor" element={<AiFraudMonitorPage />} />

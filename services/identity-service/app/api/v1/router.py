@@ -14,6 +14,8 @@ from app.api.v1.oid4vp import router as oid4vp_router
 from app.api.v1.blockchain import router as blockchain_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.trust_registry import router as trust_registry_router
+from app.api.v1.database import router as database_router
+from app.api.v1.admin_users import router as admin_users_router
 
 
 router = APIRouter(prefix="/api/v1")
@@ -29,3 +31,5 @@ router.include_router(oid4vp_router)
 router.include_router(blockchain_router)
 router.include_router(audit_router)
 router.include_router(trust_registry_router)
+router.include_router(database_router)
+router.include_router(admin_users_router)

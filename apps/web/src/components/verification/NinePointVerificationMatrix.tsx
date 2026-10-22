@@ -1,242 +1,66 @@
 import React from "react";
-import { CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Cpu, Link, Lock, UserCheck, Calendar, FileCheck } from "lucide-react";
+import { CheckCircle2, CircleHelp, Info, XCircle } from "lucide-react";
 import { NinePointVerificationResult } from "../../services/api";
 
 interface NinePointVerificationMatrixProps {
   result: NinePointVerificationResult;
   disclosedClaims?: Record<string, unknown>;
   aiRiskScore?: number;
-  nonce?: string;
   sessionId?: string;
 }
 
 export const NinePointVerificationMatrix: React.FC<NinePointVerificationMatrixProps> = ({
   result,
   disclosedClaims,
-  aiRiskScore = 12,
-  nonce,
+  aiRiskScore,
   sessionId,
 }) => {
-  const isAccepted = result.finalPolicyResult === "ACCEPTED";
-
-  const checklistItems = [
-    {
-      num: 1,
-      title: "Credential Structure & Profile Integrity",
-      desc: "Validates W3C VC 2.0 schema, canonical syntax, and context consistency.",
-      valid: result.credentialValid,
-      icon: <FileCheck size={16} />,
-      detail: result.evaluations?.credential || "Valid W3C VC 2.0 profile format",
-    },
-    {
-      num: 2,
-      title: "Issuer Trust & Registry Verification",
-      desc: "Evaluates issuer DID against local authoritative Trust Registry.",
-      valid: result.issuerTrusted,
-      icon: <Lock size={16} />,
-      detail: result.evaluations?.issuer || "Verified trusted issuer in local Trust Registry",
-    },
-    {
-      num: 3,
-      title: "Ed25519 Cryptographic Signature",
-      desc: "Verifies linked data signature using JCS RFC 8785 canonicalization.",
-      valid: result.signatureValid,
-      icon: <ShieldCheck size={16} />,
-      detail: result.evaluations?.signature || "Cryptographic proof mathematically valid",
-    },
-    {
-      num: 4,
-      title: "Holder Binding & Subject Proof",
-      desc: "Ensures credential holder matches subject and presentation signer DID.",
-      valid: result.holderBindingValid,
-      icon: <UserCheck size={16} />,
-      detail: result.evaluations?.holder_binding || "Holder DID bound to presentation signature",
-    },
-    {
-      num: 5,
-      title: "Expiration & Temporal Validity Window",
-      desc: "Confirms validFrom <= now <= validUntil with server clock synchronization.",
-      valid: result.expirationValid,
-      icon: <Calendar size={16} />,
-      detail: result.evaluations?.expiration || "Within active validity window",
-    },
-    {
-      num: 6,
-      title: "Bitstring Revocation Status List",
-      desc: "Verifies revocation slot in W3C Bitstring Status List.",
-      valid: result.revocationStatusClear,
-      icon: <CheckCircle2 size={16} />,
-      detail: result.evaluations?.revocation || "Status slot is active (unrevoked)",
-    },
-    {
-      num: 7,
-      title: "Nonce & Freshness Challenge",
-      desc: "Protects against replay attacks by binding presentation to session challenge.",
-      valid: result.challengeValid,
-      icon: <Lock size={16} />,
-      detail: nonce ? `Nonce verified: ${nonce.substring(0, 16)}...` : (result.evaluations?.challenge || "Nonce match confirmed"),
-    },
-    {
-      num: 8,
-      title: "AI Behavioral Risk & Threat Evaluation",
-      desc: "Analyzes presentation patterns using Autoencoder & XGBoost risk engine.",
-      valid: result.aiRiskLevel !== "HIGH",
-      icon: <Cpu size={16} />,
-      detail: `Risk Level: ${result.aiRiskLevel} (Score: ${aiRiskScore}/100)`,
-    },
-    {
-      num: 9,
-      title: "Blockchain Anchor & Timestamp Proof",
-      desc: "Verifies immutable on-chain status registry state reference.",
-      valid: result.blockchainAnchored,
-      icon: <Link size={16} />,
-      detail: result.evaluations?.blockchain || "Anchored on local Hardhat Ethereum node",
-    },
+  const accepted = result.finalPolicyResult === "ACCEPTED";
+  const items = [
+    { id: "credential", label: "Credential profile", value: result.credentialValid, detail: result.evaluations?.credential },
+    { id: "issuer", label: "Issuer trust", value: result.issuerTrusted, detail: result.evaluations?.issuer },
+    { id: "signature", label: "Signature", value: result.signatureValid, detail: result.evaluations?.signature },
+    { id: "holder", label: "Holder binding", value: result.holderBindingValid, detail: result.evaluations?.holder_binding },
+    { id: "expiry", label: "Validity period", value: result.expirationValid, detail: result.evaluations?.expiration },
+    { id: "status", label: "Credential status", value: result.revocationStatusClear, detail: result.evaluations?.revocation },
+    { id: "challenge", label: "Challenge", value: result.challengeValid, detail: result.evaluations?.challenge },
   ];
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "18px",
-        backgroundColor: "#0d131f",
-        border: `1px solid ${isAccepted ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
-        borderRadius: "16px",
-        padding: "24px",
-      }}
-    >
-      {/* Header Banner */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingBottom: "16px",
-          borderBottom: "1px solid #1f2937",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {isAccepted ? (
-            <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.15)", color: "#34d399" }}>
-              <ShieldCheck size={28} />
-            </div>
-          ) : (
-            <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.15)", color: "#f87171" }}>
-              <ShieldAlert size={28} />
-            </div>
-          )}
-          <div>
-            <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#ffffff" }}>
-              Master 9-Point Verification Matrix
-            </h3>
-            <p style={{ margin: "2px 0 0 0", fontSize: "0.8rem", color: "#94a3b8" }}>
-              Standards-aligned OID4VP Direct Post Verification Engine
-            </p>
-          </div>
-        </div>
+    <section className="verifier-policy-result" aria-labelledby="policy-result-title">
+      <header className="verifier-policy-result__header">
+        <div><p className="workspace-eyebrow">Identity Service response</p><h3 id="policy-result-title">Policy evaluation</h3><p>Individual values below are included in the returned session response.</p></div>
+        <span className={"verifier-policy-decision " + (accepted ? "is-accepted" : "is-rejected")}>{accepted ? <CheckCircle2 size={16} aria-hidden="true" /> : <XCircle size={16} aria-hidden="true" />}{result.finalPolicyResult}</span>
+      </header>
 
-        {/* Policy Result Badge */}
-        <div
-          style={{
-            padding: "8px 18px",
-            borderRadius: "9999px",
-            fontSize: "0.85rem",
-            fontWeight: 800,
-            letterSpacing: "0.05em",
-            backgroundColor: isAccepted ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)",
-            color: isAccepted ? "#34d399" : "#f87171",
-            border: `1px solid ${isAccepted ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
-          }}
-        >
-          {result.finalPolicyResult}
-        </div>
-      </div>
+      {sessionId && <p className="verifier-policy-session">Session reference <code>{sessionId}</code></p>}
 
-      {sessionId && (
-        <div style={{ fontSize: "0.75rem", color: "#64748b", fontFamily: "var(--font-mono)" }}>
-          Session ID: {sessionId}
-        </div>
-      )}
-
-      {/* 9-Point Verification Rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {checklistItems.map((item) => (
-          <div
-            key={item.num}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 14px",
-              backgroundColor: "rgba(15, 23, 42, 0.6)",
-              borderRadius: "10px",
-              border: `1px solid ${item.valid ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.2)"}`,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ color: item.valid ? "#34d399" : "#f87171" }}>
-                {item.valid ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-              </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#f8fafc" }}>
-                  {item.num}. {item.title}
-                </div>
-                <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>
-                  {item.desc}
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: "0.75rem",
-                fontFamily: "var(--font-mono)",
-                color: item.valid ? "#38bdf8" : "#f87171",
-                maxWidth: "260px",
-                textAlign: "right",
-              }}
-            >
-              {item.detail}
-            </div>
-          </div>
+      <ul className="verifier-policy-checks">
+        {items.map((item) => (
+          <li className={item.value ? "is-valid" : "is-invalid"} key={item.id}>
+            {item.value ? <CheckCircle2 size={17} aria-hidden="true" /> : <XCircle size={17} aria-hidden="true" />}
+            <span><strong>{item.label}</strong>{item.detail && <small>{item.detail}</small>}</span>
+            <b>{item.value ? "Passed" : "Not passed"}</b>
+          </li>
         ))}
-      </div>
+        <li className="is-advisory">
+          <Info size={17} aria-hidden="true" />
+          <span><strong>Risk signal</strong><small>Advisory value returned by the service</small></span>
+          <b>{result.aiRiskLevel}{aiRiskScore !== undefined ? " · " + aiRiskScore + "/100" : ""}</b>
+        </li>
+        <li className={result.blockchainAnchored ? "is-valid" : "is-unknown"}>
+          {result.blockchainAnchored ? <CheckCircle2 size={17} aria-hidden="true" /> : <CircleHelp size={17} aria-hidden="true" />}
+          <span><strong>Blockchain anchor</strong><small>Optional integrity record; separate from credential validity</small></span>
+          <b>{result.blockchainAnchored ? "Reported" : "Not reported"}</b>
+        </li>
+      </ul>
 
-      {/* Disclosed Claims Section */}
       {disclosedClaims && Object.keys(disclosedClaims).length > 0 && (
-        <div
-          style={{
-            marginTop: "10px",
-            backgroundColor: "#111827",
-            borderRadius: "12px",
-            padding: "14px",
-            border: "1px solid #1f2937",
-          }}
-        >
-          <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: "#ffffff", fontWeight: 600 }}>
-            Selectively Disclosed Attributes (Consent Sheet Cleared)
-          </h4>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-            {Object.entries(disclosedClaims).map(([k, v]) => (
-              <div
-                key={k}
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: "rgba(0, 0, 0, 0.3)",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(148, 163, 184, 0.1)",
-                }}
-              >
-                <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>{k}</div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#60a5fa", marginTop: "2px" }}>
-                  {String(v)}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="verifier-returned-claims">
+          <div><h4>Claims returned by the service</h4><p>These values are shown as returned. The current Data Integrity profile does not provide cryptographic selective disclosure.</p></div>
+          <dl>{Object.entries(disclosedClaims).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
         </div>
       )}
-    </div>
+    </section>
   );
 };

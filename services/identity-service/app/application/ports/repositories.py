@@ -20,6 +20,13 @@ class UserRepository(Protocol):
 
     def get_by_username(self, username: str) -> PersistedUser | None: ...
 
+    def list_all(
+        self,
+        *,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> tuple[PersistedUser, ...]: ...
+
     def update(
         self,
         user: PersistedUser,

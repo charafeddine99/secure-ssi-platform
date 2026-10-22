@@ -2,16 +2,20 @@ import React from "react";
 import { CheckCircle2, Clock, Users } from "lucide-react";
 
 export interface GuardianSigner {
-  address: string;
+  guardianId: string | null;
+  walletId?: string;
+  displayIdentifier: string;
   name: string;
   role: string;
-  hasApproved: boolean;
+  hasApproved: boolean | null;
   approvalDate?: string;
   txHash?: string;
+  canApprove?: boolean;
 }
 
 interface RecoveryTimelineProps {
-  requiredThreshold: number; // e.g. 2 or 3
+  requiredThreshold: number | null;
+  approvedCount?: number | null;
   totalGuardians?: number;    // e.g. 3 or 5
   guardians: GuardianSigner[];
   timeLockRemainingHours?: number;
@@ -20,11 +24,17 @@ interface RecoveryTimelineProps {
 
 export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
   requiredThreshold,
+  approvedCount: reportedApprovedCount,
   guardians,
   onApprove
 }) => {
-  const approvedCount = guardians.filter((g) => g.hasApproved).length;
-  const isQuorumReached = approvedCount >= requiredThreshold;
+  const guardianStatesKnown = guardians.every((guardian) => guardian.hasApproved !== null);
+  const approvedCount = reportedApprovedCount ?? (
+    guardianStatesKnown ? guardians.filter((guardian) => guardian.hasApproved === true).length : null
+  );
+  const quorumKnown = approvedCount !== null && requiredThreshold !== null && requiredThreshold > 0;
+  const isQuorumReached = quorumKnown && approvedCount >= requiredThreshold;
+  const progressPercent = quorumKnown ? Math.min(100, (approvedCount / requiredThreshold) * 100) : 0;
 
   return (
     <div
@@ -43,7 +53,7 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Users size={18} color="#60a5fa" />
           <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#f8fafc" }}>
-            EIP-4337 Social Recovery Quorum
+            Guardian Recovery Quorum
           </span>
         </div>
         <span
@@ -57,7 +67,11 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
             border: isQuorumReached ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(245, 158, 11, 0.3)"
           }}
         >
-          {isQuorumReached ? "QUORUM MET — KEY ROTATION AUTHORIZED" : `${approvedCount} of ${requiredThreshold} Signatures`}
+          {isQuorumReached
+            ? "QUORUM MET"
+            : quorumKnown
+              ? `${approvedCount} of ${requiredThreshold} Approvals`
+              : "Approval progress unavailable"}
         </span>
       </div>
 
@@ -73,7 +87,7 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
       >
         <div
           style={{
-            width: `${Math.min(100, (approvedCount / requiredThreshold) * 100)}%`,
+            width: `${progressPercent}%`,
             height: "100%",
             backgroundColor: isQuorumReached ? "#10b981" : "#3b82f6",
             transition: "width 0.3s ease"
@@ -83,9 +97,9 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
 
       {/* Guardian list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {guardians.map((g) => (
+        {guardians.map((g, index) => (
           <div
-            key={g.address}
+            key={g.guardianId || `${g.displayIdentifier}-${index}`}
             style={{
               display: "flex",
               alignItems: "center",
@@ -93,11 +107,11 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
               padding: "10px 12px",
               borderRadius: "8px",
               backgroundColor: "#0d131f",
-              border: g.hasApproved ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid #1f2937"
+              border: g.hasApproved === true ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid #1f2937"
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {g.hasApproved ? (
+              {g.hasApproved === true ? (
                 <CheckCircle2 size={18} color="#34d399" />
               ) : (
                 <Clock size={18} color="#94a3b8" />
@@ -107,19 +121,19 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
                   {g.name} <span style={{ fontSize: "0.7rem", color: "#64748b" }}>({g.role})</span>
                 </div>
                 <div style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#94a3b8" }}>
-                  {g.address.slice(0, 10)}...{g.address.slice(-6)}
+                  {g.displayIdentifier}
                 </div>
               </div>
             </div>
 
             <div>
-              {g.hasApproved ? (
+              {g.hasApproved === true ? (
                 <span style={{ fontSize: "0.72rem", color: "#34d399", fontWeight: 600 }}>
                   Signed
                 </span>
-              ) : onApprove ? (
+              ) : onApprove && g.guardianId && g.canApprove ? (
                 <button
-                  onClick={() => onApprove(g.address)}
+                  onClick={() => onApprove(g.guardianId!)}
                   style={{
                     padding: "4px 10px",
                     borderRadius: "6px",
@@ -131,10 +145,12 @@ export const RecoveryTimeline: React.FC<RecoveryTimelineProps> = ({
                     cursor: "pointer"
                   }}
                 >
-                  Sign Approval
+                  Submit decision
                 </button>
               ) : (
-                <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Pending</span>
+                <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>
+                  {g.hasApproved === false ? "Pending" : "Not assigned to this account"}
+                </span>
               )}
             </div>
           </div>

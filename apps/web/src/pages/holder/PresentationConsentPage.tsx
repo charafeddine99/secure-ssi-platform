@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import {
-  getOid4vpSession,
+  createWalletOid4vpPresentation,
+  evaluateOid4vpSession,
+  fetchCredentials,
+  getOid4vpHolderRequest,
+  getOrCreateHolderWallet,
+  recordWalletOid4vpConsent,
   submitOid4vpDirectPost,
-  recordOid4vpConsent,
-  createOid4vpPresentation,
-  Oid4vpSession,
+  Oid4vpHolderRequest,
   BackendCredential,
+  HolderWallet,
 } from "../../services/api";
 import {
-  Eye,
-  EyeOff,
   CheckCircle2,
   ArrowLeft,
   Send,
@@ -21,191 +22,202 @@ import {
   UserCheck,
   ShieldAlert,
 } from "lucide-react";
+import {
+  getOid4vpSubmissionErrorMessage,
+  Oid4vpSubmissionStage,
+} from "../../utils/oid4vpSubmissionError";
 
 export const PresentationConsentPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const stateSessionId = location.state?.sessionId;
-  const stateCred = location.state?.credential as BackendCredential | undefined;
+  const stateSessionId: string = (() => {
+    // A consent decision is bound to a verifier-created session.
+    if (typeof location.state?.sessionId === "string" && location.state.sessionId) {
+      return location.state.sessionId;
+    }
+    const params = new URLSearchParams(location.search);
+    const queryId = params.get("sessionId");
+    if (queryId) return queryId;
+    return "";
+  })();
 
-  const [session, setSession] = useState<Oid4vpSession | null>(null);
-
-  const [verifierName, setVerifierName] = useState("Accredited Compliance Authority");
-  const [purpose, setPurpose] = useState("Verification of active academic status & qualification");
+  const [session, setSession] = useState<Oid4vpHolderRequest | null>(null);
+  const [wallet, setWallet] = useState<HolderWallet | null>(null);
+  const [matchedCredentials, setMatchedCredentials] = useState<BackendCredential[]>([]);
+  const [selectedCredentialId, setSelectedCredentialId] = useState("");
+  const [loadingRequest, setLoadingRequest] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string>("");
-
-  // Claims loaded from selected credential or realistic university profile
-  const [claimsData, setClaimsData] = useState<Record<string, unknown>>({
-    affiliation: "Senior Security Architect",
-    programCode: "SUB-SEC-2026",
-    degree: "Computer Engineering & Applied Cryptography",
-    graduationYear: 2026,
-    "Full Name": "Charaf Eddine Bessanane",
-    Nationality: "TUR",
-    "Assurance Level": "Qualified LoA High (eIDAS 2.0)",
-  });
-
-  // State: selected claims to disclose
-  const [selectedClaims, setSelectedClaims] = useState<Record<string, boolean>>({
-    affiliation: true,
-    programCode: true,
-    degree: true,
-    graduationYear: false,
-    "Full Name": false,
-    Nationality: false,
-    "Assurance Level": true,
-  });
-
-  const [explicitConsent, setExplicitConsent] = useState(true);
+  const [explicitConsent, setExplicitConsent] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [pendingPresentation, setPendingPresentation] = useState<Parameters<typeof submitOid4vpDirectPost>[0] | null>(null);
+  const [approvalBlocked, setApprovalBlocked] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "rejected" | "error"; text: string } | null>(null);
 
-  // Fetch session details from backend
+  const selectedCredential = matchedCredentials.find((credential) => credential.id === selectedCredentialId);
+  const subject = selectedCredential?.raw_credential?.credentialSubject;
+  const claimsData = subject && typeof subject === "object" && !Array.isArray(subject)
+    ? Object.fromEntries(Object.entries(subject as Record<string, unknown>).filter(([key]) => key !== "id"))
+    : {};
+  const verifierName = session?.clientId || session?.verifierDid || "Unknown verifier";
+  const purpose = session?.purpose || "No purpose supplied";
+
+  // Load only an existing verifier session and credentials from the authenticated holder wallet.
   useEffect(() => {
-    if (!stateSessionId) return;
-
-    const fetchSession = async () => {
+    let active = true;
+    const loadConsentContext = async () => {
+      setLoadingRequest(true);
+      setLoadError(null);
+      if (!stateSessionId) {
+        setLoadError("Open this page from an active verifier request. No request was supplied.");
+        setLoadingRequest(false);
+        return;
+      }
       try {
-        const data = await getOid4vpSession(stateSessionId);
-        setSession(data);
-        if (data.purpose) setPurpose(data.purpose);
-        if (data.expiresAt) setExpiresAt(data.expiresAt);
-        if (data.verifierDid) setVerifierName(data.verifierDid);
-
-        if (data.requestedFields && data.requestedFields.length > 0) {
-          const reqFields = data.requestedFields;
-          setSelectedClaims((prev) => {
-            const newSelected: Record<string, boolean> = {};
-            // Default: disclose requested fields, protect others
-            Object.keys(prev).forEach((k) => {
-              newSelected[k] = reqFields.includes(k);
-            });
-            return newSelected;
-          });
+        const data = await getOid4vpHolderRequest(stateSessionId);
+        if (data.status !== "PENDING" || data.consentStatus && data.consentStatus !== "PENDING") {
+          throw new Error(`This verification request is ${data.status.toLowerCase()} and cannot receive consent.`);
         }
+        const holderWallet = await getOrCreateHolderWallet();
+        const credentials = await fetchCredentials(undefined, undefined, holderWallet.walletId);
+        const usableCredentials = credentials.filter((credential) => credential.status === "ACTIVE" && credential.raw_credential);
+        if (usableCredentials.length === 0) {
+          throw new Error("The authenticated holder wallet has no active credentials available for this request.");
+        }
+        const evaluation = await evaluateOid4vpSession(
+          stateSessionId,
+          usableCredentials.map((credential) => credential.raw_credential as Record<string, unknown>),
+        );
+        if (!evaluation.isSatisfied) {
+          throw new Error(evaluation.unsatisfiedReason || "No wallet credential satisfies this verifier request.");
+        }
+        const queryIds = evaluation.details?.selectedQueryIds || [...new Set(evaluation.matchedCredentials.map((match) => match.queryId))];
+        if (queryIds.length !== 1) {
+          throw new Error("This consent screen supports one DCQL credential query at a time. The request was not approved.");
+        }
+        const matchedIds = new Set(
+          evaluation.matchedCredentials
+            .filter((match) => match.queryId === queryIds[0])
+            .map((match) => match.credentialId),
+        );
+        const matches = usableCredentials.filter((credential) => matchedIds.has(credential.id));
+        if (matches.length === 0) throw new Error("The request did not match an active credential in this wallet.");
+        if (!active) return;
+        setSession(data);
+        setWallet(holderWallet);
+        setMatchedCredentials(matches);
+        setSelectedCredentialId(matches[0].id);
+        setExpiresAt(data.expiresAt);
       } catch (err) {
-        console.warn("Could not load real OID4VP session, using fallback:", err);
+        if (active) setLoadError(err instanceof Error ? err.message : "Could not load the verification request.");
+      } finally {
+        if (active) setLoadingRequest(false);
       }
     };
 
-    fetchSession();
+    void loadConsentContext();
+    return () => { active = false; };
   }, [stateSessionId]);
 
-  // Load credential claims if passed via navigation state or fallback
-  useEffect(() => {
-    if (stateCred && stateCred.claims && Object.keys(stateCred.claims).length > 0) {
-      setClaimsData(stateCred.claims);
-      const initialSelected: Record<string, boolean> = {};
-      Object.keys(stateCred.claims).forEach((k, idx) => {
-        initialSelected[k] = idx < 3; // default: selective disclosure
-      });
-      setSelectedClaims(initialSelected);
-    }
-  }, [stateCred]);
-
-  const toggleClaim = (key: string) => {
-    setSelectedClaims((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
-
   const handleApprove = async () => {
-    if (!explicitConsent) {
+    if (!session || !wallet || !selectedCredential || !explicitConsent || Object.keys(claimsData).length === 0 || pendingPresentation || approvalBlocked) {
       setStatusMessage({ type: "error", text: "You must provide explicit consent before disclosing attributes." });
       return;
     }
 
     setPresenting(true);
     setStatusMessage(null);
-
-    const disclosedValues: Record<string, unknown> = {};
-    const rejectedList: string[] = [];
-    Object.entries(selectedClaims).forEach(([k, isSelected]) => {
-      if (isSelected && claimsData[k] !== undefined) {
-        disclosedValues[k] = claimsData[k];
-      } else {
-        rejectedList.push(k);
-      }
-    });
-
-    const holderDid =
-      localStorage.getItem("ssi_user_did") ||
-      "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP";
-
-    const targetSessionId = stateSessionId || session?.sessionId;
-    const credId = stateCred?.id || "urn:uuid:00000000-0000-4000-8000-000000000001";
+    let stage: Oid4vpSubmissionStage = "consent";
 
     try {
-      if (targetSessionId) {
-        // Step 1: Record authoritative domain consent decision bound to session, claims, and nonce
-        await recordOid4vpConsent({
-          sessionId: targetSessionId,
-          action: "APPROVE",
-          holderDid,
-          approvedCredentials: [credId],
-          approvedClaims: disclosedValues,
-          rejectedClaims: rejectedList,
-          verifierDid: session?.verifierDid,
-          clientId: session?.clientId,
-          nonce: session?.nonce,
-          purpose: session?.purpose,
+      await recordWalletOid4vpConsent({
+        sessionId: session.sessionId,
+        walletId: wallet.walletId,
+        holderDid: wallet.holderDid,
+        action: "APPROVE",
+        approvedCredentials: [selectedCredential.id],
+        approvedClaims: claimsData,
+      });
+      stage = "presentation";
+      const presentation = await createWalletOid4vpPresentation({
+        sessionId: session.sessionId,
+        walletId: wallet.walletId,
+        credentialIds: [selectedCredential.id],
+        disclosedClaims: claimsData,
+      });
+      const preparedPresentation: Parameters<typeof submitOid4vpDirectPost>[0] = {
+        sessionId: session.sessionId,
+        vpToken: presentation.vpToken,
+        disclosedClaims: claimsData,
+      };
+      setPendingPresentation(preparedPresentation);
+      stage = "direct-post";
+      const response = await submitOid4vpDirectPost(preparedPresentation);
+      setPendingPresentation(null);
+      if (response.result.finalPolicyResult !== "ACCEPTED") {
+        setStatusMessage({
+          type: "rejected",
+          text: `The verifier processed the presentation and returned ${response.result.finalPolicyResult || "an unknown policy result"}.`,
         });
-
-        // Step 2: Request real cryptographic presentation proof with DataIntegrityProof eddsa-jcs-2022
-        const presentationRes = await createOid4vpPresentation({
-          sessionId: targetSessionId,
-          disclosedClaims: disclosedValues,
-          holderDid,
-        });
-
-        // Step 3: Direct Post submission to verifier
-        await submitOid4vpDirectPost({
-          sessionId: targetSessionId,
-          vpToken: presentationRes.vpToken,
-          disclosedClaims: disclosedValues,
-          aiRiskScore: 12,
-        });
+      } else {
+        setStatusMessage({ type: "success", text: "The verifier accepted the backend verification result." });
       }
-      setStatusMessage({ type: "success", text: "Presentation verified and delivered via OID4VP Direct Post!" });
-      setTimeout(() => {
-        navigate("/wallet/activity");
-      }, 1600);
     } catch (err: unknown) {
-      setStatusMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to submit presentation via Direct Post." });
+      if (stage !== "direct-post") {
+        setPendingPresentation(null);
+        setApprovalBlocked(true);
+      }
+      setStatusMessage({ type: "error", text: getOid4vpSubmissionErrorMessage(err, stage) });
+    } finally {
+      setPresenting(false);
+    }
+  };
+
+  const handleRetryDirectPost = async () => {
+    if (!pendingPresentation || presenting) return;
+
+    setPresenting(true);
+    setStatusMessage(null);
+    try {
+      const response = await submitOid4vpDirectPost(pendingPresentation);
+      setPendingPresentation(null);
+      if (response.result.finalPolicyResult !== "ACCEPTED") {
+        setStatusMessage({
+          type: "rejected",
+          text: `The verifier processed the presentation and returned ${response.result.finalPolicyResult || "an unknown policy result"}.`,
+        });
+      } else {
+        setStatusMessage({ type: "success", text: "The verifier accepted the backend verification result." });
+      }
+    } catch (err: unknown) {
+      setStatusMessage({
+        type: "error",
+        text: getOid4vpSubmissionErrorMessage(err, "direct-post"),
+      });
     } finally {
       setPresenting(false);
     }
   };
 
   const handleReject = async () => {
+    if (!session || !wallet) {
+      setStatusMessage({ type: "error", text: "A loaded request and authenticated holder wallet are required to reject." });
+      return;
+    }
     setRejecting(true);
     setStatusMessage(null);
 
-    const targetSessionId = stateSessionId || session?.sessionId;
-    const holderDid =
-      localStorage.getItem("ssi_user_did") ||
-      "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP";
-
     try {
-      if (targetSessionId) {
-        await recordOid4vpConsent({
-          sessionId: targetSessionId,
-          action: "REJECT",
-          holderDid,
-          rejectedClaims: Object.keys(claimsData),
-          verifierDid: session?.verifierDid,
-          clientId: session?.clientId,
-          nonce: session?.nonce,
-          purpose: session?.purpose,
-        });
-      }
-      setStatusMessage({ type: "rejected", text: "Verification request declined. Session terminated and audited." });
-      setTimeout(() => {
-        navigate("/wallet");
-      }, 1400);
+      await recordWalletOid4vpConsent({
+        sessionId: session.sessionId,
+        walletId: wallet.walletId,
+        holderDid: wallet.holderDid,
+        action: "REJECT",
+        rejectionReason: "Holder declined the verification request.",
+      });
+      setStatusMessage({ type: "rejected", text: "The holder-bound consent decision declined this request." });
     } catch (err: unknown) {
       setStatusMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to reject verification session." });
     } finally {
@@ -213,12 +225,13 @@ export const PresentationConsentPage: React.FC = () => {
     }
   };
 
-  const revealedCount = Object.values(selectedClaims).filter(Boolean).length;
-  const hiddenCount = Object.keys(selectedClaims).length - revealedCount;
+  const revealedCount = Object.keys(claimsData).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "720px", margin: "0 auto" }}>
+    <main className="holder-page holder-consent-page">
       <button
+        type="button"
+        className="holder-back-link"
         onClick={() => navigate("/wallet")}
         style={{
           display: "inline-flex",
@@ -236,7 +249,8 @@ export const PresentationConsentPage: React.FC = () => {
         Back to Wallet Vault
       </button>
 
-      <div
+      <section
+        className="holder-consent-panel"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -247,22 +261,31 @@ export const PresentationConsentPage: React.FC = () => {
           gap: "18px",
         }}
       >
-        <div>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "8px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
-            <TrustBadge level="DEMO_TRUST_LEVEL" size="sm" />
-          </div>
-          <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Consent Review & Claim Minimization
-          </h2>
-          <p style={{ fontSize: "0.82rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Review the verifier's identity, stated purpose, and choose which claims to share. Unapproved claims are omitted from the constructed presentation via claim minimization.
+        <header className="holder-page-header holder-consent-header">
+          <div>
+          <p className="holder-page-eyebrow">CONSENT REVIEW</p>
+          <h1>
+            Review a verification request
+          </h1>
+          <p>
+            Review the verifier request and choose a matching credential. This profile sends the complete signed credential; it does not provide claim-level cryptographic selective disclosure.
           </p>
-        </div>
+          </div>
+        </header>
+
+        {loadingRequest && <p className="holder-inline-status" role="status">Loading the verifier request and authenticated wallet credentials…</p>}
+        {loadError && (
+          <div role="alert" style={{ padding: "12px 16px", borderRadius: "8px", backgroundColor: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#f87171", fontSize: "0.85rem" }}>
+            {loadError}
+          </div>
+        )}
 
         {/* Status / Feedback Banner */}
         {statusMessage && (
           <div
+            className={`holder-notice holder-notice--${statusMessage.type}`}
+            data-status={statusMessage.type}
+            role={statusMessage.type === "error" ? "alert" : "status"}
             style={{
               padding: "12px 16px",
               borderRadius: "8px",
@@ -287,7 +310,8 @@ export const PresentationConsentPage: React.FC = () => {
                   : "#f87171",
               fontSize: "0.85rem",
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
               gap: "8px",
             }}
           >
@@ -298,12 +322,40 @@ export const PresentationConsentPage: React.FC = () => {
             ) : (
               <AlertCircle size={18} />
             )}
-            <span>{statusMessage.text}</span>
+            <span style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>{statusMessage.text}</span>
+            {statusMessage.type !== "error" && !pendingPresentation && (
+              <button type="button" className="holder-secondary-action" onClick={() => navigate("/wallet")}>
+                Return to wallet
+              </button>
+            )}
+            {pendingPresentation && statusMessage.type === "error" && (
+              <button
+                type="button"
+                onClick={handleRetryDirectPost}
+                disabled={presenting}
+                style={{
+                  marginLeft: "auto",
+                  flex: "0 1 220px",
+                  maxWidth: "100%",
+                  alignSelf: "flex-start",
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(248, 113, 113, 0.45)",
+                  backgroundColor: "rgba(127, 29, 29, 0.35)",
+                  color: "#fecaca",
+                  fontWeight: 700,
+                  cursor: presenting ? "not-allowed" : "pointer",
+                }}
+              >
+                {presenting ? "Retrying delivery…" : "Retry sending the same presentation"}
+              </button>
+            )}
           </div>
         )}
 
         {/* Verifier Purpose & Retention Box */}
-        <div
+        <section
+          className="holder-consent-request-card"
           style={{
             backgroundColor: "#0d131f",
             borderRadius: "12px",
@@ -319,7 +371,7 @@ export const PresentationConsentPage: React.FC = () => {
               Requesting Authority (Verifier)
             </span>
             <span style={{ fontSize: "0.75rem", color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
-              {stateSessionId ? `Session: ${stateSessionId.substring(0, 18)}...` : "OID4VP Direct Post"}
+              {session ? `Session: ${session.sessionId.substring(0, 18)}…` : "No active request"}
             </span>
           </div>
           <div style={{ fontSize: "1rem", fontWeight: 700, color: "#ffffff", display: "flex", alignItems: "center", gap: "6px" }}>
@@ -335,10 +387,26 @@ export const PresentationConsentPage: React.FC = () => {
               Session Valid Until: {new Date(expiresAt).toLocaleTimeString()}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Data Minimization Stats Bar */}
+        {matchedCredentials.length > 1 && (
+          <fieldset className="holder-consent-credential-picker" disabled={loadingRequest || presenting || rejecting} style={{ border: "1px solid #334155", borderRadius: "10px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <legend style={{ color: "#f8fafc", fontSize: "0.85rem", fontWeight: 700, padding: "0 6px" }}>Choose one matching credential</legend>
+            {matchedCredentials.map((credential) => (
+              <label key={credential.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start", padding: "10px", borderRadius: "8px", backgroundColor: selectedCredentialId === credential.id ? "rgba(37, 99, 235, 0.12)" : "#0d131f", cursor: "pointer" }}>
+                <input type="radio" name="credential" value={credential.id} checked={selectedCredentialId === credential.id} onChange={() => { setSelectedCredentialId(credential.id); setExplicitConsent(false); }} />
+                <span style={{ color: "#e2e8f0", fontSize: "0.82rem" }}>
+                  <strong>{credential.title || credential.credential_type}</strong><br />
+                  {credential.issuer_name || credential.issuer} · {credential.status}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        {/* Complete credential disclosure summary */}
         <div
+          className="holder-consent-disclosure-summary"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -350,69 +418,33 @@ export const PresentationConsentPage: React.FC = () => {
             fontSize: "0.8rem",
           }}
         >
-          <span style={{ color: "#93c5fd" }}>
-            <strong>{revealedCount}</strong> claims approved to share
-          </span>
-          <span style={{ color: "#34d399", fontWeight: 600 }}>
-            🔒 {hiddenCount} claims omitted via claim minimization
-          </span>
+          <span style={{ color: "#93c5fd" }}><strong>{revealedCount}</strong> credential claims</span>
+          <span style={{ color: "#fbbf24", fontWeight: 600 }}>The complete signed credential will be included</span>
         </div>
 
-        {/* Claims Disclosure Selection */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {/* Read-only claim inventory: this proof suite cannot omit individual signed claims. */}
+        <section className="holder-consent-claims" aria-labelledby="holder-consent-claims-title">
           <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#f8fafc" }}>
-            Requested Claims (Click to Approve or Omit):
+            <span id="holder-consent-claims-title">Claims in the selected credential</span>
           </span>
 
           {Object.entries(claimsData).map(([key, val]) => {
-            const isRevealed = selectedClaims[key] || false;
             return (
-              <div
-                key={key}
-                onClick={() => toggleClaim(key)}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "12px 14px",
-                  borderRadius: "10px",
-                  backgroundColor: isRevealed ? "rgba(15, 23, 42, 0.8)" : "rgba(0, 0, 0, 0.3)",
-                  border: `1px solid ${isRevealed ? "rgba(59, 130, 246, 0.4)" : "#1f2937"}`,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
+              <div key={key} className="holder-consent-claim" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderRadius: "10px", backgroundColor: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(59, 130, 246, 0.4)" }}>
                 <div>
-                  <div style={{ fontSize: "0.84rem", fontWeight: 600, color: isRevealed ? "#f8fafc" : "#64748b" }}>
-                    {key}
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: isRevealed ? "#93c5fd" : "#475569", marginTop: "2px" }}>
-                    {isRevealed ? String(val) : "•••••••••••• (Omitted / Minimized)"}
-                  </div>
+                  <div style={{ fontSize: "0.84rem", fontWeight: 600, color: "#f8fafc" }}>{key}</div>
+                  <div style={{ fontSize: "0.75rem", color: "#93c5fd", marginTop: "2px" }}>{String(val)}</div>
                 </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span
-                    style={{
-                      fontSize: "0.72rem",
-                      padding: "2px 8px",
-                      borderRadius: "4px",
-                      fontWeight: 600,
-                      backgroundColor: isRevealed ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.2)",
-                      color: isRevealed ? "#34d399" : "#64748b",
-                    }}
-                  >
-                    {isRevealed ? "APPROVED" : "OMITTED"}
-                  </span>
-                  {isRevealed ? <Eye size={16} color="#60a5fa" /> : <EyeOff size={16} color="#475569" />}
-                </div>
+                <span style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: "4px", fontWeight: 600, backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>INCLUDED</span>
               </div>
             );
           })}
-        </div>
+          {revealedCount === 0 && !loadingRequest && <p style={{ color: "#f87171", fontSize: "0.82rem" }}>No credential is selected. Sharing is unavailable.</p>}
+        </section>
 
         {/* Explicit Consent Checkbox */}
         <label
+          className="holder-consent-checkbox"
           style={{
             display: "flex",
             alignItems: "flex-start",
@@ -431,21 +463,24 @@ export const PresentationConsentPage: React.FC = () => {
             type="checkbox"
             checked={explicitConsent}
             onChange={(e) => setExplicitConsent(e.target.checked)}
+            aria-label="Explicit holder consent to disclose complete selected credential"
             style={{ marginTop: "2px", accentColor: "#2563eb", cursor: "pointer" }}
           />
           <span>
-            I explicitly grant consent to transmit the selected <strong>{revealedCount} claims</strong> to <strong>{verifierName}</strong> for the verified purpose. Unapproved claims will be omitted.
+            I explicitly consent to send the complete selected credential, including all <strong>{revealedCount} claims</strong>, to <strong>{verifierName}</strong> for the stated purpose.
           </span>
         </label>
 
         {/* Action Buttons: Approve vs Reject */}
-        <div style={{ display: "flex", gap: "12px", marginTop: "6px" }}>
+        <div className="holder-consent-actions" style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "6px" }}>
           <button
             type="button"
+            className="holder-danger-action"
             onClick={handleReject}
-            disabled={rejecting || presenting}
+            disabled={loadingRequest || !!loadError || !session || !wallet || rejecting || presenting || approvalBlocked || !!pendingPresentation}
             style={{
-              flex: 1,
+              flex: "1 1 140px",
+              minWidth: 0,
               padding: "12px",
               borderRadius: "10px",
               backgroundColor: "rgba(239, 68, 68, 0.15)",
@@ -466,10 +501,12 @@ export const PresentationConsentPage: React.FC = () => {
 
           <button
             type="button"
+            className="holder-primary-action"
             onClick={handleApprove}
-            disabled={presenting || rejecting || !explicitConsent}
+            disabled={loadingRequest || !!loadError || !session || !wallet || !selectedCredential || presenting || rejecting || !explicitConsent || approvalBlocked || !!pendingPresentation}
             style={{
-              flex: 2,
+              flex: "2 1 220px",
+              minWidth: 0,
               padding: "12px",
               borderRadius: "10px",
               backgroundColor: presenting ? "#1d4ed8" : "#2563eb",
@@ -477,7 +514,7 @@ export const PresentationConsentPage: React.FC = () => {
               fontWeight: 700,
               fontSize: "0.9rem",
               border: "none",
-              cursor: presenting || !explicitConsent ? "not-allowed" : "pointer",
+              cursor: loadingRequest || !!loadError || !selectedCredential || presenting || !explicitConsent || approvalBlocked || !!pendingPresentation ? "not-allowed" : "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -486,10 +523,10 @@ export const PresentationConsentPage: React.FC = () => {
             }}
           >
             <Send size={16} />
-            {presenting ? "Constructing Proof & Submitting..." : `Share These Claims (${revealedCount} Approved)`}
+            {presenting ? "Creating and verifying presentation…" : pendingPresentation ? "Presentation prepared; delivery is pending" : `Share complete credential (${revealedCount} claims)`}
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };

@@ -1,438 +1,99 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
+import { Link } from "react-router-dom";
+import { AlertCircle, ArrowLeft, CheckCircle2, CircleHelp, Clock3, Search, ShieldAlert } from "lucide-react";
 import { StatusChip } from "../../components/common/StatusChip";
-import { VerificationChecklist, VerificationStep } from "../../components/verification/VerificationChecklist";
-import { verifyPresentation } from "../../services/api";
-import { Search, ArrowLeft, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-
-interface VerificationPresentationResult {
-  overallStatus: "VERIFIED" | "REJECTED" | "UNAVAILABLE" | "ERROR";
-  verifiedAt: string;
-  totalLatencyMs: string | number;
-  dataLeakageRisk: string;
-  disclosedClaims: Record<string, unknown>;
-  errors?: string[];
-}
+import { PresentationVerificationResult, verifyPresentation } from "../../services/api";
 
 export const VerifyPresentationPage: React.FC = () => {
-  const navigate = useNavigate();
-
+  const [presentationJson, setPresentationJson] = useState("");
+  const [expectedChallenge, setExpectedChallenge] = useState("");
+  const [expectedDomain, setExpectedDomain] = useState("");
   const [verifying, setVerifying] = useState(false);
-  const [completed, setCompleted] = useState(false);
-  const [result, setResult] = useState<VerificationPresentationResult | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [result, setResult] = useState<PresentationVerificationResult | null>(null);
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
-  const initialSteps: VerificationStep[] = [
-    {
-      id: "step-sig",
-      title: "Ed25519 Kriptografik İmza ve Veri Bütünlüğü Doğrulaması",
-      description: "İhraççı genel anahtarına (did:gov:eudi:nvi-authority#key-1) karşı RFC 8785 JCS doğrulaması",
-      status: "PENDING"
-    },
-    {
-      id: "step-binding",
-      title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
-      description: "Sunumun oturum meydan okumasına (nonce) ve hamil DID kimliğine kriptografik bağlılık teyidi",
-      status: "PENDING"
-    },
-    {
-      id: "step-status",
-      title: "W3C Bitstring İptal Kütüğü Durum Kontrolü",
-      description: "Hardhat EVM RevocationRegistry sözleşmesinde BitstringStatusList2021 slot #104 denetimi",
-      status: "PENDING"
-    },
-    {
-      id: "step-minimization",
-      title: "DCQL Sorgu ve Veri Minimizasyonu Uyumluluğu",
-      description: "İhraççı kimlik belgesinin tam bütünlüğü korunurken, hamil onayı ve DCQL politikasına uygun aktarım teyidi",
-      status: "PENDING"
-    }
-  ];
-
-  const [steps, setSteps] = useState<VerificationStep[]>(initialSteps);
-
-  const handleRunVerification = async () => {
-    setVerifying(true);
-    setCompleted(false);
-
-    const samplePayload = {
-      presentation: {
-        "@context": [
-          "https://www.w3.org/ns/credentials/v2"
-        ],
-        id: "urn:uuid:vp-audit-9021",
-        type: ["VerifiablePresentation"],
-        holder: "did:key:z6MkuTi8U5xXyXyXyXyXyXyXyXyXyXyXyXyXyXyXyXy",
-        verifiableCredential: [
-          {
-            "@context": [
-              "https://www.w3.org/ns/credentials/v2",
-              "https://secure-ssi.example/contexts/university-affiliation/v1"
-            ],
-            id: "urn:uuid:academic-degree-2026-tr",
-            type: ["VerifiableCredential", "UniversityAffiliationCredential"],
-            issuer: "did:web:itu.edu.tr",
-            validFrom: "2025-01-15T00:00:00Z",
-            validUntil: "2035-01-15T00:00:00Z",
-            credentialSubject: {
-              id: "did:key:z6MkuTi8U5xXyXyXyXyXyXyXyXyXyXyXyXyXyXyXyXy",
-              affiliation: "student",
-              programCode: "SYN-CS-001",
-              degree: "Bachelor of Science",
-              graduationYear: 2026
-            },
-            proof: {
-              type: "DataIntegrityProof",
-              cryptosuite: "eddsa-jcs-2022",
-              created: "2025-01-15T00:00:00Z",
-              verificationMethod: "did:gov:eudi:nvi-authority#key-1",
-              proofPurpose: "assertionMethod",
-              proofValue: "z3s9PqRtXvM8EUDINationalIdentityProof2026Ed25519Signature"
-            }
-          }
-        ],
-        proof: {
-          type: "DataIntegrityProof",
-          cryptosuite: "eddsa-jcs-2022",
-          created: new Date().toISOString(),
-          verificationMethod: "did:key:z6MkuTi8U5xXyXyXyXyXyXyXyXyXyXyXyXyXyXyXyXy#key-1",
-          proofPurpose: "authentication",
-          challenge: "challenge_nonce_00000001",
-          domain: "verifier.example",
-          proofValue: "z4v8QwErTyUiOpAsDfGhJkLzXcVbNm1234567890Ed25519Signature"
-        }
-      },
-      expectedChallenge: "challenge_nonce_00000001",
-      expectedDomain: "verifier.example",
-      disclosed_claims: {
-        "Uyruk": "TUR",
-        "Güvenlik Düzeyi": "Yüksek (High LoA)"
-      },
-      predicate_proof: {
-        rule: "age >= 18",
-        verified: true
-      }
-    };
-
+  const handleVerify = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError(null);
+    setResult(null);
+    setElapsedMs(null);
+    let parsed: unknown;
     try {
-      const startTime = performance.now();
-      const res = await verifyPresentation(samplePayload);
-      const totalTime = performance.now() - startTime;
-      const latencyPerStep = (totalTime / 4).toFixed(2);
-
-      const isVerified = res.status === "VERIFIED" && res.verified === true;
-      const isRejected = res.status === "REJECTED";
-
-      setSteps([
-        {
-          id: "step-sig",
-          title: "Ed25519 Kriptografik İmza ve Veri Bütünlüğü Doğrulaması",
-          description: isVerified
-            ? "W3C DataIntegrity imzası RFC 8785 kanonikleştirme ile başarıyla doğrulandı."
-            : isRejected
-            ? "Kriptografik imza doğrulaması başarısız oldu (İmza geçersiz veya veri değiştirilmiş)."
-            : "Doğrulama servisine ulaşılamadı veya sunucu hatası oluştu.",
-          status: isVerified ? "SUCCESS" : "FAILED",
-          latencyMs: Number(latencyPerStep),
-          details: isVerified
-            ? `Kripto paketi: eddsa-jcs-2022 | Anahtar: did:gov:eudi:nvi-authority#key-1 | Gecikme: ${latencyPerStep}ms`
-            : (res.errors && res.errors.length > 0 ? res.errors.join("; ") : "İmza doğrulama hatası")
-        },
-        {
-          id: "step-binding",
-          title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
-          description: isVerified
-            ? "Oturum meydan okuması (nonce) ve hamil DID sahipliği doğrulandı."
-            : "Hamil bağlama doğrulaması gerçekleştirilemedi.",
-          status: isVerified ? "SUCCESS" : "FAILED",
-          latencyMs: Math.max(0.01, Number((Number(latencyPerStep) * 0.25).toFixed(2))),
-          details: "Hamil İmzası: Geçerli"
-        },
-        {
-          id: "step-status",
-          title: "W3C Bitstring İptal Kütüğü Durum Kontrolü",
-          description: isVerified
-            ? "RevocationRegistry.sol sözleşmesinde Bit #104 '0' (Aktif) olarak teyit edildi."
-            : isRejected
-            ? "İptal kütüğü durumu doğrulanamadı veya kimlik iptal edilmiş."
-            : "İptal kütüğü kontrolü yapılamadı.",
-          status: isVerified ? "SUCCESS" : "FAILED",
-          latencyMs: Number(latencyPerStep),
-          details: "StatusList2021 Bitstring Kökü: 0x94635169d750b520e53f6a2a6be2739ef25d"
-        },
-        {
-          id: "step-minimization",
-          title: "DCQL Sorgu ve Veri Minimizasyonu Uyumluluğu",
-          description: isVerified
-            ? "İhraççı belgesi bütünlüğü korunarak, DCQL politikasına ve hamil onayına uygun aktarım sağlandı."
-            : "Veri minimizasyonu denetimi tamamlanamadı.",
-          status: isVerified ? "SUCCESS" : "FAILED",
-          latencyMs: Math.max(0.02, Number((Number(latencyPerStep) * 0.35).toFixed(2))),
-          details: "İfşa Edilen Alanlar: [Uyruk, Güvenlik Düzeyi]"
-        }
-      ]);
-
-      setResult({
-        overallStatus: res.status,
-        verifiedAt: new Date().toISOString(),
-        totalLatencyMs: totalTime.toFixed(2),
-        dataLeakageRisk: isVerified ? "%0 (Politika Uyumlu)" : "Belirsiz",
-        disclosedClaims: res.claims || samplePayload.disclosed_claims,
-        errors: res.errors
+      parsed = JSON.parse(presentationJson);
+    } catch {
+      setFormError("Presentation data must be valid JSON.");
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || !("presentation" in parsed)) {
+      setFormError("Provide a JSON object containing a presentation property.");
+      return;
+    }
+    if (!expectedChallenge.trim() || !expectedDomain.trim()) {
+      setFormError("Enter the challenge and domain issued for this verification request.");
+      return;
+    }
+    setVerifying(true);
+    const startedAt = performance.now();
+    try {
+      const verification = await verifyPresentation({
+        ...(parsed as Record<string, unknown>),
+        expectedChallenge: expectedChallenge.trim(),
+        expectedDomain: expectedDomain.trim(),
       });
-      setCompleted(true);
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "İstemci hatası";
-      setSteps([
-        {
-          id: "step-sig",
-          title: "Ed25519 Kriptografik İmza Doğrulaması",
-          description: "İstemci tarafı yürütme hatası veya bağlantı kesintisi.",
-          status: "FAILED",
-          latencyMs: 0.01,
-          details: errorMsg
-        },
-        {
-          id: "step-binding",
-          title: "Hamil Anahtar Bağlama (Holder Binding) Doğrulaması",
-          description: "Doğrulama işlemi tamamlanamadı.",
-          status: "FAILED",
-          latencyMs: 0.01
-        },
-        {
-          id: "step-status",
-          title: "W3C Bitstring İptal Kütüğü Kontrolü",
-          description: "Doğrulama işlemi tamamlanamadı.",
-          status: "FAILED",
-          latencyMs: 0.01
-        },
-        {
-          id: "step-minimization",
-          title: "DCQL Veri Minimizasyonu Teyidi",
-          description: "Doğrulama işlemi tamamlanamadı.",
-          status: "FAILED",
-          latencyMs: 0.01
-        }
-      ]);
-
-      setResult({
-        overallStatus: "UNAVAILABLE",
-        verifiedAt: new Date().toISOString(),
-        totalLatencyMs: "0.00",
-        dataLeakageRisk: "Bilinmiyor",
-        disclosedClaims: {},
-        errors: [errorMsg || "Doğrulama servisine bağlanılamadı."]
-      });
-      setCompleted(true);
+      setElapsedMs(performance.now() - startedAt);
+      setResult(verification);
+    } catch (cause) {
+      setElapsedMs(performance.now() - startedAt);
+      setFormError(cause instanceof Error ? cause.message : "Verification service request failed.");
     } finally {
       setVerifying(false);
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "900px" }}>
-      <button
-        onClick={() => navigate("/verifier")}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          backgroundColor: "transparent",
-          border: "none",
-          color: "#94a3b8",
-          fontSize: "0.85rem",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: 0,
-          width: "fit-content"
-        }}
-      >
-        <ArrowLeft size={16} />
-        <span>Doğrulama Paneline Geri Dön</span>
-      </button>
-
-      {/* Başlık Alanı */}
-      <div 
-        style={{ 
-          padding: "24px 28px",
-          borderRadius: "20px",
-          background: "linear-gradient(135deg, rgba(6, 26, 20, 0.9), rgba(15, 35, 28, 0.75))",
-          border: "1px solid rgba(16, 185, 129, 0.28)",
-          boxShadow: "0 20px 40px -15px rgba(0,0,0,0.6)"
-        }}
-      >
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
-          <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
-          <TrustBadge level="ED25519_SIGNED" size="sm" />
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "6px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", color: "#6ee7b7", fontSize: "0.72rem", fontWeight: 700 }}>
-            <span>9-NOKTALI KRİPTOGRAFİK DENETİM KONSOLU</span>
-          </div>
+    <main className="workspace-page verifier-verify-page">
+      <Link className="workspace-text-action verifier-back-link" to="/verifier"><ArrowLeft size={16} aria-hidden="true" /> Verifier workspace</Link>
+      <header className="workspace-page-header">
+        <div><p className="workspace-eyebrow">Presentation verification</p><h1>Verify a presentation</h1><p>Submit the presentation received for a request together with that request’s challenge and domain.</p></div>
+        <span className="verifier-protocol-label"><Search size={15} aria-hidden="true" /> Identity Service</span>
+      </header>
+      {formError && <div className="workspace-error" role="alert"><AlertCircle size={18} aria-hidden="true" /><span>{formError}</span></div>}
+      <form className="workspace-panel workspace-form verifier-verify-form" onSubmit={(event) => void handleVerify(event)} aria-busy={verifying}>
+        <div className="verifier-form-section__heading">
+          <span className="workspace-icon-tile"><Search size={19} aria-hidden="true" /></span>
+          <div><h2>Presentation payload</h2><p>Use the payload returned by the holder flow. The service decides the verification outcome.</p></div>
         </div>
-        <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>
-          Doğrulanabilir Sunum Denetimi (OID4VP)
-        </h1>
-        <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "6px 0 0 0", lineHeight: 1.4 }}>
-          Dijital imzaları, hamil bağlamayı, blokzincir iptal kütüğünü ve DCQL veri minimizasyonunu milisaniye hızında denetleyin.
-        </p>
-      </div>
-
-      {/* Kontrol Paneli */}
-      <div
-        className="glass-card-emerald"
-        style={{
-          padding: "20px 24px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "16px"
-        }}
-      >
-        <div>
-          <span style={{ fontSize: "0.88rem", fontWeight: 800, color: "#f8fafc" }}>
-            Denetlenen Sunum: VP-9021 (Havalimanı E-Kapı Geçişi)
-          </span>
-          <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "4px" }}>
-            İhraççı: <span style={{ color: "#6ee7b7" }}>did:gov:eudi:nvi-authority</span> • Biçim: W3C JSON-LD VP
-          </div>
+        <label className="workspace-field" htmlFor="presentation-json">
+          <span>Verifiable Presentation JSON</span>
+          <textarea id="presentation-json" className="form-textarea workspace-json-input verifier-json-input" value={presentationJson} onChange={(event) => setPresentationJson(event.target.value)} placeholder="Paste JSON containing the presentation property" spellCheck={false} autoCapitalize="off" autoCorrect="off" required aria-describedby="presentation-help" />
+          <small id="presentation-help">Values remain in this form until you leave or replace them.</small>
+        </label>
+        <div className="workspace-form-grid">
+          <label className="workspace-field" htmlFor="expected-challenge">
+            <span>Expected challenge</span>
+            <input id="expected-challenge" value={expectedChallenge} onChange={(event) => setExpectedChallenge(event.target.value)} autoComplete="off" required />
+            <small>Enter the challenge issued for this presentation request.</small>
+          </label>
+          <label className="workspace-field" htmlFor="expected-domain">
+            <span>Expected domain</span>
+            <input id="expected-domain" value={expectedDomain} onChange={(event) => setExpectedDomain(event.target.value)} autoComplete="url" required />
+            <small>Enter the domain bound to the request.</small>
+          </label>
         </div>
-
-        <button
-          onClick={handleRunVerification}
-          disabled={verifying}
-          style={{
-            padding: "10px 22px",
-            borderRadius: "10px",
-            backgroundColor: "#059669",
-            color: "#ffffff",
-            fontWeight: 700,
-            fontSize: "0.85rem",
-            border: "none",
-            cursor: verifying ? "not-allowed" : "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            boxShadow: "0 0 20px rgba(16,185,129,0.45)",
-            transition: "all 0.15s ease"
-          }}
-        >
-          <Search size={16} />
-          <span>{verifying ? "Kriptografik Denetim Yürütülüyor..." : "4 Aşamalı Doğrulamayı Başlat"}</span>
-        </button>
-      </div>
-
-      {/* Doğrulama Adımları Çizelgesi */}
-      <div className="glass-card-emerald" style={{ padding: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Kriptografik Denetim Boru Hattı
-          </h3>
-          {completed && result && <StatusChip status={result.overallStatus} />}
+        <div className="workspace-notice verifier-verification-notice"><ShieldAlert size={17} aria-hidden="true" /><p>Submit only to the verification service authorized for this presentation. This screen reports the service response; it does not create a separate history record or infer checks the API did not return.</p></div>
+        <div className="workspace-form-actions verifier-verify-actions">
+          <span className="workspace-footnote">A rejected or unavailable result is never treated as verified.</span>
+          <button type="submit" className="workspace-primary-action" disabled={verifying}>{verifying ? <Clock3 size={16} aria-hidden="true" /> : <Search size={16} aria-hidden="true" />}{verifying ? "Submitting to service…" : "Verify presentation"}</button>
         </div>
-
-        <VerificationChecklist steps={steps} />
-      </div>
-
-      {/* Sonuç Özeti Kutusu */}
-      {result && (
-        <div
-          className={
-            result.overallStatus === "VERIFIED"
-              ? "glass-card-emerald"
-              : result.overallStatus === "REJECTED"
-              ? "glass-card-crimson"
-              : "glass-card-amber"
-          }
-          style={{
-            padding: "24px",
-            border: `1px solid ${
-              result.overallStatus === "VERIFIED"
-                ? "rgba(16, 185, 129, 0.45)"
-                : result.overallStatus === "REJECTED"
-                ? "rgba(239, 68, 68, 0.45)"
-                : "rgba(245, 158, 11, 0.45)"
-            }`,
-            boxShadow: `0 0 25px ${
-              result.overallStatus === "VERIFIED"
-                ? "rgba(16, 185, 129, 0.2)"
-                : result.overallStatus === "REJECTED"
-                ? "rgba(239, 68, 68, 0.2)"
-                : "rgba(245, 158, 11, 0.2)"
-            }`
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              color:
-                result.overallStatus === "VERIFIED"
-                  ? "#34d399"
-                  : result.overallStatus === "REJECTED"
-                  ? "#f87171"
-                  : "#fbbf24",
-              fontWeight: 800,
-              fontSize: "1rem"
-            }}
-          >
-            {result.overallStatus === "VERIFIED" ? (
-              <CheckCircle2 size={22} />
-            ) : result.overallStatus === "REJECTED" ? (
-              <XCircle size={22} />
-            ) : (
-              <AlertTriangle size={22} />
-            )}
-            <span>
-              {result.overallStatus === "VERIFIED"
-                ? "DOĞRULANABİLİR SUNUM BAŞARIYLA KABUL EDİLDİ"
-                : result.overallStatus === "REJECTED"
-                ? "DOĞRULANABİLİR SUNUM REDDEDİLDİ"
-                : "DOĞRULAMA HİZMETİNE ERİŞİLEMEDİ (HATA / KULLANILAMAZ)"}
-            </span>
-          </div>
-
-          {result.errors && result.errors.length > 0 && (
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "10px 14px",
-                borderRadius: "8px",
-                backgroundColor: "rgba(0, 0, 0, 0.35)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-                color: "#fca5a5",
-                fontSize: "0.8rem",
-                fontFamily: "var(--font-mono)"
-              }}
-            >
-              {result.errors.map((err, i) => (
-                <div key={i}>{err}</div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginTop: "16px" }}>
-            <div style={{ backgroundColor: "rgba(10, 20, 16, 0.7)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Toplam Denetim Gecikmesi:</span>
-              <div style={{ fontWeight: 800, color: "#ffffff", fontFamily: "var(--font-mono)", fontSize: "1.1rem", marginTop: "2px" }}>
-                {result.totalLatencyMs} ms
-              </div>
-            </div>
-            <div style={{ backgroundColor: "rgba(10, 20, 16, 0.7)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Veri Sızıntı Riski:</span>
-              <div style={{ fontWeight: 800, color: result.overallStatus === "VERIFIED" ? "#34d399" : "#94a3b8", fontSize: "1.1rem", marginTop: "2px" }}>
-                {result.dataLeakageRisk}
-              </div>
-            </div>
-            <div style={{ backgroundColor: "rgba(10, 20, 16, 0.7)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>DCQL Politikası:</span>
-              <div style={{ fontWeight: 800, color: result.overallStatus === "VERIFIED" ? "#60a5fa" : "#94a3b8", fontSize: "0.95rem", marginTop: "4px" }}>
-                {result.overallStatus === "VERIFIED" ? "Yaş >= 18 (DCQL Onaylı)" : "Değerlendirilemedi"}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      </form>
+      <section className="workspace-panel workspace-verification-result verifier-result-panel" aria-labelledby="verification-result-title" aria-live="polite">
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">Service response</p><h2 id="verification-result-title">Verification result</h2></div>{result && <StatusChip status={result.status} />}</div>
+        {!result && <div className="verifier-result-waiting" role={verifying ? "status" : "note"}>{verifying ? <Clock3 size={20} aria-hidden="true" /> : <CircleHelp size={20} aria-hidden="true" />}<span>{verifying ? "Waiting for the Identity Service response…" : "No presentation has been checked in this session."}</span></div>}
+        {result && <div className={"verifier-result-outcome " + (result.verified ? "is-verified" : "is-rejected")} role="status">{result.verified ? <CheckCircle2 size={22} aria-hidden="true" /> : <ShieldAlert size={22} aria-hidden="true" />}<div><strong>{result.verified ? "Service reports verified" : "Service did not verify this presentation"}</strong><p>{result.status.replace(/_/g, " ")}</p></div></div>}
+        {result && <div className="workspace-result-details"><div><span>Verified</span><strong>{result.verified ? "Yes" : "No"}</strong></div>{result.signature_valid !== undefined && <div><span>Signature</span><strong>{result.signature_valid ? "Valid" : "Invalid"}</strong></div>}{result.challenge_valid !== undefined && <div><span>Challenge</span><strong>{result.challenge_valid ? "Valid" : "Invalid"}</strong></div>}{elapsedMs !== null && <div><span>Service round trip</span><strong>{elapsedMs.toFixed(1)} ms</strong></div>}</div>}
+        {result?.errors.length ? <ul className="workspace-result-errors" aria-label="Service reported errors">{result.errors.map((item, index) => <li key={index}>{item}</li>)}</ul> : null}
+      </section>
+    </main>
   );
 };

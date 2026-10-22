@@ -37,6 +37,9 @@ class Permission(StrEnum):
     WALLET_KEY_DESTROY = "wallet:key:destroy"
     WALLET_KEY_RECONCILE = "wallet:key:reconcile"
     ADMIN_KEY_RECONCILE = "admin:key:reconcile"
+    ADMIN_OPERATIONS_READ = "admin:operations:read"
+    ADMIN_USERS_READ = "admin:users:read"
+    ADMIN_USERS_WRITE = "admin:users:write"
     TRUST_REGISTRY_READ = "trust-registry:read"
     TRUST_REGISTRY_WRITE = "trust-registry:write"
 
@@ -48,7 +51,7 @@ _ROLE_PERMISSIONS = MappingProxyType(
             permission
             for permission in Permission
             if not permission.value.startswith(
-                ("wallet:key:", "admin:key:", "trust-registry:write")
+                ("wallet:key:", "admin:", "trust-registry:write")
             )
         ),
         Role.VERIFIER: frozenset(

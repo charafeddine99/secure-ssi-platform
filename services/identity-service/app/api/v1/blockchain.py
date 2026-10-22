@@ -101,40 +101,65 @@ def get_blockchain_status(
 def get_contracts_directory(
     bridge: Annotated[BlockchainBridge, Depends(get_blockchain_bridge)],
 ) -> dict[str, Any]:
+    connected = bridge.is_connected()
+    configured_contracts = [
+        (
+            "DIDRegistry.sol",
+            bridge.settings.did_registry_address,
+            "Anchors DID document digests.",
+            ["registerDID", "updateVCHash", "getDIDRecord", "isDIDRegistered"],
+        ),
+        (
+            "RevocationRegistry.sol",
+            bridge.settings.revocation_registry_address,
+            "Optional integrity anchoring for status-list and revocation digests.",
+            ["anchorStatusList", "revokeCredential", "isCredentialRevoked", "getStatusListAnchor"],
+        ),
+        (
+            "EmergencyRecovery.sol",
+            bridge.settings.emergency_recovery_address,
+            "Guardian recovery contract configuration; not used as the credential-validity authority.",
+            ["configureGuardians", "initiateRecovery", "approveRecovery", "quarantineWallet", "isWalletQuarantined"],
+        ),
+        (
+            "AuditLogger.sol",
+            bridge.settings.audit_logger_address,
+            "Optional digest-only event anchoring.",
+            ["logEvent", "getEventCount", "getEvent"],
+        ),
+    ]
+
+    contracts = []
+    for name, address, purpose, methods in configured_contracts:
+        deployment_verified: bool | None = None
+        if not address:
+            contract_status = "NOT_CONFIGURED"
+        elif not connected:
+            contract_status = "CONFIGURED_ONLY"
+        else:
+            try:
+                deployment_verified = bool(bridge.w3.eth.get_code(address))
+                contract_status = "DEPLOYED" if deployment_verified else "NO_CODE_AT_ADDRESS"
+            except Exception:
+                contract_status = "UNVERIFIED"
+
+        contracts.append(
+            {
+                "name": name,
+                "address": address or "",
+                "purpose": purpose,
+                "methods": methods,
+                "status": contract_status,
+                "deploymentVerified": deployment_verified,
+            }
+        )
+
     return {
         "status": "SUCCESS",
+        "connected": connected,
         "network": bridge.settings.network_name,
         "chainId": bridge.settings.chain_id,
-        "contracts": [
-            {
-                "name": "DIDRegistry.sol",
-                "address": bridge.settings.did_registry_address,
-                "purpose": "Anchors user DIDs to initial VC hashes and manages owner-authorized key rotations.",
-                "methods": ["registerDID(string, bytes32)", "updateVCHash(string, bytes32)", "getDIDRecord(string)", "isDIDRegistered(string)"],
-                "status": "ACTIVE"
-            },
-            {
-                "name": "RevocationRegistry.sol",
-                "address": bridge.settings.revocation_registry_address,
-                "purpose": "Anchors W3C Bitstring Status List roots and individual credential revocations.",
-                "methods": ["anchorStatusList(string, bytes32, uint256)", "revokeCredential(bytes32, bytes32)", "isCredentialRevoked(bytes32)", "getStatusListAnchor(address, string)"],
-                "status": "ACTIVE"
-            },
-            {
-                "name": "EmergencyRecovery.sol",
-                "address": bridge.settings.emergency_recovery_address,
-                "purpose": "EIP-4337 social recovery with M-of-N guardian consensus threshold and AI quarantine hooks.",
-                "methods": ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)", "isWalletQuarantined(address)"],
-                "status": "ACTIVE"
-            },
-            {
-                "name": "AuditLogger.sol",
-                "address": bridge.settings.audit_logger_address,
-                "purpose": "Gas-optimized on-chain event log for critical platform security and recovery milestones.",
-                "methods": ["logEvent(bytes32, uint8)", "getEventCount()", "getEvent(uint256)"],
-                "status": "ACTIVE"
-            }
-        ]
+        "contracts": contracts,
     }
 
 

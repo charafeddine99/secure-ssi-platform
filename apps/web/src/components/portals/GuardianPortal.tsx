@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "../../context/WalletContext";
-import { fetchGuardians, approveGuardian, BackendGuardian } from "../../services/api";
+import { fetchGuardians, BackendGuardian } from "../../services/api";
 
 export type GuardianScreen = 
   | "REQUESTS" | "REQUEST_DETAIL" | "APPROVE_REJECT" | "HISTORY";
@@ -22,7 +22,7 @@ interface RecoveryRequestItem {
 const INITIAL_REQUESTS: RecoveryRequestItem[] = [
   {
     id: "rec-req-9021-alpha",
-    targetDid: "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+    targetDid: "did:example:holder-001",
     walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
     newProposedKey: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     aiRiskScore: 0.08,
@@ -54,11 +54,7 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
     });
   }, []);
 
-  const handleApprove = async (reqId: string) => {
-    const targetWallet = selectedRequest.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-    // Send real on-chain guardian approval
-    await approveGuardian(1, targetWallet);
-
+  const handleApprove = (reqId: string) => {
     setRequests(prev => prev.map(r => {
       if (r.id === reqId) {
         return {
@@ -69,7 +65,7 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
       }
       return r;
     }));
-    setSignedMsg("✓ Vasi imzanız EIP-4337 EmergencyRecovery.sol sözleşmesine gönderildi. 2/3 Quorum eşiği karşılandı!");
+    setSignedMsg("Demo durumu güncellendi. Recovery Service'e veya blockchain'e gerçek onay gönderilmedi.");
   };
 
   const handleReject = (reqId: string) => {
@@ -79,11 +75,14 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
       }
       return r;
     }));
-    setSignedMsg("⚠️ Talep vasi tarafından güvenlik gerekçesiyle REDDEDİLDİ. Acil durum iptali tetiklendi.");
+    setSignedMsg("Demo talebi yerel ekranda reddedildi. Recovery Service'e gerçek karar gönderilmedi.");
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <aside role="note" style={{ padding: "12px 16px", border: "1px solid rgba(245, 158, 11, 0.45)", borderRadius: "8px", backgroundColor: "rgba(245, 158, 11, 0.1)", color: "#fbbf24", fontSize: "0.82rem" }}>
+        DEMO SIMULATION: the request rows and approve/reject controls on this embedded Guardian portal update local UI state only. They do not send a Guardian DID signature or an on-chain transaction. Use the connected Guardian pages for backend-bound decisions.
+      </aside>
       {/* 1. RECOVERY REQUESTS */}
       {activeScreen === "REQUESTS" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
@@ -95,7 +94,7 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
           }}>
             <div>
               <div style={{ fontSize: "12px", color: "#a855f7", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Sosyal Kurtarma Vasisi (Guardian Portal — EIP-4337 M-of-N Quorum)
+                Sosyal Kurtarma Vasisi (Guardian recovery prototype — demo data)
               </div>
               <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>
                 Bekleyen Cüzdan Kurtarma Talepleri
@@ -239,7 +238,7 @@ export const GuardianPortal: React.FC<{ activeScreen: GuardianScreen; onNavigate
                 {selectedRequest.aiRiskVerdict}
               </div>
               <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.6" }}>
-                XGBoost ve Autoencoder modelleri talep kaynağının güvenilir olduğunu, oturum anomalisi veya SIM-swap şüphesi olmadığını onaylamıştır.
+                Risk heuristiği yalnızca sentetik prototip sinyalleri üretir; vasi talebinin veya sahibinin güvenilir olduğunu kanıtlamaz.
               </p>
             </div>
           </div>

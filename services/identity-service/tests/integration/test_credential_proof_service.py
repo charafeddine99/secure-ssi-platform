@@ -71,6 +71,28 @@ def test_valid_unsigned_credential_is_signed_deterministically() -> None:
     assert len(decode_base58_btc(generated["proof"]["proofValue"])) == 64
 
 
+def test_valid_credential_status_entry_array_is_accepted() -> None:
+    unsigned = load_unsigned_credential()
+    unsigned["credentialStatus"] = [
+        {
+            "id": "urn:uuid:00000000-0000-4000-8000-000000000001",
+            "type": "BitstringStatusListEntry",
+            "statusPurpose": "revocation",
+            "statusListIndex": "0",
+            "statusListCredential": (
+                "https://status.example/lists/"
+                "revocation-000000000000000000000001"
+            ),
+        }
+    ]
+
+    service = build_local_proof_service()
+    signed = service.sign_credential(unsigned)
+
+    assert isinstance(signed["credentialStatus"], list)
+    assert service.verify_credential(signed).verified is True
+
+
 def test_valid_signed_credential_returns_a_structured_success() -> None:
     result = build_local_proof_service().verify_credential(
         load_signed_fixture()

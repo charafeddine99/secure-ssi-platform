@@ -1,44 +1,35 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import {
   claimOid4vciOffer,
+  getOrCreateHolderWallet,
 } from "../../services/api";
+import { parseOid4vpRequestSessionId } from "../../utils/oid4vpRequestUri";
 import {
-  Camera,
-  ArrowRight,
+  ClipboardPaste,
   CheckCircle2,
 } from "lucide-react";
 
 export const ScanQrPage: React.FC = () => {
   const navigate = useNavigate();
 
+  const [credentialOffer, setCredentialOffer] = useState<{
+    preAuthorizedCode: string;
+    configurationId: string;
+    issuer?: string;
+  } | null>(null);
   const [inputUri, setInputUri] = useState<string>("");
+  const [offerConsent, setOfferConsent] = useState(false);
   const [claiming, setClaiming] = useState<boolean>(false);
   const [claimSuccess, setClaimSuccess] = useState<boolean>(false);
   const [claimedCredId, setClaimedCredId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const demoRequests = [
-    {
-      id: "EGATE",
-      title: "European Border Control & E-Gates",
-      purpose: "Automated citizenship clearance and active student verification.",
-      uri: "openid4vp://?client_id=did:web:trust.eudi.europa.eu&request_uri=http://localhost:8000/api/v1/oid4vp/requests/session_egate_demo",
-      type: "OID4VP",
-    },
-    {
-      id: "CAMPUS_OFFER",
-      title: "University Issuance Portal (OID4VCI)",
-      purpose: "Higher Education Affiliation Credential Offer from accredited authority.",
-      uri: "openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22http%3A%2F%2Flocalhost%3A8001%22%2C%22credential_configuration_ids%22%3A%5B%22UniversityAffiliationCredential%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22demo_code_12345%22%7D%7D%7D",
-      type: "OID4VCI",
-    },
-  ];
-
   const handleProcessUri = async (uri: string) => {
     setError(null);
     setClaimSuccess(false);
+    setCredentialOffer(null);
+    setOfferConsent(false);
 
     const trimmed = uri.trim();
     if (!trimmed) {
@@ -46,37 +37,35 @@ export const ScanQrPage: React.FC = () => {
       return;
     }
 
-    // 1. OID4VCI Offer Flow
+    // 1. OID4VCI Offer Flow: parse and review before requesting issuance.
     if (trimmed.startsWith("openid-credential-offer://")) {
       try {
-        setClaiming(true);
         // Extract credential_offer param
         const url = new URL(trimmed.replace("openid-credential-offer://", "https://placeholder/"));
         const rawOffer = url.searchParams.get("credential_offer");
-        let preAuthCode = "demo_code_12345";
-        if (rawOffer) {
-          const parsed = JSON.parse(decodeURIComponent(rawOffer));
-          preAuthCode =
-            parsed?.grants?.["urn:ietf:params:oauth:grant-type:pre-authorized_code"]?.["pre-authorized_code"] ||
-            preAuthCode;
+        if (!rawOffer) {
+          throw new Error("This wallet supports inline credential_offer values; credential_offer_uri links are not supported.");
         }
-
-        const holderDid =
-          localStorage.getItem("ssi_user_did") ||
-          "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP";
-
-        const res = await claimOid4vciOffer({
+        const parsed = JSON.parse(rawOffer) as {
+          credential_issuer?: unknown;
+          credential_configuration_ids?: unknown;
+          grants?: Record<string, { "pre-authorized_code"?: unknown } | undefined>;
+        };
+        const preAuthCode = parsed.grants?.["urn:ietf:params:oauth:grant-type:pre-authorized_code"]?.["pre-authorized_code"];
+        const configurationIds = parsed.credential_configuration_ids;
+        if (typeof preAuthCode !== "string" || !preAuthCode) {
+          throw new Error("Credential offer does not include a pre-authorized code.");
+        }
+        if (!Array.isArray(configurationIds) || configurationIds.length !== 1 || typeof configurationIds[0] !== "string") {
+          throw new Error("This wallet can claim one credential configuration per offer.");
+        }
+        setCredentialOffer({
           preAuthorizedCode: preAuthCode,
-          holderDid,
-          walletId: "wallet_holder_primary",
+          configurationId: configurationIds[0],
+          issuer: typeof parsed.credential_issuer === "string" ? parsed.credential_issuer : undefined,
         });
-
-        setClaimSuccess(true);
-        setClaimedCredId(res.credentialId);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to claim OID4VCI offer.");
-      } finally {
-        setClaiming(false);
       }
       return;
     }
@@ -84,10 +73,7 @@ export const ScanQrPage: React.FC = () => {
     // 2. OID4VP Presentation Flow
     if (trimmed.startsWith("openid4vp://")) {
       try {
-        const url = new URL(trimmed.replace("openid4vp://", "https://placeholder/"));
-        const reqUri = url.searchParams.get("request_uri") || "";
-        const parts = reqUri.split("/");
-        const sessionId = parts[parts.length - 1] || "session_demo";
+        const sessionId = parseOid4vpRequestSessionId(trimmed);
 
         navigate("/wallet/consent", {
           state: {
@@ -104,9 +90,39 @@ export const ScanQrPage: React.FC = () => {
     setError("Unrecognized QR protocol. Must start with openid-credential-offer:// or openid4vp://");
   };
 
+  const handleAcceptCredentialOffer = async () => {
+    if (!credentialOffer || !offerConsent || claiming) return;
+    setClaiming(true);
+    setError(null);
+    try {
+      const wallet = await getOrCreateHolderWallet();
+      const res = await claimOid4vciOffer({
+        preAuthorizedCode: credentialOffer.preAuthorizedCode,
+        holderDid: wallet.holderDid,
+        walletId: wallet.walletId,
+        credentialConfigurationId: credentialOffer.configurationId,
+      });
+      setClaimedCredId(res.credentialId);
+      setClaimSuccess(true);
+      setCredentialOffer(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to claim OID4VCI offer.");
+    } finally {
+      setClaiming(false);
+    }
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "680px", margin: "0 auto" }}>
-      <div
+    <main className="holder-page holder-scan-page">
+      <header className="holder-page-header">
+        <div>
+          <p className="holder-page-eyebrow">WALLET ACTION</p>
+          <h1>Open an offer or request</h1>
+          <p>Continue from a real OpenID credential offer or verifier request.</p>
+        </div>
+      </header>
+      <section
+        className="holder-scan-panel"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -118,41 +134,40 @@ export const ScanQrPage: React.FC = () => {
           textAlign: "center",
         }}
       >
-        {/* Simulated Camera Viewfinder */}
         <div
           style={{
             width: "200px",
             height: "200px",
             borderRadius: "20px",
-            border: "2px dashed #2563eb",
-            backgroundColor: "#070a12",
+            border: "1px solid #1f2937",
+            backgroundColor: "#0d131f",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
             marginBottom: "18px",
-            boxShadow: "inset 0 0 20px rgba(37,99,235,0.15)",
+            boxShadow: "inset 0 0 20px rgba(37,99,235,0.08)",
           }}
         >
-          <Camera size={36} color="#60a5fa" style={{ marginBottom: "8px" }} />
+            <ClipboardPaste size={36} color="#60a5fa" style={{ marginBottom: "8px" }} aria-hidden="true" />
           <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-            Scan OID4VCI / OID4VP QR
+            Paste a live wallet URI
           </span>
-          <div style={{ position: "absolute", top: "10px", right: "10px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
-          </div>
         </div>
 
-        <h3 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#ffffff", margin: "0 0 6px 0" }}>
-          Holder QR Scanner & Deep Link Dispatcher
-        </h3>
-        <p style={{ fontSize: "0.82rem", color: "#94a3b8", maxWidth: "420px", margin: "0 0 20px 0" }}>
-          Scan an Issuer's Credential Offer QR to receive credentials, or scan a Verifier's Request QR to present credentials with selective disclosure.
+        <div className="holder-scan-supported-flows" aria-label="Supported URI types">
+          <span>Credential offer</span><span>Verifier request</span>
+        </div>
+        <p className="holder-scan-explanation">
+          Paste the URI provided by the issuer or verifier. This web flow does not access your camera; the relevant service validates the request.
         </p>
 
         {error && (
           <div
+            className="holder-inline-error"
+            role="alert"
+            id="holder-request-error"
             style={{
               width: "100%",
               padding: "10px 14px",
@@ -171,6 +186,8 @@ export const ScanQrPage: React.FC = () => {
 
         {claimSuccess && (
           <div
+            className="holder-inline-success"
+            role="status"
             style={{
               width: "100%",
               padding: "16px",
@@ -188,7 +205,7 @@ export const ScanQrPage: React.FC = () => {
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700 }}>
               <CheckCircle2 size={18} />
-              Credential Successfully Claimed via OID4VCI!
+              Credential received from the issuer
             </div>
             <div style={{ fontSize: "0.75rem", color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
               ID: {claimedCredId}
@@ -214,13 +231,43 @@ export const ScanQrPage: React.FC = () => {
           </div>
         )}
 
+        {credentialOffer && (
+          <section className="holder-offer-review" aria-labelledby="holder-offer-review-title">
+            <div>
+              <p className="holder-page-eyebrow">OFFER REVIEW</p>
+              <h2 id="holder-offer-review-title">Credential not received yet</h2>
+              <p>Confirm only if you trust this issuer. The offer metadata does not include the issued credential claims, so they cannot be previewed here.</p>
+            </div>
+            <dl>
+              <div><dt>Issuer</dt><dd>{credentialOffer.issuer || "Not supplied by offer"}</dd></div>
+              <div><dt>Credential profile</dt><dd>{credentialOffer.configurationId}</dd></div>
+            </dl>
+            <label className="holder-offer-consent">
+              <input type="checkbox" checked={offerConsent} onChange={(event) => setOfferConsent(event.target.checked)} />
+              <span>I reviewed the available offer details and want the issuer to issue this credential to my wallet.</span>
+            </label>
+            <div className="holder-offer-review__actions">
+              <button type="button" className="holder-secondary-action" onClick={() => { setCredentialOffer(null); setOfferConsent(false); }} disabled={claiming}>Close offer</button>
+              <button type="button" className="holder-primary-action" onClick={handleAcceptCredentialOffer} disabled={claiming || !offerConsent}>
+                {claiming ? "Contacting issuer…" : "Accept and request credential"}
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* Manual URI Input */}
-        <div style={{ width: "100%", display: "flex", gap: "8px", marginBottom: "20px" }}>
+        <div className="holder-scan-form">
+          <label htmlFor="holder-request-uri">Credential offer or verifier request URI</label>
           <input
+            id="holder-request-uri"
             type="text"
-            placeholder="Paste openid-credential-offer:// or openid4vp:// URI..."
+            placeholder="openid-credential-offer://… or openid4vp://…"
             value={inputUri}
             onChange={(e) => setInputUri(e.target.value)}
+            aria-invalid={!!error}
+            aria-describedby={error ? "holder-request-error" : "holder-request-help"}
+            autoComplete="off"
+            spellCheck={false}
             style={{
               flex: 1,
               padding: "10px 14px",
@@ -235,7 +282,8 @@ export const ScanQrPage: React.FC = () => {
           <button
             type="button"
             onClick={() => handleProcessUri(inputUri)}
-            disabled={claiming}
+            disabled={claiming || !inputUri.trim()}
+            className="holder-primary-action"
             style={{
               padding: "10px 18px",
               borderRadius: "8px",
@@ -250,56 +298,17 @@ export const ScanQrPage: React.FC = () => {
               gap: "6px",
             }}
           >
-            {claiming ? "Processing..." : "Process URI"}
+            Review URI
           </button>
         </div>
 
-        {/* Demo Fast Triggers */}
-        <div style={{ width: "100%", textAlign: "left", borderTop: "1px solid #1f2937", paddingTop: "16px" }}>
-          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: "10px" }}>
-            Or test with one-click protocol samples:
-          </span>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {demoRequests.map((req) => (
-              <div
-                key={req.id}
-                onClick={() => {
-                  setInputUri(req.uri);
-                  handleProcessUri(req.uri);
-                }}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: "10px",
-                  backgroundColor: "#0d131f",
-                  border: "1px solid #1f2937",
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#ffffff" }}>
-                    {req.title}
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "2px" }}>
-                    {req.purpose}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#fbbf24", backgroundColor: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "2px 6px", borderRadius: "4px" }}>
-                    DEMO LAB
-                  </span>
-                  <span style={{ color: "#60a5fa", fontSize: "0.75rem", fontWeight: 600 }}>{req.type}</span>
-                  <ArrowRight size={14} color="#60a5fa" />
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* The URI must come from a live backend-issued request or offer. */}
+        <div id="holder-request-help" className="holder-scan-help">
+          <span>Supported schemes</span>
+          <code>openid-credential-offer://</code>
+          <code>openid4vp://</code>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };

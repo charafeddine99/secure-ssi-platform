@@ -23,9 +23,11 @@ Implemented:
   authorization after RBAC.
 
 A MongoDB user repository and authentication adapter are now available as an
-explicit opt-in. There is no registration, user provisioning API, refresh
-token, logout, token blacklist, session cookie, MFA, rate limiting, external
-identity provider, password reset, or account recovery.
+explicit opt-in. There is no self-registration or account-creation API,
+refresh token, session cookie, MFA, rate limiting, external identity provider,
+password reset, or account recovery. `POST /api/v1/auth/revoke` supports
+current-token logout through a process-local JTI blacklist; it is not shared
+between workers and is lost on process restart.
 
 ## Architecture
 
@@ -90,6 +92,27 @@ user's wallet, credential, holder DID, or presentation. Foreign and absent
 object reads intentionally return the same `404`. The only administrative
 override is the explicit, audited, admin-only stale-presentation reconciliation
 operation; it does not bypass holder proof or credential binding checks.
+
+### Issuer institution scope
+
+Persistent Issuer accounts may carry an optional, server-provisioned
+`issuerDid` binding. Authentication reloads that value from the user provider;
+the login form, request body, and JWT role claims cannot assign or replace it.
+Issuer-scoped credential signing, OID4VCI offer creation and listing, and
+credential revocation/history use this binding. An unbound account is denied
+these operations, and offer creation also requires the configured signing
+provider to support the bound DID. Admin retains the permissions defined by
+the matrix above, while the signing provider still limits signing to its
+configured issuer keys.
+
+`issuerDid` is optional so existing persisted users remain readable. Existing
+Issuer accounts without a binding must receive one through an authorized
+server-side process before using issuer-scoped operations. The Admin API can
+list persistent user records and assign an existing Issuer account to a
+currently trusted institution for which a signing key is configured. It does
+not create accounts or grant roles, and synthetic fixture accounts are
+read-only. The client cannot set this field during login or through Issuer
+routes.
 
 ## Password hashing
 
@@ -214,6 +237,37 @@ The response returns the current public user, roles, permissions, and
 `authenticationSource: local-synthetic-fixture` or `mongodb`. It never returns
 the raw JWT, password, password hash, or JWT secret.
 
+### Revoke the current access token
+
+```http
+POST /api/v1/auth/revoke
+Authorization: Bearer <access-token>
+```
+
+The Identity Service records the token JTI in an in-memory revocation store.
+The same process rejects that token on subsequent protected requests. This
+does not provide cross-worker or restart-safe revocation.
+
+### Manage an existing Issuer account's institution scope
+
+```http
+GET /api/v1/admin/users
+GET /api/v1/admin/users/issuer-options
+PUT /api/v1/admin/users/{user_id}/issuer-scope
+Authorization: Bearer <admin access-token>
+Content-Type: application/json
+
+{"issuerDid":"did:web:issuer.example","expectedVersion":1}
+```
+
+All three routes require the Admin-only `admin:users:read` or
+`admin:users:write` permission and the MongoDB user provider. The directory
+returns public account fields only; the scope update uses optimistic version
+checking and appends a `USER_ISSUER_SCOPE_UPDATED` audit event. A selected DID
+must have a current active Issuer trust record and a configured signing key.
+Sending `issuerDid: null` removes the binding and blocks the account from
+Issuer-scoped operations. The endpoint does not create users or assign roles.
+
 ### Sign a credential
 
 ```http
@@ -308,11 +362,13 @@ Passwords, request bodies, Authorization headers, full JWTs, password hashes,
 JWT secrets, credential proof values, and credentials are not logged.
 Request IDs are correlation values only and are not durable audit records.
 
-Access tokens are short-lived, but there is no immediate blacklist or token
-revocation after issuance. Disabled and role state is rechecked on every
-request, which prevents a token from overriding current provider state. The
-new Mongo repositories do not implement token revocation or refresh-token
-rotation; those workflows remain explicitly deferred.
+Access tokens are short-lived. `POST /api/v1/auth/revoke` decodes the supplied
+Bearer token and blacklists its JTI in the local process; a later protected
+request handled by that process rejects the revoked token. The blacklist is
+volatile and process-local, so another worker or a restart may not observe
+the revocation. Disabled and role state is rechecked on every request, which
+prevents a token from overriding current provider state. Durable/distributed
+revocation and refresh-token rotation remain deferred.
 
 ## Dependency notes
 

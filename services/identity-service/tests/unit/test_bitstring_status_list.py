@@ -2,6 +2,8 @@ import base64
 import gzip
 from datetime import UTC, datetime
 
+import pytest
+
 from app.domain.bitstring_status_list import (
     MINIMUM_STATUS_LIST_ENTRIES,
     CredentialStatusEntry,
@@ -18,6 +20,8 @@ from app.infrastructure.crypto.local_issuer_key_provider import (
 from app.infrastructure.crypto.multibase import decode_base58_btc
 from app.infrastructure.status_list_document_generator import (
     StatusListDocumentGenerator,
+    decode_status_list_bit,
+    decompress_status_list,
     encode_status_list,
 )
 
@@ -80,6 +84,33 @@ def test_bitstring_encoding_uses_msb_indexing_and_is_deterministic() -> None:
     assert bitstring[0] == 0b10000000
     assert bitstring[1] == 0b00000001
     assert bitstring[-1] == 0b00000001
+
+
+def test_status_list_decoder_requires_w3c_multibase_prefix() -> None:
+    encoded = encode_status_list(
+        (),
+        list_length=MINIMUM_STATUS_LIST_ENTRIES,
+    )
+
+    with pytest.raises(ValueError, match="multibase prefix"):
+        decompress_status_list(encoded[1:])
+
+
+def test_status_list_decoder_rejects_shorter_than_w3c_minimum() -> None:
+    encoded = encode_status_list((), list_length=8)
+
+    with pytest.raises(ValueError, match="shorter than the W3C minimum"):
+        decompress_status_list(encoded)
+
+
+def test_status_list_bit_decoder_rejects_index_at_list_length() -> None:
+    encoded = encode_status_list(
+        (),
+        list_length=MINIMUM_STATUS_LIST_ENTRIES,
+    )
+
+    with pytest.raises(ValueError, match="outside the encoded bitstring"):
+        decode_status_list_bit(encoded, MINIMUM_STATUS_LIST_ENTRIES)
 
 
 def test_status_list_document_is_signed_with_local_data_integrity_key() -> None:

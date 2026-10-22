@@ -7,6 +7,7 @@ session termination upon logout, security incident quarantine, or emergency reco
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Dict, Optional, Set
 
@@ -14,8 +15,9 @@ from typing import Dict, Optional, Set
 class TokenRevocationStore:
     """Thread-safe revocation registry for JWTs and compromised subjects."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: Callable[[], datetime] | None = None) -> None:
         self._lock = threading.Lock()
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         # jti -> (revoked_at, expires_at, reason)
         self._revoked_jtis: Dict[str, tuple[datetime, Optional[datetime], str]] = {}
         # subject (user_id / did) -> (revoked_at, reason)
@@ -30,7 +32,7 @@ class TokenRevocationStore:
         """Revokes a specific JWT by its JTI."""
         if not jti:
             return
-        now = datetime.now(timezone.utc)
+        now = self._clock()
         with self._lock:
             self._revoked_jtis[jti] = (now, expires_at, reason)
             self._prune_expired_locked(now)
@@ -43,7 +45,7 @@ class TokenRevocationStore:
         """Revokes all current and future tokens for a given subject (user / DID)."""
         if not subject:
             return
-        now = datetime.now(timezone.utc)
+        now = self._clock()
         with self._lock:
             self._revoked_subjects[subject] = (now, reason)
 
@@ -54,7 +56,7 @@ class TokenRevocationStore:
 
     def is_revoked(self, jti: str, subject: Optional[str] = None) -> bool:
         """Checks if a JTI or subject is actively revoked."""
-        now = datetime.now(timezone.utc)
+        now = self._clock()
         with self._lock:
             if jti in self._revoked_jtis:
                 _, expires_at, _ = self._revoked_jtis[jti]

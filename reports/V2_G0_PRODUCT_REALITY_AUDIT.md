@@ -7,6 +7,13 @@
 **Audit Mode**: READ-ONLY Product Reality & Conformance Audit (Zero Application Changes)  
 **Deliverable Artifact**: `reports/V2_G0_PRODUCT_REALITY_AUDIT.md`  
 
+> **Historical read-only snapshot — 4 October 2026.** Findings below refer to
+> baseline commit `77e4fee`, not the current working tree. The revised final
+> plan controls engineering scope; current implementation evidence and gate
+> status are in the
+> [G0–G16 matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md)
+> and [test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ---
 
 ## 1. Executive Summary

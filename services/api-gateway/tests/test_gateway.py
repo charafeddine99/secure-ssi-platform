@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from app.api.routes import proxy as proxy_routes
 from app.main import app
 
 client = TestClient(app)
@@ -18,10 +19,73 @@ def test_system_status_aggregation():
     assert "fraud_service" in data["services"]
     assert "recovery_service" in data["services"]
 
-def test_proxy_route_structure():
-    # Servis kapalıyken 503 veya 502 düzgün hata dönmeli (çökmemeli)
+def test_system_status_marks_optional_chain_and_persistence_truthfully(monkeypatch):
+    class FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if url.endswith("/health"):
+                return FakeResponse(200)
+            if url.endswith("/api/v1/blockchain/status"):
+                return FakeResponse(200, {"connected": False})
+            if url.endswith("/api/v1/database/stats"):
+                return FakeResponse(503)
+            raise AssertionError(f"Unexpected health dependency URL: {url}")
+
+    monkeypatch.setattr(
+        proxy_routes.httpx,
+        "AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    response = client.get("/api/v1/system/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["services"]["blockchain_node"] == "DEGRADED"
+    assert data["blockchain"]["connected"] is False
+    assert data["database"] == {"status": "UNAVAILABLE"}
+    assert data["system_health"] == "PARTIAL"
+
+def test_proxy_route_structure(monkeypatch):
+    # Keep this offline-path test independent from whichever service happens
+    # to be listening on localhost:8002 on the developer's machine.
+    requested = []
+
+    class UnavailableClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, *, method, url, **_kwargs):
+            requested.append((method, url))
+            raise proxy_routes.httpx.ConnectError("fraud service unavailable")
+
+    monkeypatch.setattr(
+        proxy_routes.httpx,
+        "AsyncClient",
+        lambda **_kwargs: UnavailableClient(),
+    )
+
     response = client.get("/api/v1/fraud/stats")
-    assert response.status_code in (200, 502, 503)
+    assert response.status_code == 503
+    assert requested == [
+        ("GET", "http://127.0.0.1:8002/api/v1/fraud/stats")
+    ]
 
 def test_correlation_id_middleware():
     # 1. Automatic generation

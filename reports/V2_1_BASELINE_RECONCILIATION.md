@@ -14,6 +14,12 @@
 
 ---
 
+> **Historical V2.1 baseline snapshot — 5 October 2026.** The baseline commit,
+> plan status, and gap descriptions below are preserved as audit history; they
+> do not describe the current working tree. Engineering control now follows the
+> [revised final plan](../docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md)
+> and current [G0–G16 gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md).
+
 ## A. Baseline Acknowledgement
 
 The V2.1 Source-Validated Master Implementation Plan (`SECURE_SSI_PLATFORM_V2_1_MASTER_IMPLEMENTATION_PLAN.pdf` / `.md`) is hereby formally acknowledged as the **sole authoritative implementation baseline** for the Secure SSI Platform.

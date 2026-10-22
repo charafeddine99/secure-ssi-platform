@@ -9,9 +9,9 @@ from sklearn.preprocessing import MinMaxScaler
 
 class FeaturePipeline:
     """
-    Data processing and normalization pipeline using pandas and scikit-learn.
-    Extracts behavioral, temporal, and network features from raw authentication events
-    and normalizes them for the hybrid XGBoost + Autoencoder detection engine.
+    Deterministic feature extraction for synthetic prototype events.
+    IP-pattern and device signals are simple heuristics; they are not threat
+    intelligence, device identity, or trained-model features.
     """
 
     def __init__(self):
@@ -28,8 +28,7 @@ class FeaturePipeline:
 
     def _init_baseline_scaler(self):
         """
-        Fit the MinMaxScaler with representative baseline distributions
-        of legitimate and anomalous SSI authentication events.
+        Set fixed scaling bounds for configured heuristic inputs.
         """
         baseline_data = pd.DataFrame({
             "failed_attempts": [0, 1, 2, 3, 5, 10, 20],

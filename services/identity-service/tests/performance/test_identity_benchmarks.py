@@ -6,6 +6,7 @@ Benchmarks:
 3. OID4VP 9-point verification pipeline latency and invariant checks.
 """
 
+import json
 import time
 from pathlib import Path
 import pytest
@@ -126,6 +127,8 @@ def test_vc_issuance_performance_workloads(identity_crypto_engine):
             "p95_ms": latencies_ms[int(count * 0.95)],
             "p99_ms": latencies_ms[int(count * 0.99)],
         }
+
+    print("IDENTITY_BENCHMARK=" + json.dumps(results, sort_keys=True))
 
     # Verify minimum performance constraints
     assert results[100]["throughput_cps"] >= 150.0, f"Issuance throughput below target: {results[100]['throughput_cps']:.1f}"

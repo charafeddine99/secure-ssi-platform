@@ -47,6 +47,15 @@ def test_token_revocation_store_expired_pruning(store: TokenRevocationStore):
     assert not store.is_revoked(jti)
 
 
+def test_token_revocation_store_uses_injected_clock():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    store = TokenRevocationStore(clock=lambda: now)
+
+    store.revoke_token("fixed-clock-jti", expires_at=now + timedelta(minutes=1))
+
+    assert store.is_revoked("fixed-clock-jti")
+
+
 def test_token_revocation_api_endpoint():
     get_token_revocation_store().clear()
     client = TestClient(app)

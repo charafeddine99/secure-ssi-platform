@@ -103,6 +103,8 @@ def test_principal_public_model_contains_no_secret_fields() -> None:
         "roles",
         "permissions",
         "authentication_source",
+        "issuer_did",
     }
+    assert serialized["issuer_did"] is None
     assert "password" not in repr(principal).lower()
     assert "secret" not in repr(principal).lower()

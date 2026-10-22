@@ -34,58 +34,16 @@ class ArchitectureDecisionTests(unittest.TestCase):
                 for text in required_text:
                     self.assertIn(text, content)
 
-    def test_readme_marks_current_sprints_complete_and_policy_as_next(
+    def test_readme_points_to_current_plan_and_does_not_restate_stale_sprints(
         self,
     ) -> None:
         readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(
-            "[Completed] Select the prototype DID methods and credential proof format",
+            "docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md",
             readme,
         )
-        self.assertIn(
-            "[Completed] Build resolver validation and synthetic DID fixtures",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Define versioned VC fixture and verification-result models",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Prototype VC Data Model 2.0 signing and verification",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add MongoDB-backed credential lifecycle status, irreversible revocation",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add W3C-oriented Bitstring Status List publication",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add issuance-time credential-status binding",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add short-lived multi-credential Verifiable Presentations",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add holder wallets, object ownership, opaque key references",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add provider-neutral external KMS/HSM ports",
-            readme,
-        )
-        self.assertIn(
-            "[Completed] Add Guardian assignments, generic M-of-N policy",
-            readme,
-        )
-        self.assertIn(
-            "[Next] Add explainable AI fraud detection",
-            readme,
-        )
+        self.assertIn("reports/PROJECT_WIDE_AUDIT_PROGRESS_2026-10-13.md", readme)
+        self.assertNotIn("[Next] Add explainable AI fraud detection", readme)
 
     def test_all_local_markdown_links_resolve(self) -> None:
         for markdown_file in PROJECT_ROOT.rglob("*.md"):

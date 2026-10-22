@@ -1,9 +1,15 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from secrets import token_urlsafe
 from threading import Lock
 
+import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from app.application.ports.managed_keys import ManagedKeyRecoveryOutcome
+from app.application.ports.repositories import RecoveryRepository
 from app.application.services.metrics import RecoveryMetrics
 from app.application.services.recovery_service import RecoveryService
 from app.core.config import load_settings
@@ -106,17 +112,55 @@ class FakeManagedKeyGateway:
 @dataclass
 class TestRuntime:
     service: RecoveryService
-    repository: MemoryRecoveryRepository
+    repository: RecoveryRepository
     gateway: FakeManagedKeyGateway
     metrics: RecoveryMetrics
     clock: MutableClock
     owner: RecoveryPrincipal
     admin: RecoveryPrincipal
     guardians: tuple[RecoveryPrincipal, ...]
+    guardian_dids: dict[str, str]
+    guardian_signing_keys: dict[str, Ed25519PrivateKey]
+
+    def sign_decision(
+        self,
+        *,
+        guardian_id: str,
+        request_id: str,
+        challenge: str,
+        decision: str = "APPROVE",
+    ) -> str:
+        guardian = self.repository.get_guardian(guardian_id)
+        request = self.repository.get_request(request_id)
+        if guardian is None or request is None:
+            raise AssertionError("Guardian and recovery request must exist in test runtime")
+        key = self.guardian_signing_keys[guardian.guardian_user_id]
+        issued_at = int(self.clock().timestamp())
+        return jwt.encode(
+            {
+                "iss": guardian.guardian_did,
+                "sub": guardian.guardian_id,
+                "aud": "secure-ssi-platform:guardian-recovery",
+                "requestId": request.request_id,
+                "sessionId": request.session.session_id,
+                "walletId": request.wallet_id,
+                "decision": decision,
+                "challenge": challenge,
+                "iat": issued_at,
+                "exp": issued_at + 120,
+                "jti": token_urlsafe(18),
+            },
+            key,
+            algorithm="EdDSA",
+            headers={
+                "typ": "guardian-recovery+jwt",
+                "kid": guardian.verification_method,
+            },
+        )
 
 
-def build_runtime() -> TestRuntime:
-    repository = MemoryRecoveryRepository()
+def build_runtime(repository: RecoveryRepository | None = None) -> TestRuntime:
+    repository = repository or MemoryRecoveryRepository()
     gateway = FakeManagedKeyGateway()
     metrics = RecoveryMetrics()
     clock = MutableClock()
@@ -137,7 +181,17 @@ def build_runtime() -> TestRuntime:
         RecoveryPrincipal.from_claims(f"usr_guardian_{index}", ("holder",))
         for index in range(1, 8)
     )
-    return TestRuntime(
+    guardian_signing_keys = {
+        guardian.user_id: Ed25519PrivateKey.from_private_bytes(
+            sha256(f"recovery-test-guardian:{guardian.user_id}".encode()).digest()
+        )
+        for guardian in guardians
+    }
+    guardian_dids = {
+        guardian.user_id: _did_key(guardian_signing_keys[guardian.user_id])
+        for guardian in guardians
+    }
+    runtime = TestRuntime(
         service=service,
         repository=repository,
         gateway=gateway,
@@ -146,7 +200,61 @@ def build_runtime() -> TestRuntime:
         owner=owner,
         admin=admin,
         guardians=guardians,
+        guardian_dids=guardian_dids,
+        guardian_signing_keys=guardian_signing_keys,
     )
+    # State-machine tests exercise the real verifier while keeping each test
+    # focused on its scenario; API tests pass explicit request proofs.
+    approve = service.approve
+    reject = service.reject
+
+    def approve_with_test_proof(
+        principal: RecoveryPrincipal,
+        request_id: str,
+        *,
+        guardian_id: str,
+        challenge: str,
+        proof: str | None = None,
+    ):
+        proof = proof or runtime.sign_decision(
+            guardian_id=guardian_id,
+            request_id=request_id,
+            challenge=challenge,
+            decision="APPROVE",
+        )
+        return approve(
+            principal,
+            request_id,
+            guardian_id=guardian_id,
+            challenge=challenge,
+            proof=proof,
+        )
+
+    def reject_with_test_proof(
+        principal: RecoveryPrincipal,
+        request_id: str,
+        *,
+        guardian_id: str,
+        challenge: str,
+        proof: str | None = None,
+    ):
+        proof = proof or runtime.sign_decision(
+            guardian_id=guardian_id,
+            request_id=request_id,
+            challenge=challenge,
+            decision="REJECT",
+        )
+        return reject(
+            principal,
+            request_id,
+            guardian_id=guardian_id,
+            challenge=challenge,
+            proof=proof,
+        )
+
+    service.approve = approve_with_test_proof  # type: ignore[method-assign]
+    service.reject = reject_with_test_proof  # type: ignore[method-assign]
+    return runtime
 
 
 def configure_guardians(
@@ -174,12 +282,31 @@ def configure_guardians(
             runtime.owner,
             wallet_id=WALLET_ID,
             guardian_user_id=principal.user_id,
-            guardian_did=f"did:key:zGuardianRecovery{index:02d}",
+            guardian_did=runtime.guardian_dids[principal.user_id],
             display_name=f"Guardian {index}",
             verification_method=(
-                f"did:key:zGuardianRecovery{index:02d}#"
-                f"zGuardianRecovery{index:02d}"
+                f"{runtime.guardian_dids[principal.user_id]}#"
+                f"{runtime.guardian_dids[principal.user_id][len('did:key:'):]}"
             ),
         )
         ids.append(guardian.guardian_id)
     return tuple(ids)
+
+
+def _did_key(private_key: Ed25519PrivateKey) -> str:
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return "did:key:z" + _encode_base58_btc(b"\xed\x01" + public_key)
+
+
+def _encode_base58_btc(value: bytes) -> str:
+    alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    number = int.from_bytes(value, "big")
+    encoded = ""
+    while number:
+        number, remainder = divmod(number, 58)
+        encoded = alphabet[remainder] + encoded
+    leading_zeroes = len(value) - len(value.lstrip(b"\x00"))
+    return "1" * leading_zeroes + (encoded or ("1" if not leading_zeroes else ""))

@@ -403,9 +403,11 @@ non-enumeration, OpenAPI, and opt-in real MongoDB behavior.
   writes. A database outage or process crash between them can leave an audit
   gap; production requires a transaction, embedded intent, or audited
   backfill/reconciliation design.
-- Guardian recovery now reuses this boundary, but no Guardian DID signature,
-  independent share delivery, blockchain, AI, DIDComm, Presentation Exchange,
-  selective disclosure, mobile wallet, or frontend is part of this KMS sprint.
+- Guardian recovery now reuses this boundary and verifies challenge-bound
+  EdDSA proofs for registered `did:key` Guardians. The signing key remains
+  server-managed; independent device possession and share delivery are not
+  established. Blockchain, AI, DIDComm, Presentation Exchange, selective
+  disclosure, mobile wallet, and frontend are outside this KMS sprint.
 
 ## Future extensions
 

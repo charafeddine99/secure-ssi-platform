@@ -17,6 +17,8 @@ class BlockchainAnchorStatus(str, Enum):
     PENDING = "PENDING"
     SUBMITTED = "SUBMITTED"
     CONFIRMED = "CONFIRMED"
+    SKIPPED = "SKIPPED"
+    OFFLINE = "OFFLINE"
     FAILED = "FAILED"
 
 
@@ -75,7 +77,10 @@ class BlockchainAnchorRecord:
             metadata=dict(metadata or {}),
         )
 
-    def mark_submitted(self, tx_hash: str) -> BlockchainAnchorRecord:
+    def mark_submitted(
+        self, tx_hash: str, *, error_message: str | None = None
+    ) -> BlockchainAnchorRecord:
+        _validate_transaction_hash(tx_hash)
         return BlockchainAnchorRecord(
             anchor_id=self.anchor_id,
             event_type=self.event_type,
@@ -90,12 +95,15 @@ class BlockchainAnchorRecord:
             tx_hash=tx_hash,
             block_number=self.block_number,
             confirmed_at=self.confirmed_at,
-            error_message=None,
+            error_message=error_message,
             retry_count=self.retry_count,
             metadata=self.metadata,
         )
 
     def mark_confirmed(self, tx_hash: str, block_number: int) -> BlockchainAnchorRecord:
+        _validate_transaction_hash(tx_hash)
+        if block_number < 0:
+            raise ValueError("block_number must not be negative")
         return BlockchainAnchorRecord(
             anchor_id=self.anchor_id,
             event_type=self.event_type,
@@ -115,7 +123,54 @@ class BlockchainAnchorRecord:
             metadata=self.metadata,
         )
 
-    def mark_failed(self, error_message: str) -> BlockchainAnchorRecord:
+    def mark_skipped(self, reason: str) -> BlockchainAnchorRecord:
+        if not reason.strip():
+            raise ValueError("A skipped anchor requires an explanatory reason.")
+        return BlockchainAnchorRecord(
+            anchor_id=self.anchor_id,
+            event_type=self.event_type,
+            event_hash=self.event_hash,
+            contract_type=self.contract_type,
+            contract_address=self.contract_address,
+            network=self.network,
+            chain_id=self.chain_id,
+            status=BlockchainAnchorStatus.SKIPPED,
+            created_at=self.created_at,
+            subject_id=self.subject_id,
+            error_message=reason,
+            retry_count=self.retry_count,
+            metadata=self.metadata,
+        )
+
+    def mark_offline(self, reason: str) -> BlockchainAnchorRecord:
+        if not reason.strip():
+            raise ValueError("An offline anchor requires an explanatory reason.")
+        return BlockchainAnchorRecord(
+            anchor_id=self.anchor_id,
+            event_type=self.event_type,
+            event_hash=self.event_hash,
+            contract_type=self.contract_type,
+            contract_address=self.contract_address,
+            network=self.network,
+            chain_id=self.chain_id,
+            status=BlockchainAnchorStatus.OFFLINE,
+            created_at=self.created_at,
+            subject_id=self.subject_id,
+            error_message=reason,
+            retry_count=self.retry_count,
+            metadata=self.metadata,
+        )
+
+    def mark_failed(
+        self,
+        error_message: str,
+        *,
+        tx_hash: str | None = None,
+        block_number: int | None = None,
+    ) -> BlockchainAnchorRecord:
+        resolved_tx_hash = tx_hash if tx_hash is not None else self.tx_hash
+        if resolved_tx_hash is not None:
+            _validate_transaction_hash(resolved_tx_hash)
         return BlockchainAnchorRecord(
             anchor_id=self.anchor_id,
             event_type=self.event_type,
@@ -127,10 +182,21 @@ class BlockchainAnchorRecord:
             status=BlockchainAnchorStatus.FAILED,
             created_at=self.created_at,
             subject_id=self.subject_id,
-            tx_hash=self.tx_hash,
-            block_number=self.block_number,
+            tx_hash=resolved_tx_hash,
+            block_number=block_number if block_number is not None else self.block_number,
             confirmed_at=self.confirmed_at,
             error_message=error_message,
             retry_count=self.retry_count + 1,
             metadata=self.metadata,
         )
+
+
+def _validate_transaction_hash(tx_hash: str) -> None:
+    if len(tx_hash) != 66 or not tx_hash.startswith("0x"):
+        raise ValueError("A transaction hash must be 32 bytes of 0x-prefixed hex.")
+    try:
+        value = bytes.fromhex(tx_hash[2:])
+    except ValueError as exc:
+        raise ValueError("A transaction hash must be hexadecimal.") from exc
+    if len(value) != 32 or value == bytes(32):
+        raise ValueError("A transaction hash must be a non-zero 32-byte value.")

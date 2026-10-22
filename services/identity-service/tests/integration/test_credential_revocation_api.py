@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.dependencies import (
     get_clock,
     get_credential_revocation_service,
+    get_current_principal,
     get_status_list_service,
 )
 from app.application.services.credential_revocation_service import (
@@ -22,6 +23,8 @@ from app.config.status_list_settings import StatusListSettings
 from app.domain.credential_status import CredentialStatus
 from app.domain.bitstring_status_list import generate_status_list_id
 from app.domain.persistence import AuditEventType, PersistedCredential
+from app.domain.auth import AuthenticatedPrincipal, User
+from app.domain.permissions import Role
 from app.infrastructure.persistence.repositories import (
     MongoAuditEventRepository,
     MongoCredentialRepository,
@@ -530,6 +533,36 @@ def test_cross_issuer_revocation_forbidden_and_admin_allowed(
     )
     assert res_admin.status_code == 200
     assert res_admin.json()["status"] == "REVOKED"
+
+
+def test_persistent_issuer_binding_blocks_foreign_revoke_and_history(
+    revocation_client: tuple[TestClient, RevocationRuntime],
+) -> None:
+    client, _ = revocation_client
+    foreign_issuer = AuthenticatedPrincipal.from_user(
+        User(
+            id="65b6d65dc6a2a614d63be032",
+            username="foreign-issuer@example.test",
+            display_name="Foreign Issuer",
+            roles=(Role.ISSUER,),
+            issuer_did="did:web:foreign-issuer.example.test",
+        ),
+        authentication_source="mongodb",
+    )
+    app.dependency_overrides[get_current_principal] = lambda: foreign_issuer
+
+    revoke_response = client.post(
+        f"/api/v1/credentials/{CREDENTIAL_ID}/revoke",
+        json={"reason": "Cross-institution access check"},
+    )
+    history_response = client.get(
+        f"/api/v1/credentials/{CREDENTIAL_ID}/history",
+    )
+
+    assert revoke_response.status_code == 403
+    assert revoke_response.json()["error"]["code"] == "PERMISSION_DENIED"
+    assert history_response.status_code == 403
+    assert history_response.json()["error"]["code"] == "PERMISSION_DENIED"
 
 
 def test_credential_history_endpoint_and_authorization(

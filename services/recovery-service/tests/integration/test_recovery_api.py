@@ -71,11 +71,11 @@ def _configure(client: TestClient, runtime, *, time_lock: int = 10) -> list[str]
             json={
                 "walletId": WALLET_ID,
                 "guardianUserId": guardian.user_id,
-                "guardianDid": f"did:key:zApiGuardianRecovery{index:02d}",
+                "guardianDid": runtime.guardian_dids[guardian.user_id],
                 "displayName": f"API Guardian {index}",
                 "verificationMethod": (
-                    f"did:key:zApiGuardianRecovery{index:02d}#"
-                    f"zApiGuardianRecovery{index:02d}"
+                    f"{runtime.guardian_dids[guardian.user_id]}#"
+                    f"{runtime.guardian_dids[guardian.user_id][len('did:key:'):]}"
                 ),
             },
         )
@@ -158,6 +158,11 @@ def test_recovery_api_full_flow_and_no_share_disclosure(api) -> None:
             json={
                 "guardianId": guardian_ids[index],
                 "challenge": body["challenge"],
+                "proof": runtime.sign_decision(
+                    guardian_id=guardian_ids[index],
+                    request_id=request_id,
+                    challenge=body["challenge"],
+                ),
             },
         )
         assert response.status_code == 200, response.text
@@ -183,6 +188,69 @@ def test_recovery_api_full_flow_and_no_share_disclosure(api) -> None:
     )
 
 
+def test_guardian_decision_requires_valid_request_bound_did_proof(api) -> None:
+    client, runtime = api
+    guardian_ids = _configure(client, runtime)
+    created = client.post(
+        "/api/v1/recovery/requests",
+        headers=_headers(runtime.owner.user_id),
+        json={"walletId": WALLET_ID, "reason": "LOST_ACCESS"},
+    ).json()
+    request_id = created["requestId"]
+    path = f"/api/v1/recovery/requests/{request_id}/approve"
+    guardian_headers = _headers(runtime.guardians[0].user_id)
+    body = {
+        "guardianId": guardian_ids[0],
+        "challenge": created["challenge"],
+    }
+
+    missing = client.post(path, headers=guardian_headers, json=body)
+    assert missing.status_code == 422
+
+    wrong_decision_proof = runtime.sign_decision(
+        guardian_id=guardian_ids[0],
+        request_id=request_id,
+        challenge=created["challenge"],
+        decision="REJECT",
+    )
+    mismatch = client.post(
+        path,
+        headers=guardian_headers,
+        json={**body, "proof": wrong_decision_proof},
+    )
+    assert mismatch.status_code == 409
+    assert runtime.repository.list_approvals(request_id) == ()
+
+    valid_proof = runtime.sign_decision(
+        guardian_id=guardian_ids[0],
+        request_id=request_id,
+        challenge=created["challenge"],
+    )
+    parts = valid_proof.split(".")
+    signature = parts[2]
+    tampered_signature = signature[:-1] + ("A" if signature[-1] != "A" else "B")
+    tampered = ".".join((parts[0], parts[1], tampered_signature))
+    invalid = client.post(
+        path,
+        headers=guardian_headers,
+        json={**body, "proof": tampered},
+    )
+    assert invalid.status_code == 409
+    assert runtime.repository.list_approvals(request_id) == ()
+    assert any(
+        event.event_type.value == "GUARDIAN_PROOF_REJECTED"
+        for event in runtime.repository.list_audit_events(request_id)
+    )
+
+    valid = client.post(
+        path,
+        headers=guardian_headers,
+        json={**body, "proof": valid_proof},
+    )
+    assert valid.status_code == 200, valid.text
+    assert len(runtime.repository.list_approvals(request_id)) == 1
+
+
 def test_api_rbac_non_enumeration_duplicate_decision_and_cancellation(api) -> None:
     client, runtime = api
     guardian_ids = _configure(client, runtime)
@@ -193,12 +261,18 @@ def test_api_rbac_non_enumeration_duplicate_decision_and_cancellation(api) -> No
         json={"walletId": WALLET_ID, "reason": "LOST_ACCESS"},
     ).json()
     path = f"/api/v1/recovery/requests/{created['requestId']}"
+    first_proof = runtime.sign_decision(
+        guardian_id=guardian_ids[0],
+        request_id=created["requestId"],
+        challenge=created["challenge"],
+    )
     first = client.post(
         path + "/approve",
         headers=_headers(runtime.guardians[0].user_id),
         json={
             "guardianId": guardian_ids[0],
             "challenge": created["challenge"],
+            "proof": first_proof,
         },
     )
     duplicate = client.post(
@@ -207,6 +281,7 @@ def test_api_rbac_non_enumeration_duplicate_decision_and_cancellation(api) -> No
         json={
             "guardianId": guardian_ids[0],
             "challenge": created["challenge"],
+            "proof": first_proof,
         },
     )
     foreign = client.get(path, headers=_headers("usr_foreign_holder"))
@@ -223,6 +298,11 @@ def test_api_rbac_non_enumeration_duplicate_decision_and_cancellation(api) -> No
         json={
             "guardianId": guardian_ids[1],
             "challenge": created["challenge"],
+            "proof": runtime.sign_decision(
+                guardian_id=guardian_ids[1],
+                request_id=created["requestId"],
+                challenge=created["challenge"],
+            ),
         },
     )
 

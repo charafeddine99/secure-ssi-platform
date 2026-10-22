@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -15,6 +15,25 @@ from app.schemas.credential_api import ApiModel
 
 class HolderWalletCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class GuardianRecoveryProofRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    request_id: Annotated[str, Field(alias="requestId", min_length=16, max_length=128)]
+    session_id: Annotated[str, Field(alias="sessionId", min_length=16, max_length=128)]
+    guardian_id: Annotated[str, Field(alias="guardianId", min_length=16, max_length=128)]
+    wallet_id: Annotated[str, Field(alias="walletId", min_length=16, max_length=128)]
+    guardian_did: Annotated[str, Field(alias="guardianDid", min_length=16, max_length=512)]
+    challenge: Annotated[str, Field(min_length=32, max_length=256)]
+    decision: Literal["APPROVE", "REJECT"]
+
+
+class GuardianRecoveryProofResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    guardian_did: str = Field(alias="guardianDid")
+    proof: str
 
 
 class HolderWalletResponse(ApiModel):
@@ -47,6 +66,7 @@ class WalletCredentialResponse(ApiModel):
     expiration_date: datetime | None
     status_list_id: str | None = None
     status_list_index: int | None = None
+    credential: dict[str, Any] | None = None
 
     @classmethod
     def from_domain(
@@ -61,6 +81,11 @@ class WalletCredentialResponse(ApiModel):
             expiration_date=credential.expiration_date,
             status_list_id=credential.status_list_id,
             status_list_index=credential.status_list_index,
+            credential=(
+                dict(credential.raw_credential)
+                if credential.raw_credential is not None
+                else None
+            ),
         )
 
 

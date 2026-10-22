@@ -16,16 +16,16 @@ detector = HybridFraudDetector()
     "/api/fraud_detection",
     response_model=FraudDetectionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Evaluate SSI authentication event for fraud & anomaly risk"
+    summary="Evaluate synthetic prototype signals with advisory rules"
 )
 async def evaluate_fraud_risk(payload: FraudDetectionRequest):
     """
-    Evaluates an authentication event using a data normalization pipeline (pandas + scikit-learn)
-    and a representative hybrid XGBoost + Autoencoder machine learning engine.
+    Evaluates synthetic prototype signals with deterministic rules. This is not
+    a trained model and does not determine credential validity or issuer trust.
 
     Returns:
     - risk_score: Integer between 0 and 100
-    - is_fraudulent: Boolean (true if risk_score > 70)
+    - is_fraudulent: A thresholded heuristic flag, advisory only
     """
     try:
         # Validate incoming data constraints
@@ -41,7 +41,7 @@ async def evaluate_fraud_risk(payload: FraudDetectionRequest):
                 detail="Invalid payload: 'recent_failed_attempts' cannot be negative."
             )
 
-        # 1. Pipeline: Feature extraction & normalization with pandas + scikit-learn
+        # Feature extraction and normalization for the fixed heuristic rules.
         _, normalized_features = pipeline.process_and_normalize(
             did_id=payload.did_id,
             timestamp=payload.timestamp,
@@ -50,7 +50,7 @@ async def evaluate_fraud_risk(payload: FraudDetectionRequest):
             recent_failed_attempts=payload.recent_failed_attempts
         )
 
-        # 2. Hybrid ML Engine: XGBoost-inspired + Autoencoder inference
+        # Deterministic heuristic evaluation (no trained model is loaded).
         result = detector.evaluate(normalized_features)
 
         logger.info(
@@ -63,7 +63,9 @@ async def evaluate_fraud_risk(payload: FraudDetectionRequest):
             is_fraudulent=result["is_fraudulent"],
             did_id=payload.did_id,
             anomaly_score=result["anomaly_score"],
-            reasons=result["reasons"]
+            reasons=result["reasons"],
+            model_version=result["model_version"],
+            advisory_only=True,
         )
 
     except HTTPException:
@@ -72,5 +74,5 @@ async def evaluate_fraud_risk(payload: FraudDetectionRequest):
         logger.exception("Unexpected error during fraud evaluation pipeline")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI fraud evaluation engine failure: {str(exc)}"
+            detail="Heuristic risk evaluation could not be completed."
         )

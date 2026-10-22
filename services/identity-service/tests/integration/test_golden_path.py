@@ -54,6 +54,90 @@ def _get_headers(client: TestClient, role: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _create_wallet(client: TestClient, holder_headers: dict[str, str]) -> dict[str, str]:
+    response = client.post("/api/v1/wallets", json={}, headers=holder_headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _claim_offer_with_wallet(
+    client: TestClient,
+    *,
+    pre_authorized_code: str,
+    wallet: dict[str, str],
+    holder_headers: dict[str, str],
+) -> dict[str, Any]:
+    token_res = client.post(
+        "/api/v1/oid4vci/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            "pre-authorized_code": pre_authorized_code,
+        },
+    )
+    assert token_res.status_code == 200, token_res.text
+    token = token_res.json()
+    metadata = client.get(
+        "/api/v1/oid4vci/.well-known/openid-credential-issuer"
+    ).json()
+    proof_res = client.post(
+        "/api/v1/oid4vci/holder-proof",
+        json={
+            "walletId": wallet["walletId"],
+            "audience": metadata["credential_issuer"],
+            "nonce": token["c_nonce"],
+        },
+        headers=holder_headers,
+    )
+    assert proof_res.status_code == 200, proof_res.text
+    assert proof_res.json()["holderDid"] == wallet["holderDid"]
+    credential_res = client.post(
+        "/api/v1/oid4vci/credential",
+        json={
+            "credentialConfigurationId": "QualifiedElectronicAttestationCredential",
+            "walletId": wallet["walletId"],
+            "proof": {"proofType": "jwt", "jwt": proof_res.json()["jwt"]},
+        },
+        headers={"Authorization": f"Bearer {token['access_token']}"},
+    )
+    assert credential_res.status_code == 200, credential_res.text
+    return credential_res.json()
+
+
+def _create_consented_wallet_presentation(
+    client: TestClient,
+    *,
+    session: dict[str, Any],
+    credential_id: str,
+    wallet: dict[str, str],
+    holder_headers: dict[str, str],
+    approved_claims: dict[str, Any],
+) -> dict[str, Any]:
+    consent = client.post(
+        f"/api/v1/oid4vp/requests/{session['sessionId']}/wallet-consent",
+        json={
+            "walletId": wallet["walletId"],
+            "holderDid": wallet["holderDid"],
+            "action": "APPROVE",
+            "approvedCredentials": [credential_id],
+            "approvedClaims": approved_claims,
+        },
+        headers=holder_headers,
+    )
+    assert consent.status_code == 200, consent.text
+    presentation = client.post(
+        "/api/v1/oid4vp/wallet-presentation",
+        json={
+            "sessionId": session["sessionId"],
+            "walletId": wallet["walletId"],
+            "credentialIds": [credential_id],
+            "disclosedClaims": approved_claims,
+        },
+        headers=holder_headers,
+    )
+    assert presentation.status_code == 200, presentation.text
+    return presentation.json()["vpToken"]
+
+
 def test_golden_path_complete_lifecycle():
     """
     Executes the full 13-step Golden Path lifecycle from issuance offer to verification.
@@ -62,6 +146,7 @@ def test_golden_path_complete_lifecycle():
         issuer_hdrs = _get_headers(client, "issuer")
         holder_hdrs = _get_headers(client, "holder")
         verifier_hdrs = _get_headers(client, "verifier")
+        wallet = _create_wallet(client, holder_hdrs)
 
         # =========================================================================
         # 1. Issuer creates credential offer (OID4VCI)
@@ -72,7 +157,7 @@ def test_golden_path_complete_lifecycle():
                 "Sertifika Sahibi": "Charaf Eddine Bessanane",
                 "Unvan": "Senior Distributed Systems & SSI Security Architect",
                 "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
-                "holder_did": HOLDER_DID,
+                "holder_did": wallet["holderDid"],
             },
             "ttlSeconds": 1800,
         }
@@ -104,24 +189,22 @@ def test_golden_path_complete_lifecycle():
         # =========================================================================
         # 3. Holder claims offer
         # =========================================================================
-        claim_payload = {
-            "preAuthorizedCode": pre_auth_code,
-            "holderDid": HOLDER_DID,
-            "walletId": "wallet_holder_primary",
-        }
-        res_claim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
-        assert res_claim.status_code == 201, f"Step 3 failed: {res_claim.text}"
-        claim_data = res_claim.json()
+        claim_data = _claim_offer_with_wallet(
+            client,
+            pre_authorized_code=pre_auth_code,
+            wallet=wallet,
+            holder_headers=holder_hdrs,
+        )
 
         # =========================================================================
         # 4. Credential is persisted (Gap A verification)
         # =========================================================================
         assert claim_data["status"] == "ACTIVE"
-        cred_uuid = claim_data["credential_id"]
         signed_vc = claim_data["credential"]
+        cred_uuid = signed_vc["id"]
         assert signed_vc["id"] == cred_uuid
         assert signed_vc["issuer"] is not None
-        assert signed_vc["credentialSubject"]["id"] == HOLDER_DID
+        assert signed_vc["credentialSubject"]["id"] == wallet["holderDid"]
         assert signed_vc["credentialSubject"]["Sertifika Sahibi"] == "Charaf Eddine Bessanane"
         assert signed_vc["proof"]["type"] == "DataIntegrityProof"
         assert signed_vc["proof"]["cryptosuite"] == "eddsa-jcs-2022"
@@ -136,8 +219,34 @@ def test_golden_path_complete_lifecycle():
         assert len(claimed_ids) == 0, "Claimed offer must not remain in pending offers"
 
         # Re-claiming must be rejected
-        res_reclaim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
-        assert res_reclaim.status_code == 409, "Double claim must be rejected"
+        res_reclaim = client.post(
+            "/api/v1/oid4vci/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                "pre-authorized_code": pre_auth_code,
+            },
+        )
+        assert res_reclaim.status_code == 400, "Double claim must be rejected"
+        assert res_reclaim.json()["error"] == "invalid_grant"
+
+        inventory = client.get(
+            f"/api/v1/wallets/{wallet['walletId']}/credentials",
+            headers=holder_hdrs,
+        )
+        assert inventory.status_code == 200
+        from app.api.v1 import dependencies
+
+        repository = dependencies.get_credential_repository(
+            dependencies._MONGO_MANAGER
+        )
+        persisted = repository.get_by_credential_id(cred_uuid)
+        assert persisted is not None
+        assert persisted.wallet_id == wallet["walletId"]
+        assert persisted.owner_user_id == wallet["ownerUserId"]
+        assert any(
+            record["credentialId"] == cred_uuid
+            for record in inventory.json()["credentials"]
+        ), inventory.json()
 
         # =========================================================================
         # 6. Verifier creates verification request session (OID4VP)
@@ -163,12 +272,18 @@ def test_golden_path_complete_lifecycle():
         # =========================================================================
         # 7. Holder approves presentation & builds VP bound to nonce
         # =========================================================================
-        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
-        verifiable_presentation = build_signed_presentation(
-            signed_vc,
-            nonce=nonce,
-            domain="http://testserver/verifier",
-            holder_did=HOLDER_DID,
+        approved_claims = {
+            "Sertifika Sahibi": "Charaf Eddine Bessanane",
+            "Unvan": "Senior Distributed Systems & SSI Security Architect",
+            "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
+        }
+        verifiable_presentation = _create_consented_wallet_presentation(
+            client,
+            session=session_data,
+            credential_id=cred_uuid,
+            wallet=wallet,
+            holder_headers=holder_hdrs,
+            approved_claims=approved_claims,
         )
 
         # =========================================================================
@@ -177,11 +292,7 @@ def test_golden_path_complete_lifecycle():
         direct_post_payload = {
             "sessionId": session_id,
             "vpToken": verifiable_presentation,
-            "disclosedClaims": {
-                "Sertifika Sahibi": "Charaf Eddine Bessanane",
-                "Unvan": "Senior Distributed Systems & SSI Security Architect",
-                "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
-            },
+            "disclosedClaims": approved_claims,
             "aiRiskScore": 12,
         }
         res_dp = client.post("/api/v1/oid4vp/response", json=direct_post_payload)
@@ -199,13 +310,18 @@ def test_golden_path_complete_lifecycle():
         assert dp_result["revocationStatusClear"] is True, "6. Status list revocation must be clear"
         assert dp_result["challengeValid"] is True, "7. Session challenge/nonce must match"
         assert dp_result["aiRiskLevel"] == "LOW", "8. AI risk score must be acceptable"
-        assert dp_result["blockchainAnchored"] is True, "9. Event anchoring must be verified"
+        # Integrity anchoring is optional in the frozen project profile. This
+        # local Golden Path has no receipt-backed anchor provider, so the
+        # verifier must report UNANCHORED without changing credential policy.
+        assert dp_result["blockchainAnchored"] is False
         assert dp_result["finalPolicyResult"] == "ACCEPTED", "Final policy decision must be ACCEPTED"
 
         # =========================================================================
         # 13. Audit event & Session state verification
         # =========================================================================
-        res_session_check = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        res_session_check = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_session_check.status_code == 200
         verified_session = res_session_check.json()
         assert verified_session["status"] == "VERIFIED"
@@ -297,10 +413,24 @@ def test_golden_path_nonce_mismatch_rejected():
         assert dp_result["finalPolicyResult"] == "REJECTED"
 
 
-def test_golden_path_crypto_failure_hierarchy():
+def test_golden_path_crypto_failure_hierarchy(monkeypatch: pytest.MonkeyPatch):
     """
     Security Invariant: A cryptographic failure MUST result in REJECTED even with low AI risk score.
     """
+    from app.application.services.oid4vp_service import fraud_client
+
+    monkeypatch.setattr(
+        fraud_client,
+        "evaluate_presentation_risk",
+        lambda **kwargs: {
+            "risk_score": 5,
+            "reasons": [],
+            "model_version": "test-server-heuristic-v1",
+            "risk_signals": ["server_test_signal"],
+            "advisory_only": True,
+            "source": "test_server_evaluator",
+        },
+    )
     with TestClient(app) as client:
         verifier_hdrs = _get_headers(client, "verifier")
 
@@ -331,13 +461,15 @@ def test_golden_path_crypto_failure_hierarchy():
             json={
                 "sessionId": session_id,
                 "vpToken": untrusted_vp,
-                "aiRiskScore": 5,  # Very low AI risk score!
             }
         )
         assert res_dp.status_code == 200
         dp_result = res_dp.json()["result"]
-        # AI risk is LOW, but crypto/issuer is invalid, so policy MUST be REJECTED
+        # A server-computed risk score is LOW, but crypto/issuer is invalid,
+        # so policy MUST be REJECTED.
+        assert dp_result["aiRiskScore"] == 5
         assert dp_result["aiRiskLevel"] == "LOW"
+        assert dp_result["details"]["aiRisk"]["source"] == "test_server_evaluator"
         assert dp_result["issuerTrusted"] is False or dp_result["signatureValid"] is False
         assert dp_result["finalPolicyResult"] == "REJECTED"
 
@@ -357,6 +489,7 @@ def test_golden_path_revoked_credential_rejection():
         issuer_hdrs = _get_headers(client, "issuer")
         holder_hdrs = _get_headers(client, "holder")
         verifier_hdrs = _get_headers(client, "verifier")
+        wallet = _create_wallet(client, holder_hdrs)
 
         # 1. Issuer creates offer
         offer_payload = {
@@ -364,7 +497,7 @@ def test_golden_path_revoked_credential_rejection():
             "subjectData": {
                 "Sertifika Sahibi": "Charaf Eddine Bessanane",
                 "Unvan": "Senior Distributed Systems & SSI Security Architect",
-                "holder_did": HOLDER_DID,
+                "holder_did": wallet["holderDid"],
             },
             "ttlSeconds": 1800,
         }
@@ -373,16 +506,14 @@ def test_golden_path_revoked_credential_rejection():
         pre_auth_code = res_offer.json()["preAuthorizedCode"]
 
         # 2. Holder claims credential
-        claim_payload = {
-            "preAuthorizedCode": pre_auth_code,
-            "holderDid": HOLDER_DID,
-            "walletId": "wallet_holder_primary",
-        }
-        res_claim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
-        assert res_claim.status_code == 201
-        claim_data = res_claim.json()
-        cred_uuid = claim_data["credential_id"]
+        claim_data = _claim_offer_with_wallet(
+            client,
+            pre_authorized_code=pre_auth_code,
+            wallet=wallet,
+            holder_headers=holder_hdrs,
+        )
         signed_vc = claim_data["credential"]
+        cred_uuid = signed_vc["id"]
         assert claim_data["status"] == "ACTIVE"
 
         # Confirm credentialStatus is embedded
@@ -405,12 +536,17 @@ def test_golden_path_revoked_credential_rejection():
         nonce = res_session.json()["nonce"]
 
         # 4. Holder builds presentation bound to nonce
-        from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
-        verifiable_presentation = build_signed_presentation(
-            signed_vc,
-            nonce=nonce,
-            domain="http://testserver/verifier",
-            holder_did=HOLDER_DID,
+        approved_claims = {
+            "Sertifika Sahibi": "Charaf Eddine Bessanane",
+            "Unvan": "Senior Distributed Systems & SSI Security Architect",
+        }
+        verifiable_presentation = _create_consented_wallet_presentation(
+            client,
+            session=res_session.json(),
+            credential_id=cred_uuid,
+            wallet=wallet,
+            holder_headers=holder_hdrs,
+            approved_claims=approved_claims,
         )
 
         # 5. Authoritative Revocation: Issuer revokes the credential
@@ -429,10 +565,7 @@ def test_golden_path_revoked_credential_rejection():
         direct_post_payload = {
             "sessionId": session_id,
             "vpToken": verifiable_presentation,
-            "disclosedClaims": {
-                "Sertifika Sahibi": "Charaf Eddine Bessanane",
-                "Unvan": "Senior Distributed Systems & SSI Security Architect",
-            },
+            "disclosedClaims": approved_claims,
             "aiRiskScore": 0,  # Zero fraud risk detected by AI!
         }
         res_dp = client.post("/api/v1/oid4vp/response", json=direct_post_payload)
@@ -448,7 +581,9 @@ def test_golden_path_revoked_credential_rejection():
         )
 
         # 8. Check verification session state
-        res_session_check = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        res_session_check = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_session_check.status_code == 200
         session_body = res_session_check.json()
         assert session_body["status"] == "REJECTED"

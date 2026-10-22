@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Dict, Tuple
+from collections import OrderedDict
 from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -38,17 +38,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     """
-    Sliding-window token bucket rate limiter to protect microservice APIs from DoS
+    Sliding-window rate limiter to protect microservice APIs from DoS
     and brute-force credential stuffing.
     - Standard endpoints: 180 requests per minute.
     - Sensitive endpoints (auth, credentials, recovery): 30 requests per minute.
     """
-    def __init__(self, app, max_requests: int = 180, window_seconds: int = 60, sensitive_requests: int = 30):
+    def __init__(
+        self,
+        app,
+        max_requests: int = 180,
+        window_seconds: int = 60,
+        sensitive_requests: int = 30,
+        max_clients: int = 10_000,
+    ):
         super().__init__(app)
+        if max_clients < 1:
+            raise ValueError("max_clients must be greater than zero")
         self.max_requests = max_requests
         self.sensitive_requests = sensitive_requests
         self.window_seconds = window_seconds
-        self.clients: Dict[str, list] = {}
+        self.max_clients = max_clients
+        self.clients: OrderedDict[str, list[float]] = OrderedDict()
 
     def _is_sensitive_path(self, path: str) -> bool:
         sensitive_prefixes = (
@@ -72,6 +82,10 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         is_sensitive = self._is_sensitive_path(path)
         effective_limit = self.sensitive_requests if is_sensitive else self.max_requests
         rate_key = f"{client_ip}:{'sensitive' if is_sensitive else 'standard'}"
+
+        if rate_key not in self.clients and len(self.clients) >= self.max_clients:
+            # Bound per-process memory even if requests arrive with many client IPs.
+            self.clients.popitem(last=False)
 
         # Clean timestamps older than the sliding window
         timestamps = self.clients.get(rate_key, [])
@@ -103,6 +117,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
         timestamps.append(now)
         self.clients[rate_key] = timestamps
+        self.clients.move_to_end(rate_key)
 
         response: Response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(effective_limit)

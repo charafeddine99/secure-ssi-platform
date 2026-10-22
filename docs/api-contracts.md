@@ -3,11 +3,14 @@
 ## Contract status
 
 Health routes, the documented Identity credential/status/wallet/VP/managed-key
-APIs, and the Recovery Service Guardian/recovery APIs are implemented. Two
-Identity recovery-integration routes are implemented but intentionally hidden
-from public OpenAPI. Other gateway, fraud, blockchain, and undeclared internal
-operations remain **planned**. Authentication and RBAC are an academic local
-identity boundary and do not represent a production identity system.
+APIs, Recovery Service Guardian/recovery APIs, API Gateway proxy/health routes,
+Fraud evaluation routes, and optional local blockchain-anchor routes exist.
+Two Identity recovery-integration routes are implemented but intentionally
+hidden from public OpenAPI. This document does not enumerate every Gateway,
+Fraud, Blockchain, or internal route; consult each service's current OpenAPI
+and README before treating an omitted route as unimplemented. Authentication
+and RBAC are an academic local identity boundary, not a production identity
+system.
 
 The JSON Schemas referenced below live in `packages/shared/schemas/v1`.
 
@@ -27,8 +30,11 @@ The JSON Schemas referenced below live in `packages/shared/schemas/v1`.
   shared `api-error.schema.json` remains a draft for planned gateway contracts.
 - Unknown fields are rejected for security-sensitive request bodies.
 - Local authentication and authorization protect `/auth/me`, credential
-  signing, and credential revocation. Production-grade identity, broader policy enforcement,
-  MFA, rate limiting, and token lifecycle remain planned.
+  signing, and credential revocation. The Gateway has a bounded process-local
+  rate limiter; it is not distributed, and Identity/Recovery have no independent
+  limiter. Token revocation is process-local and not durable. Production
+  identity, MFA, shared rate limits, and production token/key management remain
+  open.
 
 ## Implemented health contract
 
@@ -72,6 +78,7 @@ token-use claims. Details are in
 | `GET /api/v1/credentials/capabilities` | Report supported operations and explicit limitations | `200` capability document |
 | `POST /api/v1/wallets` | Create a wallet owned by the authenticated holder | `201` wallet metadata |
 | `GET /api/v1/wallets/{walletId}` | Read an owned wallet | `200` wallet metadata |
+| `POST /api/v1/wallets/guardian-recovery-proof` | Authenticated wallet owner signs a challenge-bound Guardian decision with its registered Ed25519 `did:key` managed key | `200` EdDSA JWT proof; server-managed key custody, not independent device proof |
 | `GET /api/v1/wallets/{walletId}/credentials` | List credentials bound to the owned wallet | `200` minimized inventory |
 | `POST /api/v1/wallets/{walletId}/keys` | Provision an owned purpose-bound managed key; requires `Idempotency-Key` | `201` public key/lifecycle metadata |
 | `GET /api/v1/wallets/{walletId}/keys` | List owned managed keys with bounded cursor pagination | `200` public metadata inventory |
@@ -176,10 +183,12 @@ Risk output is advisory. It includes a model version and reason codes. It cannot
 
 These routes use strict JSON envelopes and the existing Identity JWT. They do
 not return Shamir share material, envelope data, service grants, or private
-keys. Foreign object access uses a not-found response. The optional Guardian
-`proof` is currently hashed for idempotency/binding but is not verified as a
-DID signature, so the API must not be described as cryptographic
-multisignature. Full state, security, and response-boundary details are in
+keys. Foreign object access uses a not-found response. Each approval/rejection
+requires a challenge-bound EdDSA JWT signed through the Guardian's registered
+Ed25519 `did:key` managed key and verified by Recovery. This is not an
+independent Guardian-device signature, hardware custody, or cryptographic
+multisignature; `did:web` Guardian proof verification is unsupported. Full
+state, security, and response-boundary details are in
 [account-recovery.md](account-recovery.md).
 
 All recovery endpoints are proxied through API Gateway (`http://localhost:8000`):
@@ -190,17 +199,33 @@ All recovery endpoints are proxied through API Gateway (`http://localhost:8000`)
 
 | Method and path | Policy | Responsibility | Result |
 | --- | --- | --- | --- |
-| `POST /api/v1/oid4vp/requests` | `verifier` role | Verifier initializes presentation session with purpose, requested types & claims | `201` session metadata, challenge nonce, and `openid4vp://` URI |
-| `GET /api/v1/oid4vp/requests/{sessionId}` | Public / Holder / Verifier | Inspect session status, purpose, requested fields, consent state | `200` session projection |
-| `POST /api/v1/oid4vp/requests/{sessionId}/reject` | Public / Holder | Explicitly decline consent / reject presentation request | `200` terminal `REJECTED` session with reason, emits `CONSENT_REJECTED` audit event |
-| `POST /api/v1/oid4vp/response` | Direct Post / Holder | Submit VP token, disclosed claims (selective disclosure), and AI risk score | `200` 9-point verification matrix with `dataMinimization` details, sets `consentStatus = GRANTED`, emits `CONSENT_GRANTED` audit event |
+| `POST /api/v1/oid4vp/requests` | Authenticated verifier (`presentations:verify`) | Create a session with purpose, requested credential types/fields, DCQL, nonce and expiry | `201` session metadata and `openid4vp://` URI |
+| `GET /api/v1/oid4vp/requests/{sessionId}` | Public session projection | Read status, purpose, request, consent and verification result | `200` session projection; may include an explicitly disclosed-claims projection after verification |
+| `POST /api/v1/oid4vp/requests/{sessionId}/evaluate-dcql` | Local wallet matching operation | Evaluate candidate credentials against the stored DCQL request | `200` match result; does not create consent or a presentation |
+| `POST /api/v1/oid4vp/requests/{sessionId}/wallet-consent` | Authenticated Holder with an owned active wallet | Approve or reject the server-stored request; approval must select wallet credentials satisfying DCQL and the complete-credential profile | `200` consent decision; request context is taken from the stored session, not caller overrides |
+| `POST /api/v1/oid4vp/wallet-presentation` | Authenticated Holder with an owned active wallet and approved consent | Create the signed session-bound presentation from the approved wallet credentials | `201` prepared presentation and Direct Post payload |
+| `POST /api/v1/oid4vp/response` | OID4VP Direct Post callback | Submit the prepared VP token and disclosed-claims projection for server-side verification | `200` protocol result; server derives risk signals and ignores caller-supplied AI scores |
+| `POST /api/v1/oid4vp/requests/{sessionId}/reject` | Retired legacy route | Caller-asserted rejection | `410 Gone`; use wallet-bound consent |
+| `POST /api/v1/oid4vp/requests/{sessionId}/consent` | Retired legacy route | Caller-asserted consent | `410 Gone`; use wallet-bound consent |
+| `POST /api/v1/oid4vp/presentation` | Retired legacy signer route | Caller-provided credential/signing request | `410 Gone`; use wallet-bound presentation |
+
+The presentation profile discloses the complete selected credential; omission
+of claims is not cryptographic selective disclosure. Direct Post is not itself
+the consent operation. Current browser completion of the full flow remains a
+G11 acceptance item; the earlier local browser attempt did not reach a
+successful verifier response.
 
 
 ## Blockchain boundary
 
-Blockchain access will be isolated behind an adapter rather than called from the browser. The only currently reserved input is `anchor-request.schema.json`, which permits a digest and metadata category but no DID, credential, claim, or guardian data.
-
-Contract methods, events, network, confirmations, and upgrade governance remain undecided.
+Blockchain calls are isolated behind the local Identity `BlockchainBridge`; the
+browser does not call a chain directly. Identity exposes read-only local
+`/api/v1/blockchain/status`, `/contracts`, and `/anchors` routes. Optional
+application anchoring stores approved digests/receipts and does not determine
+credential validity, trust, or status. G10 has scoped local Hardhat contract
+and receipt evidence; no public-chain deployment, production network,
+confirmation policy, or upgrade governance is claimed. The separate planned
+Gateway-mediated `/internal/v1/anchors` contract remains a future API boundary.
 
 ## Error contract
 

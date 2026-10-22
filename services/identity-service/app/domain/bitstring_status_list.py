@@ -13,12 +13,13 @@ MINIMUM_STATUS_LIST_ENTRIES = 131_072
 MAXIMUM_STATUS_LIST_ENTRIES = 16_777_216
 _OBJECT_ID_PATTERN = re.compile(r"^[0-9a-f]{24}$")
 _STATUS_LIST_ID_PATTERN = re.compile(
-    r"^revocation-[0-9a-f]{24}(?:-[0-9]{6})?$"
+    r"^(?:revocation|suspension)-[0-9a-f]{24}(?:-[0-9]{6})?$"
 )
 
 
 class StatusPurpose(StrEnum):
     REVOCATION = "revocation"
+    SUSPENSION = "suspension"
 
 
 class StatusListError(Exception):

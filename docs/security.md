@@ -12,16 +12,32 @@ The Recovery Service now provides authenticated wallet-scoped Guardian
 assignments, generic M-of-N policy, encrypted Shamir authorization shares,
 parallel idempotent decisions, persisted time-lock/expiry/cancellation,
 Mongo-backed reconciliation, and managed-key rotation orchestration. It is
-also a local academic surface: Guardian DID signatures, independent share
-delivery, MFA/device attestation, rate limiting, token revocation, and
-production incident operations are not implemented.
+also a local academic surface: Recovery cryptographically verifies a required,
+short-lived EdDSA proof bound to the registered Guardian Ed25519 `did:key`.
+Identity signs it with the Guardian account's server-managed key, so this is not
+an independent Guardian-device signature. Independent share delivery,
+MFA/device attestation, rate limiting, durable/distributed token revocation,
+and production incident operations are not implemented.
 Credential signing and revocation require a short-lived Bearer token and local
 `credentials:sign` or `credentials:revoke` permission. Authentication uses
-synthetic fixture users only; there is still no rate limiting, MFA, user
-persistence workflow, token blacklist, secure production identity
+synthetic fixture users only; Identity has no independent rate limiting, MFA, user
+persistence workflow, durable/shared token blacklist, secure production identity
 provider/key custody, externally validated Status List/VP deployment,
 production issuer policy, deployed vendor KMS/HSM custody, or external wallet integration,
 so the service must not be publicly exposed.
+
+The current Identity Service also retires anonymous OID4VP reject, consent,
+and signer routes with HTTP 410. Its supported consent and presentation write
+routes require an authenticated holder role and an owned wallet. Backend
+regression tests for those route/schema changes passed 80/80 on 15 October.
+
+Default Compose publishes the Web, Gateway, internal services, MongoDB, and
+Redis ports on 127.0.0.1 only; internal containers use the private Compose
+network. The Gateway uses a process-local sliding-window limiter (180/minute
+standard, 30/minute sensitive) with at most 10,000 client buckets. This is a
+local development safeguard, not distributed protection. Identity and
+Recovery have no independent rate limiter; remote deployments require an
+explicitly secured edge with shared limits, monitoring, and production secrets.
 
 MongoDB stores users, wallet/key-reference and managed public-key metadata, challenge replay evidence,
 credential lifecycle fields, permanent revocation
@@ -270,8 +286,9 @@ Current recovery security baseline:
 
 Required before public or production recovery:
 
-- Verify each approval as an independent Guardian DID/device signature and
-  define enrollment, key rollover, loss, independence, MFA, and attestation.
+- Replace the server-managed proof signer with an independent Guardian-device
+  key ceremony; define enrollment, key rollover, loss, independence, MFA, and
+  attestation. Continue to reject DID methods without a secure verifier.
 - Deliver one share independently to each Guardian-controlled secure device
   or redesign custody so the service and database cannot reconstruct alone.
 - Add rate limits, anomaly detection, durable token revocation, notifications,
@@ -300,6 +317,16 @@ Compose Mongo root/application credentials and URI values are development
 placeholders. Recovery development JWT/grant/envelope defaults are also
 non-production; production mode refuses missing explicit values. `MongoSettings` and the connection manager redact the URI from
 their representations and controlled failures.
+
+## G13 control ownership and evidence
+
+| Control | Responsible owner role | Current negative or configuration evidence | Residual |
+| --- | --- | --- | --- |
+| Local Compose port exposure | Platform/infrastructure maintainer | Current Compose resolution binds all seven published ports to 127.0.0.1; config validation passed. | Deployment profiles must retain an explicitly secured public edge. |
+| Gateway rate limiting and request guards | API Gateway maintainer | Gateway security suite passed 9 tests, including 429/Retry-After, bounded client state, forwarded-header spoof resistance, payload size, and malformed/deep JSON. | State is per process; high-cardinality LRU eviction and multi-worker behavior need load review. |
+| Identity authentication, object authorization, body limits and redaction | Identity Service maintainer | Focused auth/credential/revocation selection passed 104 tests. | Token revocation is volatile/process-local; Identity has no independent limiter or MFA. |
+| Recovery authorization, Guardian proof and secret handling | Recovery Service maintainer | Focused API/proof/internal-grant/share-redaction selection passed 14 tests. | The proof signer is server-managed; no independent Guardian device, MFA, or service-local rate limit. |
+| Security finding triage and risk acceptance | Project security owner (named assignment not recorded) | Frontend package-lock offline npm audit reported 0 vulnerabilities. No Python dependency scanner, SAST, secret scanner, or independent penetration scan is available/run. | Critical/high finding disposition remains open; no claim that none exist. |
 
 ## Vulnerability reporting
 

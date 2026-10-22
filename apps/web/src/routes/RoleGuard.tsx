@@ -1,12 +1,15 @@
 import React from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import type { IdentityPermission } from "../context/AuthContext";
+import { roleHomePath } from "./roleNavigation";
 
-export type AllowedRole = "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN";
+export type AllowedRole = "HOLDER" | "ISSUER" | "VERIFIER" | "ADMIN";
 
 interface RoleGuardProps {
   children: React.ReactNode;
   allowedRole?: AllowedRole | AllowedRole[];
+  requiredPermission?: IdentityPermission;
   requireAuth?: boolean;
 }
 
@@ -18,29 +21,36 @@ interface RoleGuardProps {
 export const RoleGuard: React.FC<RoleGuardProps> = ({
   children,
   allowedRole,
+  requiredPermission,
   requireAuth = true
 }) => {
-  const { user, isAuthenticated, isDemoEvaluationMode } = useAuth();
+  const { user, isAuthenticated, isAuthLoading } = useAuth();
   const location = useLocation();
 
-  // If strict auth is required and user is neither authenticated nor in demo mode
-  if (requireAuth && !isAuthenticated && !isDemoEvaluationMode) {
-    return <Navigate to="/" state={{ from: location }} replace />;
+  if (requireAuth && isAuthLoading) {
+    return <div role="status" aria-live="polite">Checking your signed-in account…</div>;
+  }
+
+  if ((requireAuth || allowedRole || requiredPermission) && (!isAuthenticated || !user)) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // If specific roles are restricted
   if (allowedRole && user) {
     const roles = Array.isArray(allowedRole) ? allowedRole : [allowedRole];
     if (!roles.includes(user.role)) {
-      // If user has a different role, redirect to their role home
-      const fallbackPath = 
-        user.role === "HOLDER" ? "/wallet" :
-        user.role === "ISSUER" ? "/issuer" :
-        user.role === "VERIFIER" ? "/verifier" :
-        user.role === "GUARDIAN" ? "/guardian" : "/admin";
-
-      return <Navigate to={fallbackPath} replace />;
+      return <Navigate to={roleHomePath(user.role)} replace />;
     }
+  }
+
+  if (requiredPermission && (!user || !user.permissions.includes(requiredPermission))) {
+    return (
+      <section className="access-denied" role="alert" aria-labelledby="access-denied-title">
+        <h1 id="access-denied-title">Access denied</h1>
+        <p>Your account does not have permission to open this page.</p>
+        <Link to={user ? roleHomePath(user.role) : "/login"}>Return to your workspace</Link>
+      </section>
+    );
   }
 
   return <>{children}</>;

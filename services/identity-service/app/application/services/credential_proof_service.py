@@ -9,7 +9,6 @@ from app.application.ports.key_provider import KeyProvider
 from app.domain.crypto import VerificationKey
 from app.domain.did import DidResolutionError
 from app.domain.exceptions import (
-    CanonicalizationError,
     ExistingProofError,
     InvalidSigningTimeError,
     KeyMaterialError,
@@ -177,8 +176,111 @@ class CredentialProofService:
         if not self._check_validity_window(validated, checked_at, checks):
             return checks.build(checked_at)
 
-        issuer = validated["issuer"]
-        proof = validated["proof"]
+        self._verify_data_integrity_signature(
+            document=validated,
+            issuer=validated["issuer"],
+            proof=validated["proof"],
+            checks=checks,
+            require_local_issuer_trust=True,
+        )
+        return checks.build(checked_at)
+
+    def verify_data_integrity_document(
+        self,
+        secured_document: Mapping[str, Any],
+        *,
+        verified_at: datetime | None = None,
+    ) -> tuple[bool, str | None]:
+        """Verify this project's Data Integrity proof profile on another VC type.
+
+        Credential-specific trust is intentionally left to the consuming policy,
+        which evaluates the issuer through the Trust Registry.
+        """
+        checked_at = verified_at or self.clock()
+        if checked_at.tzinfo is None or checked_at.utcoffset() is None:
+            return False, "VERIFICATION_TIME_INVALID"
+        try:
+            document = copy.deepcopy(dict(secured_document))
+        except (TypeError, ValueError):
+            return False, "DOCUMENT_MALFORMED"
+
+        context = document.get("@context")
+        types = document.get("type")
+        issuer = document.get("issuer")
+        proof = document.get("proof")
+        if (
+            not isinstance(context, list)
+            or "https://www.w3.org/ns/credentials/v2" not in context
+            or not isinstance(types, list)
+            or "VerifiableCredential" not in types
+            or not isinstance(issuer, str)
+            or not issuer.strip()
+            or not isinstance(proof, Mapping)
+        ):
+            return False, "DOCUMENT_PROFILE_INVALID"
+
+        proof = dict(proof)
+        if proof.get("type") != DATA_INTEGRITY_PROOF_TYPE:
+            return False, "UNSUPPORTED_PROOF_TYPE"
+        if proof.get("cryptosuite") != CRYPTOSUITE:
+            return False, "UNSUPPORTED_CRYPTOSUITE"
+        if proof.get("proofPurpose") != PROOF_PURPOSE:
+            return False, "INVALID_PROOF_PURPOSE"
+        try:
+            self.validator._parse_timestamp(proof.get("created"))
+        except Exception:
+            return False, "PROOF_TIMESTAMP_INVALID"
+        verification_method = proof.get("verificationMethod")
+        if (
+            not isinstance(verification_method, str)
+            or len(verification_method) > 768
+            or not verification_method.startswith(f"{issuer}#")
+        ):
+            return False, "INVALID_VERIFICATION_METHOD"
+        proof_value = proof.get("proofValue")
+        if (
+            not isinstance(proof_value, str)
+            or not proof_value.startswith("z")
+            or len(proof_value) > 128
+        ):
+            return False, "INVALID_PROOF_VALUE"
+
+        checks = _VerificationChecks()
+        try:
+            verified = self._verify_data_integrity_signature(
+                document=document,
+                issuer=issuer,
+                proof=proof,
+                checks=checks,
+                require_local_issuer_trust=False,
+            )
+        except Exception:
+            return False, "PROOF_VERIFICATION_ERROR"
+        if verified:
+            return True, None
+        failed = next(
+            (
+                check
+                for check in checks.build(checked_at.astimezone(UTC)).checks
+                if check.status is VerificationCheckStatus.FAILED
+            ),
+            None,
+        )
+        if failed is None:
+            return False, "PROOF_VERIFICATION_FAILED"
+        return False, (
+            f"{failed.name.value}:{failed.reason_code.value}"
+        )
+
+    def _verify_data_integrity_signature(
+        self,
+        *,
+        document: Mapping[str, Any],
+        issuer: str,
+        proof: Mapping[str, Any],
+        checks: _VerificationChecks,
+        require_local_issuer_trust: bool,
+    ) -> bool:
         verification_method = proof["verificationMethod"]
         try:
             resolved_key = self._resolve_verification_key(
@@ -190,55 +292,68 @@ class CredentialProofService:
                 VerificationCheckName.ISSUER_DID_RESOLUTION,
                 VerificationReasonCode.ISSUER_RESOLUTION_FAILED,
             )
-            checks.failed(
-                VerificationCheckName.ISSUER_TRUST,
-                VerificationReasonCode.ISSUER_NOT_TRUSTED,
-            )
-            return checks.build(checked_at)
+            if require_local_issuer_trust:
+                checks.failed(
+                    VerificationCheckName.ISSUER_TRUST,
+                    VerificationReasonCode.ISSUER_NOT_TRUSTED,
+                )
+            return False
         except (KeyMaterialError, UnknownVerificationMethodError):
             checks.passed(VerificationCheckName.ISSUER_DID_RESOLUTION)
             checks.failed(
                 VerificationCheckName.VERIFICATION_METHOD_AUTHORIZATION,
                 VerificationReasonCode.VERIFICATION_METHOD_NOT_AUTHORIZED,
             )
-            return checks.build(checked_at)
+            return False
+        except Exception:
+            checks.failed(
+                VerificationCheckName.ISSUER_DID_RESOLUTION,
+                VerificationReasonCode.ISSUER_RESOLUTION_FAILED,
+            )
+            if require_local_issuer_trust:
+                checks.failed(
+                    VerificationCheckName.ISSUER_TRUST,
+                    VerificationReasonCode.ISSUER_NOT_TRUSTED,
+                )
+            return False
 
         checks.passed(VerificationCheckName.ISSUER_DID_RESOLUTION)
         checks.passed(
             VerificationCheckName.VERIFICATION_METHOD_AUTHORIZATION
         )
 
-        if not self.key_provider.supports_issuer(issuer):
-            checks.failed(
-                VerificationCheckName.ISSUER_TRUST,
-                VerificationReasonCode.ISSUER_NOT_TRUSTED,
-            )
-            return checks.build(checked_at)
-        try:
-            trusted_key = self.key_provider.get_verification_key(
-                verification_method
-            )
-        except UnknownVerificationMethodError:
-            checks.failed(
-                VerificationCheckName.ISSUER_TRUST,
-                VerificationReasonCode.ISSUER_NOT_TRUSTED,
-            )
-            return checks.build(checked_at)
-        if trusted_key != resolved_key:
-            checks.failed(
-                VerificationCheckName.VERIFICATION_METHOD_AUTHORIZATION,
-                VerificationReasonCode.PUBLIC_KEY_MISMATCH,
-            )
-            checks.failed(
-                VerificationCheckName.ISSUER_TRUST,
-                VerificationReasonCode.ISSUER_NOT_TRUSTED,
-            )
-            return checks.build(checked_at)
-        checks.passed(VerificationCheckName.ISSUER_TRUST)
+        if require_local_issuer_trust:
+            try:
+                if not self.key_provider.supports_issuer(issuer):
+                    checks.failed(
+                        VerificationCheckName.ISSUER_TRUST,
+                        VerificationReasonCode.ISSUER_NOT_TRUSTED,
+                    )
+                    return False
+                trusted_key = self.key_provider.get_verification_key(
+                    verification_method
+                )
+            except Exception:
+                checks.failed(
+                    VerificationCheckName.ISSUER_TRUST,
+                    VerificationReasonCode.ISSUER_NOT_TRUSTED,
+                )
+                return False
+            if trusted_key != resolved_key:
+                checks.failed(
+                    VerificationCheckName.VERIFICATION_METHOD_AUTHORIZATION,
+                    VerificationReasonCode.PUBLIC_KEY_MISMATCH,
+                )
+                checks.failed(
+                    VerificationCheckName.ISSUER_TRUST,
+                    VerificationReasonCode.ISSUER_NOT_TRUSTED,
+                )
+                return False
+            checks.passed(VerificationCheckName.ISSUER_TRUST)
 
         try:
             signature = decode_base58_btc(proof["proofValue"])
-        except ValueError:
+        except (KeyError, TypeError, ValueError):
             checks.failed(
                 VerificationCheckName.SIGNATURE,
                 VerificationReasonCode.SIGNATURE_MALFORMED,
@@ -247,18 +362,18 @@ class CredentialProofService:
                 VerificationCheckName.CONTENT_INTEGRITY,
                 VerificationReasonCode.SIGNATURE_MALFORMED,
             )
-            return checks.build(checked_at)
+            return False
 
-        proof_configuration = copy.deepcopy(proof)
-        proof_configuration.pop("proofValue")
-        unsecured = copy.deepcopy(validated)
-        unsecured.pop("proof")
+        proof_configuration = copy.deepcopy(dict(proof))
+        proof_configuration.pop("proofValue", None)
+        unsecured = copy.deepcopy(dict(document))
+        unsecured.pop("proof", None)
         try:
             signing_input = self.canonicalizer.create_signing_input(
                 unsecured,
                 proof_configuration,
             )
-        except CanonicalizationError:
+        except Exception:
             checks.failed(
                 VerificationCheckName.DOCUMENT_STRUCTURE,
                 VerificationReasonCode.CANONICALIZATION_FAILED,
@@ -267,9 +382,17 @@ class CredentialProofService:
                 VerificationCheckName.CONTENT_INTEGRITY,
                 VerificationReasonCode.CANONICALIZATION_FAILED,
             )
-            return checks.build(checked_at)
+            return False
 
-        if not self.signer.verify(signing_input, signature, resolved_key):
+        try:
+            signature_valid = self.signer.verify(
+                signing_input,
+                signature,
+                resolved_key,
+            )
+        except Exception:
+            signature_valid = False
+        if not signature_valid:
             reason = (
                 VerificationReasonCode.SIGNATURE_MALFORMED
                 if len(signature) != 64
@@ -277,11 +400,11 @@ class CredentialProofService:
             )
             checks.failed(VerificationCheckName.SIGNATURE, reason)
             checks.failed(VerificationCheckName.CONTENT_INTEGRITY, reason)
-            return checks.build(checked_at)
+            return False
 
         checks.passed(VerificationCheckName.SIGNATURE)
         checks.passed(VerificationCheckName.CONTENT_INTEGRITY)
-        return checks.build(checked_at)
+        return True
 
     def _resolve_verification_key(
         self,

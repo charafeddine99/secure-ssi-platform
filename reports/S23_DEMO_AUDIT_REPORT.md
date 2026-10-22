@@ -6,6 +6,14 @@
 **Repository**: `C:\Users\besna\OneDrive\Bureau\secure-ssi-platform`  
 **Git Branch**: `main`
 
+> **Historical audit/planning snapshot — 30 September 2026.** The problem
+> classifications, test totals, and proposed changes below do not describe the
+> current checkout. Use the
+> [G0–G16 gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md),
+> [completion audit](../docs/implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md),
+> and [dated test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md)
+> for current evidence and remaining blockers.
+
 ---
 
 ## 1. Executive Summary

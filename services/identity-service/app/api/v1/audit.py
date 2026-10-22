@@ -11,8 +11,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.api.v1.dependencies import get_audit_event_repository
+from app.api.v1.dependencies import get_audit_event_repository, require_permission
 from app.application.ports.repositories import AuditEventRepository
+from app.domain.auth import AuthenticatedPrincipal
+from app.domain.permissions import Permission
 from app.domain.persistence import AuditEventType
 from app.database import db_get_audit_logs
 
@@ -40,6 +42,7 @@ class AuditLogListResponse(BaseModel):
 @router.get("/audit/logs", response_model=AuditLogListResponse, operation_id="list_audit_logs")
 def list_audit_logs(
     audit_repo: Annotated[AuditEventRepository, Depends(get_audit_event_repository)],
+    _principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN_OPERATIONS_READ))],
     event_type: str | None = Query(None, description="Filter by event type"),
     limit: int = Query(100, ge=1, le=500, description="Max logs to return"),
 ) -> AuditLogListResponse:
@@ -110,15 +113,22 @@ def list_audit_logs(
 @router.get("/audit_logs", response_model=AuditLogListResponse, operation_id="list_audit_logs_legacy_alias", include_in_schema=False)
 def list_audit_logs_alias(
     audit_repo: Annotated[AuditEventRepository, Depends(get_audit_event_repository)],
+    _principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN_OPERATIONS_READ))],
     event_type: str | None = Query(None, description="Filter by event type"),
     limit: int = Query(100, ge=1, le=500, description="Max logs to return"),
 ) -> AuditLogListResponse:
-    return list_audit_logs(audit_repo=audit_repo, event_type=event_type, limit=limit)
+    return list_audit_logs(
+        audit_repo=audit_repo,
+        _principal=_principal,
+        event_type=event_type,
+        limit=limit,
+    )
 
 
 @router.get("/audit/stats")
 def get_audit_stats(
     audit_repo: Annotated[AuditEventRepository, Depends(get_audit_event_repository)],
+    _principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN_OPERATIONS_READ))],
 ) -> dict[str, Any]:
     logs = list_audit_logs(audit_repo=audit_repo, limit=200).audit_logs
     type_counts: dict[str, int] = {}

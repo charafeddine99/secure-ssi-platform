@@ -1,16 +1,18 @@
 # Implementation Status
 
+> **Current acceptance source:** [G0–G16 gate matrix](implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md), [completion audit](implementation/SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md), and [test evidence register](implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md), checkpoint 15 October 2026. Current tally: 5 PASS, 11 PARTIAL, 1 BLOCKED, 0 FAIL. The component and sprint tables below are an implementation/history inventory; “Implemented”, “Verified”, and historical test-count labels are not current gate acceptance. Rows not called out in the latest evidence may still describe earlier behavior and must not supersede the gate matrix.
+
 | Component | Status | Implemented | Mocked | Tested | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Web status page | Implemented | Interactive Web3 & SSI portal (Senaryo 171 Diploma, Live AI Simulator, 3/5 Guardian recovery UI, Blockchain explorer) | Synthetic local fixtures | Build, lint, and Vite production bundle | Full user workflows for Holder, Issuer, Verifier, Guardian |
-| API Gateway | Implemented | Reverse-proxy facade (/identity, /fraud, /recovery), CORS middleware, and unified system status aggregator | Local services | Pytest suite and routing tests | Unified ingress routing |
+| Web status page | Prototype | Interactive SSI portal and role-specific screens | Synthetic/local fixtures in multiple legacy screens | Current lint, build, and frontend contract checks; see evidence register | UI coverage does not establish a complete live Holder, Issuer, Verifier, or Guardian workflow |
+| API Gateway | Implemented | Reverse-proxy facade (/identity, /fraud, /recovery), CORS middleware, unified system status aggregator, and bounded process-local request limiter | Local services | Routing and current security-hardening tests; see evidence register | Not a distributed limiter or production edge |
 | Identity service | Prototype | Health; credential/status-list/wallet/challenge/VP/managed-key APIs; synthetic login/current-user; RBAC plus object authorization; local DID/proof core; Mongo lifecycle; provider-aware holder signing; reconciliation; durable audit | Local users, `did:web`, `did:key`, wallets, challenges, credentials, presentations, and a deterministic key provider | Unit, API integration, auth/RBAC, repository, ownership, challenge, key lifecycle, reconciliation, VP, revocation/status-list, outbox, resolver, profile, and security tests | Local academic use only; no vendor KMS/HSM deployment |
 | SSI, DID, and VC | Partial | DID resolution, local VC/VP proofs, lifecycle status, Status Lists, wallet-bound full-disclosure presentations, and server challenges | Synthetic fixtures only | Positive, tamper, holder, wallet, domain/audience, replay, reconciliation, revocation, publication, status, and transition tests | No production trust, external wallet, selective disclosure, or conformance certification |
-| Fraud service | Implemented | FastAPI microservice with evaluation, stats, and quarantine lifecycle endpoints | In-memory quarantine store | Pytest suite and benchmark tests | Fully functional |
-| AI fraud detection | Implemented | Hybrid XGBoost + Autoencoder model, behavioral feature extraction (impossible travel, brute force, Tor/proxy, frequency flood), quarantine and step-up auth triggers | Synthetic baseline distributions | Model precision, recall, F1 (0.943), and latency (< 5ms) tests | Meets report targets |
-| Blockchain | Implemented | Solidity 0.8.28 contracts (`DIDRegistry.sol`, `RevocationRegistry.sol`, `EmergencyRecovery.sol`, `AuditLogger.sol`), OpenZeppelin patterns, EIP-4337 social recovery with 3/5 guardian quorum, time-lock, on-chain hash anchoring | Hardhat Network simulation | 7 Hardhat TypeScript tests, gas efficiency benchmarks (< 150k gas) | Fully functional smart contracts |
-| Recovery service | Prototype | Health; Guardian/policy/request/decision/cancel/reconcile APIs; Mongo repositories; encrypted Shamir authorization shares; time-lock worker; audit; metrics; Identity managed-key orchestration | Synthetic users, DIDs, clocks, Mongo adapter, and managed-key provider | Domain, cryptography, repository, concurrency, service, API, Identity integration, reconciliation, security, performance, and regression tests | Academic only; no Guardian DID signature, independent share delivery, or production operations |
-| Guardian recovery | Implemented with prototype limits | Generic M-of-N with 3-of-5 default, immutable snapshots, parallel idempotent decisions, persisted time lock, bounded retries, `did:key` successor rotation | Guardian identities and managed-key provider are synthetic in tests | Sufficient/insufficient quorum, concurrency, time lock, tamper/replay, cancellation/expiry, crash/retry, audit, metrics, and benchmark tests | Not cryptographic multisignature; optional proof is not independently verified |
+| Fraud service | Prototype | FastAPI microservice with evaluation, stats, and quarantine lifecycle endpoints | In-memory quarantine store | Current deterministic heuristic component benchmark and focused tests; see G9/G15 evidence | Benchmark is not trained-model inference; production readiness and independent model evaluation are not established |
+| AI fraud detection | Deterministic heuristic prototype | Fixed rule and weighted-deviation scoring over impossible-travel inputs, failed-attempt velocity, presentation frequency, device mismatch, and supplied proxy indicator; no trained model artifact | `[DEMO LAB / SYNTHETIC]`; generated replay only | Version/status/signal contract and deterministic replay diagnostics; no independent labelled evaluation | Advisory only; synthetic replay metrics do not establish real-world accuracy or generalization; see [risk heuristic architecture](ai_architecture.md) |
+| Blockchain | Prototype / optional | Solidity contract sources and optional digest-anchoring bridge | Hardhat/local-chain simulation | Current scoped local-contract and receipt evidence; see G10 gate row | No public/production chain deployment or production readiness; anchoring is not authoritative for credential verification |
+| Recovery service | Prototype | Health; Guardian/policy/request/decision/cancel/reconcile APIs; Mongo repositories; encrypted Shamir authorization shares; time-lock worker; audit; metrics; Identity managed-key orchestration | Synthetic users, DIDs, clocks, Mongo adapter, and managed-key provider | Domain, cryptography, repository, concurrency, service, API, Identity integration, reconciliation, security, and component benchmark tests | Current `did:key` EdDSA proof validation is tested; independent device possession/MFA, separate share delivery, and production operations remain unestablished |
+| Guardian recovery | Implemented with prototype limits | Generic M-of-N with 3-of-5 default, immutable snapshots, parallel idempotent decisions, persisted time lock, bounded retries, `did:key` successor rotation | Guardian identities and managed-key provider are synthetic in tests | Sufficient/insufficient quorum, proof validation, concurrency, time lock, tamper/replay, cancellation/expiry, crash/retry, audit, metrics, and benchmark tests | Not cryptographic multisignature; `did:web` proof verification, independent device/MFA, and independent share custody are not established |
 | Authentication/JWT | Implemented | Argon2id login, short-lived HS256 JWT, Bearer dependency, current-user resolution, wallet/challenge/presentation permissions, opt-in Mongo user provider | Five synthetic local accounts | Domain, adapter, JWT attack, API, OpenAPI, RBAC, ownership, and provider tests | No production identity provider or token lifecycle |
 | MongoDB | Authoritative Persistence Target | Typed config, pooled lifecycle, separate Identity/Recovery Compose users and databases, wallet/challenge/credential/presentation/managed-key/recovery repositories, indexes, atomic issuance/challenge/VP/key lifecycle state, and authoritative SQLite->MongoDB migration engine (sqlite_migrator.py) | No | Unit, fake-Mongo integration, plus opt-in real-Mongo Identity tests | SQLite legacy prototype isolated; migration runner verified |
 | User repository | Implemented | Add/read/update/soft-delete, unique normalized username, optimistic version | No | Mapper, repository, duplicate, version, and provider tests | No registration or seed workflow |
@@ -27,7 +29,7 @@
 | Audit event repository | Implemented | Append/get/list for closed event types and idempotent outbox destination | Synthetic events in tests | Metadata safety, append-only, index, repository, retry, wallet/challenge/ownership/key-lifecycle/reconciliation, credential/status, and VP tests | Not an independently tamper-evident compliance log |
 | Redis | Provisioned | Compose service and healthcheck | No | Static config | Not integrated |
 | Threat model | Updated baseline | Assets, boundaries, Guardian/share/grant/quorum/audit threats, and 30 invariants | No | Recovery abuse/control tests plus document review pending | Not an independent security review |
-| API contracts | Partial | Credential routes, four Status List routes, wallet/challenge routes, four VP routes, eleven managed-key routes, fourteen Recovery methods, hidden Identity recovery integration, plus planned paths and conventions | No | OpenAPI, RBAC, object-authorization, lifecycle, concurrency, and API integration tests | Presentation Exchange and gateway facade remain planned |
+| API contracts | Partial | Credential routes, four Status List routes, wallet/challenge/VP routes, eleven managed-key routes, Guardian recovery proof, fourteen Recovery methods, hidden Identity recovery integration, plus planned paths and conventions | No | OpenAPI, RBAC, object-authorization, lifecycle, concurrency, and API integration tests | Current OID4VP uses DCQL and wallet-bound consent/presentation; the Gateway facade is implemented. Claim-level selective disclosure and some planned public contracts remain deferred |
 | Shared schema catalog | Prototype | Nine versioned JSON Schemas and one bundled JSON-LD context | Synthetic examples | Structural and profile-specific catalog tests | Endpoint integration is planned |
 | Security baseline | Drafted | Development and phase gates | No | Document review pending | Not a certification |
 | DID standards decision | Accepted | ADR 0001 and standards baseline | No | Document consistency checks | `did:web` issuer; synthetic short-lived `did:key` holder |
@@ -57,7 +59,7 @@
 | Credential persistence | Implemented automatically for successful signing |
 | Authentication | Implemented for local synthetic users |
 | Authorization/RBAC | Implemented for current-user and credential signing |
-| Rate limiting | Not implemented |
+| Rate limiting | Gateway limiter implemented; process-local and not distributed; no independent Identity Service limiter |
 | Credential revocation/status | Implemented with object-level authorization, Bitstring Status List verification, OID4VCI status binding, and status audit history |
 | Production KMS/HSM | Holder provider-neutral boundary implemented; issuer/JWT/Status List production custody remains planned |
 | External DID resolution | Not implemented |
@@ -82,9 +84,9 @@
 | Persistent user storage | Mongo repository and auth adapter implemented; opt-in |
 | User registration | Not implemented |
 | Refresh token rotation | Not implemented |
-| Token blacklist/revocation | Not implemented |
+| Token blacklist/revocation | Current-token revocation implemented in-process; not shared between workers or durable across restarts |
 | MFA | Not implemented |
-| Rate limiting | Not implemented |
+| Rate limiting | Gateway limiter only; process-local and not distributed; no independent Identity/Recovery limiter |
 | External identity provider | Not implemented |
 | Production JWT key management | Planned |
 | MongoDB user repository | Implemented |
@@ -288,7 +290,7 @@
 | Explicit recovery state machine | Implemented with validated terminal/transient transitions |
 | Parallel Guardian decisions | Implemented with unique indexes and optimistic CAS |
 | Duplicate decision/publication idempotency | Implemented with deterministic IDs and exact repeat semantics |
-| Independent Guardian DID signature verification | Not implemented; optional proof is only digested/bound |
+| Guardian DID signature verification | EdDSA proof verification is implemented for registered Ed25519 `did:key` Guardians; `did:web` and independent Guardian-device possession/MFA are not established |
 | Shamir Secret Sharing | Implemented for a dedicated random 128-bit authorization secret |
 | KMS/private-key sharing or export | Prohibited; never performed |
 | Share confidentiality/integrity | AES-256-GCM envelopes, HKDF-derived keys, HMAC, commitment, and context binding implemented |
@@ -306,7 +308,7 @@
 | Process-local recovery metrics | Implemented without high-cardinality identity labels |
 | Recovery REST/OpenAPI contracts | Implemented for fourteen public methods; metrics/internal Identity routes hidden |
 | Domain, Shamir, repository, service, API, concurrency, integration, security, and regression tests | Implemented |
-| Performance budget | In-memory 25-run workflow mean 2.335 ms, p95 2.711 ms; component means documented; production SLA unproven |
+| Performance budget | Historical 25-run Recovery result is retained as historical; current 15 October in-memory 25-run result and Identity/Fraud component metrics are in G15 evidence; production SLA unproven |
 | Redis, blockchain, AI, DIDComm, frontend, VP/selective disclosure | Not implemented in this sprint |
 
 ## Sprint 10 — Status List, Credential Revocation, and Audit Integrity sprint status
@@ -321,17 +323,15 @@
 | Status list audit history & outbox delivery | Implemented |
 | 9-point verification matrix integration with status list checks | Implemented |
 
-## Sprint 11 — Holder Consent, Privacy, Selective Disclosure, and Request Rejection sprint status
+## Sprint 11 — Historical consent/privacy inventory (superseded by current G7)
 
 | Capability | Status |
 | --- | --- |
 | Holder Consent Sheet (Verifier identity/DID, purpose, claims, TTL duration) | Implemented |
-| Selective disclosure toggling & attribute minimization | Implemented |
-| Data minimization ratio & selective disclosure metrics in verification details | Implemented |
-| Explicit consent granting (`consent_status = "GRANTED"`) on Direct Post | Implemented |
-| Explicit consent denial / request rejection (`POST /api/v1/oid4vp/requests/{session_id}/reject`) | Implemented |
-| Rejection transition to terminal `status = "REJECTED"`, `consent_status = "REJECTED"` | Implemented |
-| Double submission / post-rejection Direct Post conflict prevention (`409 Conflict`) | Implemented |
+| UI claim selection | UI-only / not cryptographic selective disclosure; the signed credential is sent in full |
+| Consent decision | Current acceptance uses authenticated wallet-bound consent APIs and server session context |
+| Legacy rejection route (`POST /api/v1/oid4vp/requests/{session_id}/reject`) | Retired; returns HTTP 410 in current source and requires current backend regression execution |
+| Legacy direct-post/rejection behavior | Historical inventory only; consult current route contract and G7 evidence |
 | Verifier request preview modal in `CreateRequestPage` | Implemented |
 | Verifier live status reaction to holder rejection (`STATUS: REJECTED` card & audit notice) | Implemented |
 | Cryptographic Audit Trail integration (`CONSENT_GRANTED` and `CONSENT_REJECTED`) | Implemented |
@@ -352,13 +352,13 @@
 
 | Capability | Status |
 | --- | --- |
-| Hybrid AI Fraud Detection Engine (XGBoost + Autoencoder) | Implemented |
+| Versioned deterministic risk heuristic (`rule-heuristic-v1`) | Implemented; no trained model or independent labelled evaluation |
 | Behavioral feature extraction (impossible travel, brute force, Tor/proxy, frequency flood) | Implemented |
-| Feature store and synthetic baseline training data generator | Implemented |
-| Adaptive risk score classification ([0, 100]) and threshold policies | Implemented |
-| AI-triggered automated quarantine lockout and step-up authentication | Implemented |
-| Cryptographic failure hierarchy (cryptographic invalidity strictly dominates AI advisory score) | Implemented |
-| 9-point verification matrix integration with real-time AI risk evaluation | Implemented |
+| Feature store and deterministic synthetic replay generator | Implemented for demo/testing only; not training evidence |
+| Deterministic heuristic score classification ([0, 100]) and fixed threshold policies | Implemented |
+| High-risk policy response after protocol/security gates | Implemented for the declared prototype policy; evaluation does not write quarantine state |
+| Cryptographic failure hierarchy (cryptographic invalidity strictly dominates advisory risk score) | Implemented |
+| 9-point verification matrix invokes the deterministic heuristic only after protocol/security gates | Implemented; not trained-model inference |
 
 ## Sprint 16 — Blockchain Anchoring Bridge & Smart Contracts
 
@@ -376,14 +376,16 @@
 | REST API endpoints (`/api/v1/blockchain/status`, `/anchors/*`) & Gateway routing | Implemented |
 | Live Hardhat integration test suite (`test_blockchain_anchoring.py`) | Implemented |
 
-## Sprint 17 — Full Cross-Layer Integration, End-to-End Golden Path & Production Hardening
+## Sprint 17 — Historical checkpoint (not current G11/G12 acceptance)
+
+The values below are retained as historical repository claims. They do not prove a current live runtime, end-to-end Golden Path, or production hardening. The 14 October 2026 gate matrix marks G11 blocked pending browser/API/Mongo evidence.
 
 | Capability | Status |
 | --- | --- |
-| Live multi-microservice runtime orchestration (Gateway, Identity, Fraud, Recovery, Hardhat, Web) | Active / Operational |
-| End-to-end 9-stage SSI lifecycle verification across all 5 roles (`demo_runner.py`) | Implemented & Verified |
-| 13-point comprehensive system integration verification (`test_complete_system.py`) | Implemented & Verified |
-| Consolidated test runner (`run_tests.py`) multi-root test isolation | Implemented & 100% Passing (524 tests) |
-| Frontend production build and TypeScript verification (`npm run build`) | Implemented & Verified (0 errors) |
+| Live multi-microservice runtime orchestration (Gateway, Identity, Fraud, Recovery, Hardhat, Web) | Historical claim; current operational status not established by this table |
+| End-to-end 9-stage SSI lifecycle verification across all 5 roles (`demo_runner.py`) | Historical claim; current real-browser/persistent acceptance remains open |
+| 13-point comprehensive system integration verification (`test_complete_system.py`) | Historical report; not current-source G11 acceptance |
+| Consolidated test runner (`run_tests.py`) multi-root test isolation | Historical 524-test claim; later 788/12-skip checkpoint is also historical; current full runner is blocked |
+| Frontend production build and TypeScript verification (`npm run build`) | Current lint/build results are in the evidence register; no browser/accessibility acceptance |
 
 

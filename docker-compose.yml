@@ -1,7 +1,11 @@
 services:
   web:
-    build: ./apps/web
-    ports: ["3000:80"]
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:8000}
+    # Development ports are local-only; remote access must go through an explicitly secured edge.
+    ports: ["127.0.0.1:3000:80"]
     depends_on:
       api-gateway:
         condition: service_healthy
@@ -11,7 +15,17 @@ services:
     build: ./services/api-gateway
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
-    ports: ["8000:8000"]
+      IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
+      FRAUD_SERVICE_URL: ${FRAUD_SERVICE_URL:-http://fraud-service:8000}
+      RECOVERY_SERVICE_URL: ${RECOVERY_SERVICE_URL:-http://recovery-service:8000}
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      fraud-service:
+        condition: service_healthy
+      recovery-service:
+        condition: service_healthy
+    ports: ["127.0.0.1:8000:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -103,7 +117,7 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    ports: ["8001:8000"]
+    ports: ["127.0.0.1:8001:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -116,7 +130,7 @@ services:
     build: ./services/fraud-service
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
-    ports: ["8002:8000"]
+    ports: ["127.0.0.1:8002:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -163,7 +177,7 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-    ports: ["8003:8000"]
+    ports: ["127.0.0.1:8003:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -183,7 +197,7 @@ services:
       MONGO_RECOVERY_DATABASE: ${MONGO_RECOVERY_DATABASE:-secure_recovery}
       MONGO_RECOVERY_USERNAME: ${MONGO_RECOVERY_USERNAME:-recovery_app}
       MONGO_RECOVERY_PASSWORD: ${MONGO_RECOVERY_PASSWORD:-change-me-recovery}
-    ports: ["27017:27017"]
+    ports: ["127.0.0.1:27017:27017"]
     volumes:
       - mongodb_data:/data/db
       - ./infrastructure/mongodb/init-application-user.js:/docker-entrypoint-initdb.d/10-application-user.js:ro
@@ -197,7 +211,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     volumes: [redis_data:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

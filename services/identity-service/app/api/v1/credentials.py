@@ -13,7 +13,13 @@ from app.application.services.credential_revocation_service import (
     CredentialRevocationService,
 )
 from app.domain.auth import AuthenticatedPrincipal
-from app.domain.permissions import Permission
+from app.domain.permissions import Permission, Role
+from app.domain.exceptions import PermissionDeniedError
+from app.api.v1.issuer_scope import (
+    credential_issuer_did,
+    issuer_did_for_authorization,
+    require_issuer_did,
+)
 from app.schemas.credential_api import (
     ApiErrorResponse,
     CredentialCapabilitiesResponse,
@@ -99,13 +105,19 @@ def validate_credential(
 )
 def sign_credential(
     envelope: CredentialEnvelope,
-    _principal: AuthenticatedPrincipal = Depends(
+    principal: AuthenticatedPrincipal = Depends(
         require_permission(Permission.CREDENTIALS_SIGN)
     ),
     service: CredentialApiService = Depends(
         get_credential_issuance_api_service
     ),
 ) -> CredentialSignResponse:
+    if Role.ADMIN not in principal.roles:
+        issuer_did = require_issuer_did(principal)
+        if credential_issuer_did(envelope.credential) != issuer_did:
+            raise PermissionDeniedError(
+                "The credential issuer does not match the authenticated issuer scope."
+            )
     credential = service.sign_credential(envelope.credential)
     return CredentialSignResponse(credential=credential)
 
@@ -180,9 +192,7 @@ def revoke_credential(
         get_credential_revocation_service
     ),
 ) -> CredentialStatusResponse:
-    caller_issuer_did = (
-        principal.id if principal.id.startswith("did:") else None
-    )
+    caller_issuer_did = issuer_did_for_authorization(principal)
     result = service.revoke(
         credential_id,
         reason=payload.reason,
@@ -279,9 +289,7 @@ def credential_history(
         get_credential_revocation_service
     ),
 ) -> CredentialStatusHistoryResponse:
-    caller_issuer_did = (
-        principal.id if principal.id.startswith("did:") else None
-    )
+    caller_issuer_did = issuer_did_for_authorization(principal)
     events = service.get_history(
         credential_id,
         actor_id=principal.id,

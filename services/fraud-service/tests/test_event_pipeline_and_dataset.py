@@ -2,10 +2,10 @@
 
 Validates:
 1. Event ingestion of Master Plan Section 14 events (LOGIN, LOGIN_FAILED, CREDENTIAL_PRESENTED, etc.).
-2. Sliding-window velocity tracking and auto-quarantine upon >= 5 failed attempts.
+2. Sliding-window velocity tracking without automatic quarantine side effects.
 3. Impossible travel speed calculation using Haversine coordinates.
 4. Batch event ingestion.
-5. Synthetic dataset generation (1000 samples) and academic evaluation metrics (Accuracy, Precision, Recall, F1 >= 0.94).
+5. Synthetic dataset generation (1000 samples) and diagnostic-only metric labeling.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def test_single_event_ingestion_and_sliding_window():
     assert data["sliding_window_summary"]["total_events_in_window"] == 1
 
 
-def test_failed_login_velocity_triggers_auto_quarantine():
+def test_failed_login_velocity_is_advisory_and_does_not_auto_quarantine():
     did = "did:key:z6MkuVictimBruteForce002"
     base_ts = time.time()
 
@@ -74,10 +74,10 @@ def test_failed_login_velocity_triggers_auto_quarantine():
         res = client.post("/api/v1/fraud/events", json=payload)
         assert res.status_code == 201
 
-    # Check that DID is now automatically quarantined by the policy engine
-    assert detector.is_quarantined(did) is True
+    # Event ingestion records telemetry but never changes account quarantine.
+    assert detector.is_quarantined(did) is False
 
-    # Subsequent evaluation must immediately return CRITICAL / QUARANTINE_ACCOUNT
+    # Evaluation may recommend quarantine, but does not mutate the quarantine state.
     eval_res = client.post("/api/v1/fraud/evaluate", json={
         "did": did,
         "action": "presentation_verification",
@@ -94,6 +94,7 @@ def test_failed_login_velocity_triggers_auto_quarantine():
     assert eval_res.status_code == 200
     assert eval_res.json()["risk_level"] == "CRITICAL"
     assert eval_res.json()["recommended_action"] == "QUARANTINE_ACCOUNT"
+    assert detector.is_quarantined(did) is False
 
 
 def test_batch_event_ingestion():
@@ -152,20 +153,20 @@ def test_impossible_travel_haversine_calculation():
     assert summary["geo_distance_km"] > 9000.0
 
 
-def test_synthetic_dataset_academic_metrics():
-    """Validates Section 14 academic benchmarks (accuracy >= 94%, F1 >= 94%, confusion matrix)."""
+def test_synthetic_dataset_metrics_are_labeled_as_diagnostic_only():
+    """Metrics are diagnostic for a fixed generated replay, not model claims."""
     res = client.get("/api/v1/fraud/dataset/metrics")
     assert res.status_code == 200
     metrics = res.json()
 
     assert metrics["sample_count"] == 1000
-    assert metrics["accuracy"] >= 0.93
-    assert metrics["precision"] >= 0.90
-    assert metrics["recall"] >= 0.90
-    assert metrics["f1_score"] >= 0.90
-    assert metrics["roc_auc"] >= 0.95
-    assert "true_positives" in metrics["confusion_matrix"]
-    assert "true_negatives" in metrics["confusion_matrix"]
-    assert "false_positives" in metrics["confusion_matrix"]
-    assert "false_negatives" in metrics["confusion_matrix"]
-    assert metrics["model_version"] == "hybrid-xgboost-ae-v1.3.0"
+    assert 0 <= metrics["accuracy"] <= 1
+    assert 0 <= metrics["precision"] <= 1
+    assert 0 <= metrics["recall"] <= 1
+    assert 0 <= metrics["f1_score"] <= 1
+    assert 0 <= metrics["roc_auc"] <= 1
+    assert sum(metrics["confusion_matrix"].values()) == metrics["sample_count"]
+    assert metrics["model_version"] == "rule-heuristic-v1"
+    assert metrics["dataset_label"] == "[DEMO LAB / SYNTHETIC]"
+    assert metrics["trained_model"] is False
+    assert "deterministic heuristic replay" in metrics["evaluation_scope"]

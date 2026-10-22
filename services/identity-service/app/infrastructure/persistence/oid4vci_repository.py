@@ -78,14 +78,20 @@ class MongoCredentialOfferRepository(CredentialOfferRepository):
 
     def get_by_offer_id(self, offer_id: str) -> CredentialOffer | None:
         try:
-            doc = self._collection.find_one({"offerId": offer_id})
+            doc = self._collection.find_one({
+                "offerId": offer_id,
+                "auditMetadata.seeded": {"$ne": True},
+            })
             return CredentialOfferDocumentMapper.from_document(doc) if doc else None
         except PyMongoError as e:
             raise PersistenceUnavailableError(f"Failed to lookup offer {offer_id}.") from e
 
     def get_by_pre_authorized_code(self, pre_authorized_code: str) -> CredentialOffer | None:
         try:
-            doc = self._collection.find_one({"preAuthorizedCode": pre_authorized_code})
+            doc = self._collection.find_one({
+                "preAuthorizedCode": pre_authorized_code,
+                "auditMetadata.seeded": {"$ne": True},
+            })
             return CredentialOfferDocumentMapper.from_document(doc) if doc else None
         except PyMongoError as e:
             raise PersistenceUnavailableError("Failed to lookup offer by pre-authorized code.") from e
@@ -138,7 +144,10 @@ class MongoCredentialOfferRepository(CredentialOfferRepository):
         status: OfferStatus | None = None,
         limit: int = 50,
     ) -> tuple[CredentialOffer, ...]:
-        query: dict[str, Any] = {"issuerDid": issuer_did}
+        query: dict[str, Any] = {
+            "issuerDid": issuer_did,
+            "auditMetadata.seeded": {"$ne": True},
+        }
         if status is not None:
             query["status"] = status.value
         try:
@@ -158,32 +167,28 @@ class MongoCredentialOfferRepository(CredentialOfferRepository):
         query: dict[str, Any] = {
             "status": OfferStatus.PENDING.value,
             "expiresAt": {"$gt": now},
+            "auditMetadata.seeded": {"$ne": True},
         }
-        if holder_dids or owner_user_id:
-            dids = list(holder_dids) if holder_dids else []
-            match_clauses: list[dict[str, Any]] = [
-                {
-                    "subjectData.holder_did": {"$exists": False},
-                    "subjectData.holderDid": {"$exists": False},
-                    "subjectData.recipient_did": {"$exists": False},
-                    "subjectData.recipientDid": {"$exists": False},
-                    "subjectData.userId": {"$exists": False},
-                    "subjectData.user_id": {"$exists": False},
-                }
-            ]
-            if dids:
-                match_clauses.extend([
-                    {"subjectData.holder_did": {"$in": dids}},
-                    {"subjectData.holderDid": {"$in": dids}},
-                    {"subjectData.recipient_did": {"$in": dids}},
-                    {"subjectData.recipientDid": {"$in": dids}},
-                ])
-            if owner_user_id:
-                match_clauses.extend([
-                    {"subjectData.userId": owner_user_id},
-                    {"subjectData.user_id": owner_user_id},
-                ])
-            query["$or"] = match_clauses
+        if not holder_dids and not owner_user_id:
+            return ()
+
+        match_clauses: list[dict[str, Any]] = []
+        dids = list(holder_dids) if holder_dids else []
+        if dids:
+            match_clauses.extend([
+                {"subjectData.holder_did": {"$in": dids}},
+                {"subjectData.holderDid": {"$in": dids}},
+                {"subjectData.recipient_did": {"$in": dids}},
+                {"subjectData.recipientDid": {"$in": dids}},
+            ])
+        if owner_user_id:
+            match_clauses.extend([
+                {"subjectData.userId": owner_user_id},
+                {"subjectData.user_id": owner_user_id},
+            ])
+        if not match_clauses:
+            return ()
+        query["$or"] = match_clauses
 
         try:
             cursor = self._collection.find(query).sort("createdAt", DESCENDING).limit(limit)

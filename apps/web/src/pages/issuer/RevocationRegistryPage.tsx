@@ -1,423 +1,169 @@
-import React, { useState, useEffect } from "react";
-import { TrustBadge } from "../../components/common/TrustBadge";
+import React, { useRef, useState } from "react";
+import { AlertCircle, CheckCircle2, RefreshCw, Search, ShieldOff } from "lucide-react";
+import { fetchCredentialStatus, revokeCredential, type CredentialStatusSnapshot } from "../../services/api";
 import { StatusChip } from "../../components/common/StatusChip";
-import { fetchCredentials, revokeCredential, BackendCredential } from "../../services/api";
-import { AlertTriangle, RefreshCw, X } from "lucide-react";
+
+const formatRecordedAt = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not supplied" : date.toLocaleString();
+};
 
 export const RevocationRegistryPage: React.FC = () => {
-  const [credentials, setCredentials] = useState<BackendCredential[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const [credentialId, setCredentialId] = useState("");
+  const [reason, setReason] = useState("AFFILIATION_TERMINATED");
+  const [status, setStatus] = useState<CredentialStatusSnapshot | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [hasLookedUp, setHasLookedUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const confirmationRef = useRef<HTMLDialogElement | null>(null);
 
-  // Revocation modal state
-  const [selectedCred, setSelectedCred] = useState<BackendCredential | null>(null);
-  const [revocationReason, setRevocationReason] = useState<string>("AFFILIATION_TERMINATED");
-  const [customReason, setCustomReason] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
-
-  const loadCredentials = async () => {
-    setRefreshing(true);
+  const lookupStatus = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    const id = credentialId.trim();
+    if (!id) return;
+    setLookupLoading(true);
     setError(null);
+    setNotice(null);
+    setStatus(null);
+    setHasLookedUp(false);
     try {
-      const data = await fetchCredentials();
-      if (data) {
-        setCredentials(data);
+      const snapshot = await fetchCredentialStatus(id);
+      setStatus(snapshot);
+      setHasLookedUp(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Credential status could not be loaded.");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const openConfirmation = () => {
+    setDialogError(null);
+    confirmationRef.current?.showModal();
+  };
+
+  const handleRevoke = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!status || status.status !== "ACTIVE" || !reason.trim()) return;
+    setRevoking(true);
+    setDialogError(null);
+    setError(null);
+    setNotice(null);
+    try {
+      await revokeCredential(status.credential_id, reason);
+      confirmationRef.current?.close();
+      try {
+        const updated = await fetchCredentialStatus(status.credential_id);
+        setStatus(updated);
+        setNotice(updated.status === "REVOKED"
+          ? "The Identity Service confirms that this credential is revoked."
+          : `The revoke request returned, but the latest service status is ${updated.status}.`);
+      } catch (refreshCause) {
+        setStatus(null);
+        setHasLookedUp(false);
+        const message = refreshCause instanceof Error ? refreshCause.message : "the status could not be reloaded";
+        setNotice(`The service accepted the revocation request, but the status refresh failed: ${message}`);
       }
-    } catch (err: unknown) {
-      console.warn("Failed to load credentials for revocation registry:", err);
-      setError(err instanceof Error ? err.message : "Failed to load credentials from backend.");
+    } catch (cause) {
+      setDialogError(cause instanceof Error ? cause.message : "Credential revocation failed.");
     } finally {
-      setRefreshing(false);
+      setRevoking(false);
     }
   };
 
-  useEffect(() => {
-    loadCredentials();
-  }, []);
-
-  const openRevokeModal = (cred: BackendCredential) => {
-    setSelectedCred(cred);
-    setRevocationReason("AFFILIATION_TERMINATED");
-    setCustomReason("");
-    setModalError(null);
+  const statusDescription: Record<string, string> = {
+    ACTIVE: "The service reports this credential as active. Revocation can be requested by an authorized issuer.",
+    SUSPENDED: "The service reports this credential as suspended. This screen does not resume or revoke suspended credentials.",
+    REVOKED: "The service reports this credential as revoked. Revocation cannot be repeated from this screen.",
+    EXPIRED: "The service reports this credential as expired. No revocation action is available.",
+    UNKNOWN: "The service could not establish a known lifecycle state for this credential. No action is available.",
   };
-
-  const closeRevokeModal = () => {
-    if (isSubmitting) return;
-    setSelectedCred(null);
-    setModalError(null);
-  };
-
-  const handleConfirmRevoke = async () => {
-    if (!selectedCred) return;
-    setIsSubmitting(true);
-    setModalError(null);
-
-    const finalReason = revocationReason === "CUSTOM"
-      ? (customReason.trim() || "UNSPECIFIED")
-      : revocationReason;
-
-    try {
-      await revokeCredential(selectedCred.id, finalReason);
-      // On success, refresh authoritative state from backend
-      await loadCredentials();
-      setSelectedCred(null);
-    } catch (err: unknown) {
-      console.error("Revocation failed:", err);
-      // NEVER silently change UI state if backend revocation failed
-      setModalError(err instanceof Error ? err.message : "Revocation failed on authoritative backend.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const activeCount = credentials.filter((c) => c.status === "ACTIVE").length;
-  const revokedCount = credentials.filter((c) => c.status === "REVOKED").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+    <main className="workspace-page issuer-page issuer-status-page">
+      <header className="workspace-page-header issuer-page-header">
         <div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" />
-            <TrustBadge level="BLOCKCHAIN_ANCHORED" />
+          <p className="workspace-eyebrow">Issuer · Credential lifecycle</p>
+          <h1>Credential status</h1>
+          <p>Look up a credential by its exact identifier. The service returns the current status and enforces issuer authorization for revocation.</p>
+        </div>
+      </header>
+
+      <section className="workspace-panel issuer-lookup-panel" aria-labelledby="issuer-lookup-title">
+        <div className="issuer-form-section-heading"><span className="issuer-config-card__icon"><Search size={19} aria-hidden="true" /></span><div><h2 id="issuer-lookup-title">Find a credential</h2><p>Use an identifier from an authorized issuance record.</p></div></div>
+        <form className="issuer-lookup-form" onSubmit={(event) => void lookupStatus(event)}>
+        <label className="workspace-field" htmlFor="issuer-credential-id">
+            <span>Credential ID</span>
+            <input id="issuer-credential-id" className="form-input issuer-credential-id-input" value={credentialId} onChange={(event) => { setCredentialId(event.target.value); setStatus(null); setHasLookedUp(false); setNotice(null); setError(null); }} placeholder="Paste the exact credential identifier" autoComplete="off" required disabled={lookupLoading} />
+          </label>
+          <button type="submit" className="workspace-primary-action" disabled={lookupLoading || !credentialId.trim()}>
+            {lookupLoading ? <><RefreshCw size={16} className="spin" aria-hidden="true" /> Checking…</> : <><Search size={16} aria-hidden="true" /> Check status</>}
+          </button>
+        </form>
+        <p className="issuer-lookup-footnote"><ShieldOff size={15} aria-hidden="true" /> No global credential inventory is exposed. A status lookup does not grant permission to revoke.</p>
+      </section>
+
+      {lookupLoading && <div className="issuer-data-state" role="status" aria-busy="true"><span className="issuer-loading-mark" aria-hidden="true"><RefreshCw size={17} /></span><div><strong>Checking current status</strong><p>Waiting for the credential status service.</p></div></div>}
+      {error && <div className="workspace-error issuer-status-error" role="alert"><AlertCircle size={17} aria-hidden="true" /> <span>{error}</span></div>}
+      {notice && <div className="workspace-notice issuer-status-notice" role="status"><CheckCircle2 size={17} aria-hidden="true" /> <span>{notice}</span></div>}
+
+      {hasLookedUp && status && (
+        <section className="workspace-panel issuer-status-result" aria-labelledby="issuer-status-result-title">
+          <div className="issuer-status-result__heading">
+            <div><p className="workspace-eyebrow">Authoritative response</p><h2 id="issuer-status-result-title">Credential status</h2></div>
+            <StatusChip status={status.status} />
           </div>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Bitstring Status List & Revocation Registry
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Authoritative W3C BitstringStatusList2021 status manager and object-authorized revocation registry.
-          </p>
-        </div>
-
-        <button
-          onClick={loadCredentials}
-          disabled={refreshing}
-          style={{
-            padding: "8px 16px",
-            borderRadius: "8px",
-            backgroundColor: "#1f2937",
-            border: "1px solid #374151",
-            color: "#e2e8f0",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px"
-          }}
-        >
-          <RefreshCw size={14} className={refreshing ? "spin" : ""} />
-          Sync Registry
-        </button>
-      </div>
-
-      {/* Global Error Banner */}
-      {error && (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "12px 16px",
-          backgroundColor: "rgba(239, 68, 68, 0.15)",
-          border: "1px solid rgba(239, 68, 68, 0.4)",
-          borderRadius: "8px",
-          color: "#fca5a5",
-          fontSize: "0.85rem"
-        }}>
-          <AlertTriangle size={18} />
-          <span>{error}</span>
-        </div>
+          <dl className="issuer-review-list issuer-status-facts">
+            <div><dt>Credential ID</dt><dd><code>{status.credential_id}</code></dd></div>
+            <div><dt>Current state</dt><dd>{status.status}</dd></div>
+            {status.revocation_reason && <div><dt>Recorded reason</dt><dd>{status.revocation_reason}</dd></div>}
+            {status.revoked_at && <div><dt>Revoked at</dt><dd>{formatRecordedAt(status.revoked_at)}</dd></div>}
+          </dl>
+          <p className="issuer-status-explanation">{statusDescription[status.status] || `The service returned status “${status.status}”. No revocation action is available for this state.`}</p>
+          {status.status === "ACTIVE" && (
+            <div className="issuer-revoke-action-row">
+              <p>Revocation is permanent. Confirm the exact credential and reason before submitting.</p>
+              <button type="button" className="workspace-danger-action" onClick={openConfirmation}><ShieldOff size={16} aria-hidden="true" /> Review revocation</button>
+            </div>
+          )}
+        </section>
       )}
 
-      {/* Registry Metrics */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
-          <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Status List Specification</span>
-          <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#ffffff", marginTop: "4px" }}>
-            BitstringStatusList2021
-          </div>
-          <span style={{ fontSize: "0.72rem", color: "#60a5fa" }}>16,384 bits · Gzip + Base64URL multibase</span>
-        </div>
-
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
-          <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Allocated Indices & Status</span>
-          <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#ffffff", marginTop: "4px" }}>
-            {activeCount} Active / {revokedCount} Revoked
-          </div>
-          <span style={{ fontSize: "0.72rem", color: "#34d399" }}>{credentials.length} Total Registered</span>
-        </div>
-
-        <div style={{ backgroundColor: "#111827", borderRadius: "14px", border: "1px solid #1f2937", padding: "18px" }}>
-          <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Authorization Guard</span>
-          <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#c084fc", marginTop: "4px" }}>
-            Object-Level RBAC
-          </div>
-          <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Issuer-matched & Admin scoped</span>
-        </div>
-      </div>
-
-      {/* Revocation List Table */}
-      <div
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "14px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "#ffffff", margin: "0 0 16px 0" }}>
-          Authoritative Credential Status Table
-        </h3>
-
-        {credentials.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "32px", color: "#94a3b8", fontSize: "0.85rem" }}>
-            No credentials found in authoritative registry.
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", textAlign: "left" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #1f2937", color: "#94a3b8" }}>
-                  <th style={{ padding: "10px 12px" }}>Credential ID</th>
-                  <th style={{ padding: "10px 12px" }}>Status Index</th>
-                  <th style={{ padding: "10px 12px" }}>Title / Type</th>
-                  <th style={{ padding: "10px 12px" }}>Subject</th>
-                  <th style={{ padding: "10px 12px" }}>Issuer</th>
-                  <th style={{ padding: "10px 12px" }}>Issued / Expiry</th>
-                  <th style={{ padding: "10px 12px" }}>Status</th>
-                  <th style={{ padding: "10px 12px" }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {credentials.map((c) => (
-                  <tr key={c.id} style={{ borderBottom: "1px solid #1f2937" }}>
-                    <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#94a3b8", fontSize: "0.75rem" }} title={c.id}>
-                      {c.id.length > 20 ? `${c.id.substring(0, 18)}...` : c.id}
-                    </td>
-                    <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#60a5fa" }}>
-                      {c.status_list_index !== undefined && c.status_list_index !== null
-                        ? `#${c.status_list_index}`
-                        : "—"}
-                    </td>
-                    <td style={{ padding: "12px", fontWeight: 600, color: "#f8fafc" }}>
-                      {c.title}
-                    </td>
-                    <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#94a3b8" }} title={c.user_did || c.wallet_address}>
-                      {c.user_did
-                        ? (c.user_did.length > 18 ? `${c.user_did.slice(0, 16)}...` : c.user_did)
-                        : (c.wallet_address ? `${c.wallet_address.slice(0, 10)}...` : "—")}
-                    </td>
-                    <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#94a3b8" }} title={c.issuer}>
-                      {c.issuer_name || (c.issuer.length > 18 ? `${c.issuer.slice(0, 16)}...` : c.issuer)}
-                    </td>
-                    <td style={{ padding: "12px", color: "#94a3b8", fontSize: "0.75rem" }}>
-                      {c.issued_date || "—"} / {c.expiry_date || "Permanent"}
-                    </td>
-                    <td style={{ padding: "12px" }}>
-                      <StatusChip status={c.status} size="sm" />
-                    </td>
-                    <td style={{ padding: "12px" }}>
-                      {c.status === "ACTIVE" ? (
-                        <button
-                          onClick={() => openRevokeModal(c)}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: "6px",
-                            backgroundColor: "rgba(239, 68, 68, 0.15)",
-                            border: "1px solid rgba(239, 68, 68, 0.3)",
-                            color: "#f87171",
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            cursor: "pointer"
-                          }}
-                        >
-                          Revoke
-                        </button>
-                      ) : (
-                        <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Permanently Revoked</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Revocation Confirmation Modal */}
-      {selectedCred && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px"
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#111827",
-              border: "1px solid #374151",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "520px",
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)"
-            }}
-          >
-            {/* Modal Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <AlertTriangle size={22} color="#f87171" />
-                <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#ffffff" }}>
-                  Confirm Credential Revocation
-                </h3>
-              </div>
-              <button
-                onClick={closeRevokeModal}
-                disabled={isSubmitting}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#94a3b8",
-                  cursor: "pointer"
-                }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Modal Details */}
-            <div style={{ fontSize: "0.85rem", color: "#cbd5e1", lineHeight: 1.5 }}>
-              <p style={{ margin: "0 0 12px 0" }}>
-                You are about to permanently revoke this credential. This action is <strong>irreversible</strong> and will update the authoritative Bitstring Status List.
-              </p>
-              <div style={{ backgroundColor: "#1f2937", padding: "12px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                <div><span style={{ color: "#94a3b8" }}>Title:</span> <strong style={{ color: "#ffffff" }}>{selectedCred.title}</strong></div>
-                <div><span style={{ color: "#94a3b8" }}>Credential ID:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>{selectedCred.id}</span></div>
-                <div><span style={{ color: "#94a3b8" }}>Status Index:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>{selectedCred.status_list_index ?? "—"}</span></div>
-                <div><span style={{ color: "#94a3b8" }}>Subject:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>{selectedCred.user_did || selectedCred.wallet_address}</span></div>
-              </div>
-            </div>
-
-            {/* Modal Error Banner */}
-            {modalError && (
-              <div style={{
-                padding: "10px 14px",
-                backgroundColor: "rgba(239, 68, 68, 0.2)",
-                border: "1px solid rgba(239, 68, 68, 0.4)",
-                borderRadius: "8px",
-                color: "#fca5a5",
-                fontSize: "0.82rem"
-              }}>
-                {modalError}
-              </div>
-            )}
-
-            {/* Revocation Reason Selection */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "#e2e8f0" }}>
-                Revocation Reason (Mandatory for Audit Trail)
-              </label>
-              <select
-                value={revocationReason}
-                onChange={(e) => setRevocationReason(e.target.value)}
-                disabled={isSubmitting}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  backgroundColor: "#1f2937",
-                  border: "1px solid #374151",
-                  color: "#ffffff",
-                  fontSize: "0.85rem",
-                  outline: "none"
-                }}
-              >
-                <option value="AFFILIATION_TERMINATED">Affiliation Terminated / Completed</option>
-                <option value="KEY_COMPROMISE">Key Compromise / Security Incident</option>
-                <option value="ISSUANCE_ERROR">Issuance Error / Administrative Correction</option>
-                <option value="PRIVILEGE_WITHDRAWN">Privilege Withdrawn</option>
-                <option value="CUSTOM">Other (Specify below)</option>
-              </select>
-
-              {revocationReason === "CUSTOM" && (
-                <input
-                  type="text"
-                  placeholder="Enter detailed revocation justification..."
-                  value={customReason}
-                  onChange={(e) => setCustomReason(e.target.value)}
-                  disabled={isSubmitting}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    backgroundColor: "#1f2937",
-                    border: "1px solid #374151",
-                    color: "#ffffff",
-                    fontSize: "0.85rem",
-                    outline: "none",
-                    marginTop: "6px"
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Modal Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-              <button
-                onClick={closeRevokeModal}
-                disabled={isSubmitting}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "8px",
-                  backgroundColor: "#1f2937",
-                  border: "1px solid #374151",
-                  color: "#e2e8f0",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmRevoke}
-                disabled={isSubmitting}
-                style={{
-                  padding: "8px 20px",
-                  borderRadius: "8px",
-                  backgroundColor: "#dc2626",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "0.85rem",
-                  fontWeight: 700,
-                  cursor: isSubmitting ? "not-allowed" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  opacity: isSubmitting ? 0.7 : 1
-                }}
-              >
-                {isSubmitting ? "Revoking..." : "Confirm Revocation"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {!hasLookedUp && !lookupLoading && !error && (
+        <section className="issuer-status-empty" aria-label="No credential selected">
+          <span className="issuer-loading-mark" aria-hidden="true"><ShieldOff size={18} /></span>
+          <div><strong>Credential status appears here</strong><p>Enter an identifier above to load its current service-reported state.</p></div>
+        </section>
       )}
-    </div>
+
+      <dialog className="issuer-confirm-dialog" ref={confirmationRef} aria-labelledby="issuer-confirm-title" aria-describedby="issuer-confirm-description" onCancel={() => setDialogError(null)}>
+        <form onSubmit={(event) => void handleRevoke(event)}>
+          <div className="issuer-confirm-dialog__icon"><ShieldOff size={20} aria-hidden="true" /></div>
+          <p className="workspace-eyebrow">Permanent action</p>
+          <h2 id="issuer-confirm-title">Confirm credential revocation</h2>
+          <p id="issuer-confirm-description">The request will be authorized and recorded by the Identity Service. You cannot undo a successful revocation.</p>
+          {status && <div className="issuer-confirm-credential"><span>Credential ID</span><code>{status.credential_id}</code></div>}
+          <label className="workspace-field">
+            <span>Revocation reason</span>
+            <select className="form-select" value={reason} onChange={(event) => setReason(event.target.value)} disabled={revoking}>
+              <option value="AFFILIATION_TERMINATED">Affiliation ended</option>
+              <option value="SUPERSEDED">Credential replaced</option>
+              <option value="SECURITY_CONCERN">Security concern</option>
+              <option value="UNSPECIFIED">Other / unspecified</option>
+            </select>
+          </label>
+          {dialogError && <div className="workspace-error issuer-dialog-error" role="alert">{dialogError}</div>}
+          <div className="issuer-confirm-dialog__actions">
+            <button type="button" className="workspace-secondary-action" onClick={() => confirmationRef.current?.close()} disabled={revoking}>Cancel</button>
+            <button type="submit" className="workspace-danger-action" disabled={revoking || !status}>
+              {revoking ? <><RefreshCw size={16} className="spin" aria-hidden="true" /> Revoking…</> : <><ShieldOff size={16} aria-hidden="true" /> Revoke credential</>}
+            </button>
+          </div>
+        </form>
+      </dialog>
+    </main>
   );
 };

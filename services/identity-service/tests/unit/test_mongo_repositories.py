@@ -185,6 +185,45 @@ def test_user_repository_crud_optimistic_lock_and_soft_delete() -> None:
     assert collection.documents[0]["version"] == 3
 
 
+def test_user_repository_lists_active_users_by_username_with_pagination() -> None:
+    repository = MongoUserRepository(
+        cast(Any, FakeCollection(unique_fields=("username",)))
+    )
+    second = user(
+        user_id="74b64c0f0123456789abcdef",
+        username="b@example.test",
+    )
+    first = user(
+        user_id="84b64c0f0123456789abcdef",
+        username="a@example.test",
+    )
+    third = user(
+        user_id="94b64c0f0123456789abcdef",
+        username="c@example.test",
+    )
+    repository.add(second)
+    repository.add(first)
+    repository.add(third)
+
+    assert repository.list_all(limit=2, skip=1) == (second, third)
+    repository.soft_delete(second.id, expected_version=1)
+    assert repository.list_all() == (first, third)
+
+
+@pytest.mark.parametrize(
+    ("limit", "skip"),
+    [(0, 0), (501, 0), (10, -1)],
+)
+def test_user_repository_rejects_invalid_list_bounds(
+    limit: int,
+    skip: int,
+) -> None:
+    repository = MongoUserRepository(cast(Any, FakeCollection()))
+
+    with pytest.raises(ValueError):
+        repository.list_all(limit=limit, skip=skip)
+
+
 def test_user_repository_translates_unique_constraint() -> None:
     repository = MongoUserRepository(
         cast(Any, FakeCollection(unique_fields=("username",)))

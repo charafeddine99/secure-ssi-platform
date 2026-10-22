@@ -44,6 +44,9 @@ def test_persisted_user_normalizes_identity_and_hides_hash() -> None:
         {"password_hash": "plain-text"},
         {"version": 0},
         {"updated_at": NOW - timedelta(seconds=1)},
+        {"roles": (Role.ADMIN,), "issuer_did": "did:web:issuer.example"},
+        {"roles": (Role.ISSUER,), "issuer_did": "did:web:"},
+        {"roles": (Role.ISSUER,), "issuer_did": "https://issuer.example"},
     ],
 )
 def test_persisted_user_rejects_invalid_storage_state(

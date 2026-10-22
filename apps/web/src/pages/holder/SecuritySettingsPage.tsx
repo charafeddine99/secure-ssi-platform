@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import {
   fetchRecoveryPolicy,
   fetchGuardians,
   fetchRecoveryRequests,
+  getOrCreateHolderWallet,
+  canInitiateRecovery,
   initiateRecoveryRequest,
   cancelRecoveryRequest,
   RecoveryPolicy,
@@ -14,10 +15,7 @@ import {
 } from "../../services/api";
 import {
   KeyRound,
-  Eye,
-  EyeOff,
   Users,
-  Copy,
   Check,
   AlertTriangle,
   ShieldAlert,
@@ -26,44 +24,56 @@ import {
 
 export const SecuritySettingsPage: React.FC = () => {
   const { user } = useAuth();
-  const [showSeed, setShowSeed] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   // Recovery State
   const [policy, setPolicy] = useState<RecoveryPolicy | null>(null);
   const [guardiansList, setGuardiansList] = useState<BackendGuardian[]>([]);
   const [activePetition, setActivePetition] = useState<RecoveryRequest | null>(null);
+  const [loadingRecovery, setLoadingRecovery] = useState(true);
+  const [holderWalletId, setHolderWalletId] = useState<string | null>(null);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [recoveryReason, setRecoveryReason] = useState("ACCOUNT_COMPROMISE");
   const [customReason, setCustomReason] = useState("");
   const [submittingRecovery, setSubmittingRecovery] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  const seedPhrase = user?.seedPhrase || "apple banana cherry dolphin eagle falcon gorilla horizon island jungle knight leopard";
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(seedPhrase);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const activeGuardianCount = guardiansList.filter((guardian) => guardian.approved === 1).length;
+  const recoveryCanStart = canInitiateRecovery(
+    holderWalletId,
+    policy,
+    activeGuardianCount,
+    activePetition !== null,
+  );
 
   const loadRecoveryData = async () => {
+    setLoadingRecovery(true);
     try {
-      const walletId = "wallet_holder_primary";
+      const wallet = await getOrCreateHolderWallet();
+      setHolderWalletId(wallet.walletId);
       const [pol, guards, reqs] = await Promise.all([
-        fetchRecoveryPolicy(walletId),
-        fetchGuardians(),
+        fetchRecoveryPolicy(wallet.walletId),
+        fetchGuardians(wallet.walletId),
         fetchRecoveryRequests(10)
       ]);
       setPolicy(pol);
       setGuardiansList(guards);
 
       const active = reqs.find(
-        (r) => r.status === "PENDING" || r.status === "TIMELOCKED" || r.status === "APPROVED"
+        (r) => r.walletId === wallet.walletId
+          && ["PENDING_APPROVALS", "QUORUM_REACHED", "WAITING_TIMELOCK", "READY_FOR_EXECUTION"].includes(r.status)
       );
       setActivePetition(active || null);
     } catch (err: unknown) {
       console.warn("Could not load recovery configuration:", err);
+      setHolderWalletId(null);
+      setPolicy(null);
+      setGuardiansList([]);
+      setActivePetition(null);
+      setStatusMsg({
+        type: "error",
+        text: err instanceof Error ? err.message : "Recovery Service state is unavailable."
+      });
+    } finally {
+      setLoadingRecovery(false);
     }
   };
 
@@ -76,14 +86,18 @@ export const SecuritySettingsPage: React.FC = () => {
     setSubmittingRecovery(true);
     setStatusMsg(null);
     try {
+      if (!holderWalletId) throw new Error("A server-managed holder wallet is required before recovery can be requested.");
+      if (!policy || policy.walletId !== holderWalletId) throw new Error("The Recovery Service policy for this wallet is unavailable.");
+      if (activePetition) throw new Error("An active recovery request already exists.");
+      if (!recoveryCanStart) throw new Error("Active Guardian records cannot satisfy this wallet's Recovery Service policy.");
       const reasonText = customReason.trim() || recoveryReason;
       const res = await initiateRecoveryRequest({
-        walletId: "wallet_holder_primary",
+        walletId: holderWalletId,
         reason: reasonText
       });
       setStatusMsg({
         type: "success",
-        text: `Emergency recovery petition ${res.requestId} successfully created. Guardians notified.`
+        text: `Recovery Service request ${res.requestId} created. Guardian notification delivery is not confirmed.`
       });
       setShowRecoveryModal(false);
       await loadRecoveryData();
@@ -116,9 +130,18 @@ export const SecuritySettingsPage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+    <main className="holder-page holder-security-page" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <header className="holder-page-header">
+        <div>
+          <p className="holder-page-eyebrow">PERSONAL WALLET</p>
+          <h1>Security and recovery</h1>
+          <p>Review wallet identity and the Recovery Service policy for this account.</p>
+        </div>
+      </header>
+      {loadingRecovery && <p className="holder-inline-status" role="status">Loading wallet security settings…</p>}
       {/* Sovereign Identity Overview */}
       <div
+        className="holder-security-card holder-security-identity"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -130,24 +153,23 @@ export const SecuritySettingsPage: React.FC = () => {
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <KeyRound size={20} color="#60a5fa" />
             <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              Sovereign Key Management
+              Wallet identity
             </h2>
           </div>
-          <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.8rem" }}>
           <div style={{ backgroundColor: "#0d131f", padding: "10px 12px", borderRadius: "8px", border: "1px solid #1f2937" }}>
             <span style={{ color: "#94a3b8" }}>Decentralized Identifier (DID):</span>
             <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "2px", wordBreak: "break-all" }}>
-              {user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519"}
+              {user?.did || "Not provided by Identity Service"}
             </div>
           </div>
 
           <div style={{ backgroundColor: "#0d131f", padding: "10px 12px", borderRadius: "8px", border: "1px solid #1f2937" }}>
             <span style={{ color: "#94a3b8" }}>EVM Wallet Address:</span>
             <div style={{ fontFamily: "var(--font-mono)", color: "#c084fc", marginTop: "2px" }}>
-              {user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"}
+              {user?.walletAddress || "No linked EVM address"}
             </div>
           </div>
         </div>
@@ -155,6 +177,8 @@ export const SecuritySettingsPage: React.FC = () => {
 
       {statusMsg && (
         <div
+          className={`holder-notice holder-notice--${statusMsg.type}`}
+          role={statusMsg.type === "error" ? "alert" : "status"}
           style={{
             padding: "12px 16px",
             borderRadius: "8px",
@@ -175,6 +199,7 @@ export const SecuritySettingsPage: React.FC = () => {
       {/* Active Recovery Petition Warning Banner */}
       {activePetition && (
         <div
+          className="holder-active-recovery"
           style={{
             backgroundColor: "#1c1917",
             borderRadius: "14px",
@@ -208,6 +233,8 @@ export const SecuritySettingsPage: React.FC = () => {
           </div>
 
           <button
+            type="button"
+            className="holder-danger-action"
             onClick={handleCancelRecovery}
             style={{
               padding: "8px 14px",
@@ -229,8 +256,9 @@ export const SecuritySettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 12-Word Seed Backup */}
+      {/* Wallet key export and mnemonic recovery are not implemented. */}
       <div
+        className="holder-security-card holder-security-key-state"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -238,124 +266,17 @@ export const SecuritySettingsPage: React.FC = () => {
           padding: "20px"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-                12-Word Recovery Seed Phrase
-              </h3>
-              <span
-                style={{
-                  fontSize: "0.65rem",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  backgroundColor: "#451a03",
-                  color: "#f59e0b",
-                  border: "1px solid #78350f",
-                  fontWeight: 600
-                }}
-              >
-                DEMO ARTIFACT — SIMULATED CUSTODY
-              </span>
-            </div>
-            <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-              Simulated BIP-39 mnemonic phrase for academic evaluation. In production sovereign custody, raw seed phrases are never stored in databases or exposed in plaintext; keys remain in TEE/Secure Enclave hardware with Shamir SSS guardian recovery.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowSeed(!showSeed)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              padding: "4px 8px",
-              borderRadius: "6px",
-              border: "1px solid #374151",
-              backgroundColor: "#1f2937",
-              color: "#94a3b8",
-              cursor: "pointer",
-              fontSize: "0.75rem"
-            }}
-          >
-            {showSeed ? <EyeOff size={14} /> : <Eye size={14} />}
-            {showSeed ? "Hide" : "Reveal"}
-          </button>
-        </div>
-
-        {showSeed ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "8px",
-              backgroundColor: "#070a12",
-              padding: "14px",
-              borderRadius: "10px",
-              border: "1px solid #1f2937",
-              marginBottom: "12px"
-            }}
-          >
-            {seedPhrase.split(" ").map((w, idx) => (
-              <div
-                key={idx}
-                style={{
-                  fontSize: "0.75rem",
-                  fontFamily: "var(--font-mono)",
-                  color: "#38bdf8",
-                  padding: "4px 8px",
-                  backgroundColor: "#111827",
-                  borderRadius: "6px"
-                }}
-              >
-                <span style={{ color: "#64748b", marginRight: "4px" }}>{idx + 1}.</span>
-                {w}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "#070a12",
-              padding: "20px",
-              borderRadius: "10px",
-              border: "1px solid #1f2937",
-              textAlign: "center",
-              color: "#64748b",
-              fontSize: "0.8rem",
-              marginBottom: "12px"
-            }}
-          >
-            •••••••• •••••••• •••••••• •••••••• •••••••• ••••••••
-          </div>
-        )}
-
-        {showSeed && (
-          <button
-            onClick={handleCopy}
-            style={{
-              width: "100%",
-              padding: "8px",
-              borderRadius: "8px",
-              backgroundColor: "#1f2937",
-              color: "#e2e8f0",
-              border: "1px solid #374151",
-              fontSize: "0.8rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px"
-            }}
-          >
-            {copied ? <Check size={14} color="#34d399" /> : <Copy size={14} />}
-            {copied ? "Seed Phrase Copied" : "Copy Seed Phrase"}
-          </button>
-        )}
+        <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: "0 0 8px 0" }}>
+          Key export and recovery phrase restore are unavailable
+        </h3>
+        <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>
+          Wallet keys are server-managed. This account has no local recovery phrase to export or restore.
+        </p>
       </div>
 
-      {/* Social Guardian Recovery (Shamir SSS M-of-N Policy) */}
+      {/* Guardian records from the Recovery Service; independent signatures are not implied. */}
       <div
+        className="holder-security-card holder-security-recovery"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
@@ -367,18 +288,21 @@ export const SecuritySettingsPage: React.FC = () => {
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Users size={18} color="#fbbf24" />
             <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              Guardian Social Recovery (3-of-5 Shamir Secret Sharing)
+              Guardian records and recovery policy
             </h3>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ fontSize: "0.7rem", color: "#34d399", fontWeight: 600 }}>
-              Threshold: {policy?.minimumApprovals || 3}-of-{policy?.maximumGuardians || 5}
+              Threshold: {policy ? `${policy.minimumApprovals}-of-${policy.maximumGuardians}` : "Unavailable"}
             </span>
 
             {!activePetition && (
               <button
+                type="button"
                 onClick={() => setShowRecoveryModal(true)}
+                disabled={!recoveryCanStart}
+                title={recoveryCanStart ? "Create a Recovery Service request" : "A valid backend policy and enough active Guardian records are required."}
                 style={{
                   padding: "6px 12px",
                   borderRadius: "6px",
@@ -387,7 +311,8 @@ export const SecuritySettingsPage: React.FC = () => {
                   fontSize: "0.75rem",
                   fontWeight: 700,
                   border: "none",
-                  cursor: "pointer",
+                  cursor: recoveryCanStart ? "pointer" : "not-allowed",
+                  opacity: recoveryCanStart ? 1 : 0.55,
                   display: "flex",
                   alignItems: "center",
                   gap: "4px"
@@ -398,6 +323,12 @@ export const SecuritySettingsPage: React.FC = () => {
               </button>
             )}
           </div>
+
+        {!activePetition && !recoveryCanStart && (
+          <p role="status" style={{ fontSize: "0.75rem", color: "#fbbf24", margin: "0 0 12px" }}>
+            Recovery requests are unavailable until this wallet has a valid backend policy and enough active Guardian records.
+          </p>
+        )}
         </div>
 
         {/* Policy Specs Grid */}
@@ -417,34 +348,38 @@ export const SecuritySettingsPage: React.FC = () => {
           <div>
             <span style={{ color: "#94a3b8" }}>Quorum Threshold:</span>
             <div style={{ color: "#60a5fa", fontWeight: 600, marginTop: "2px" }}>
-              {policy?.minimumApprovals || 3} of {policy?.maximumGuardians || 5} Signatures
+              {policy ? `${policy.minimumApprovals} of ${policy.maximumGuardians} approvals` : "Policy unavailable"}
             </div>
           </div>
           <div>
             <span style={{ color: "#94a3b8" }}>Time-Lock Delay:</span>
             <div style={{ color: "#fbbf24", fontWeight: 600, marginTop: "2px" }}>
-              {policy?.timeLockSeconds || 300} seconds (5 min)
+              {policy ? `${policy.timeLockSeconds} seconds` : "Unavailable"}
             </div>
           </div>
           <div>
             <span style={{ color: "#94a3b8" }}>Approval Window:</span>
             <div style={{ color: "#34d399", fontWeight: 600, marginTop: "2px" }}>
-              {(policy?.approvalWindowSeconds || 3600) / 60} minutes
+              {policy ? `${Math.round(policy.approvalWindowSeconds / 60)} minutes` : "Unavailable"}
             </div>
           </div>
           <div>
             <span style={{ color: "#94a3b8" }}>Anti-Compromise:</span>
             <div style={{ color: "#c084fc", fontWeight: 600, marginTop: "2px" }}>
-              Predecessor Key Invalidated
+              Status unavailable; key rotation is not confirmed
             </div>
           </div>
         </div>
 
         {/* Guardians List */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div className="holder-guardian-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {!loadingRecovery && guardiansList.length === 0 && (
+            <p className="holder-empty-inline">No Guardian records were returned for this wallet.</p>
+          )}
           {guardiansList.map((g, i) => (
             <div
               key={i}
+              className="holder-guardian-row"
               style={{
                 backgroundColor: "#0d131f",
                 padding: "10px 14px",
@@ -469,6 +404,7 @@ export const SecuritySettingsPage: React.FC = () => {
                 </div>
               </div>
               <span
+                className={g.approved ? "holder-record-status is-active" : "holder-record-status"}
                 style={{
                   fontSize: "0.68rem",
                   padding: "2px 8px",
@@ -478,7 +414,7 @@ export const SecuritySettingsPage: React.FC = () => {
                   fontWeight: 600
                 }}
               >
-                ENROLLED (SHAMIR SHARE ACTIVE)
+                {g.approved ? "ACTIVE SERVICE RECORD" : "SERVICE RECORD NOT ACTIVE"}
               </span>
             </div>
           ))}
@@ -504,6 +440,10 @@ export const SecuritySettingsPage: React.FC = () => {
           }}
         >
           <div
+            className="holder-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="holder-recovery-dialog-title"
             style={{
               backgroundColor: "#111827",
               borderRadius: "16px",
@@ -518,13 +458,13 @@ export const SecuritySettingsPage: React.FC = () => {
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <ShieldAlert size={24} color="#ef4444" />
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-                Initiate Sovereign Social Recovery
+              <h3 id="holder-recovery-dialog-title" style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+                Create Recovery Service request
               </h3>
             </div>
 
             <p style={{ fontSize: "0.85rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
-              Triggering recovery will generate a 128-bit authorization secret challenge. Your assigned guardians must contribute their Shamir polynomial shares. Upon reaching <strong>3-of-5 quorum</strong> and completing the <strong>300s time-lock delay</strong>, your active presentation key will be rotated and marked <code>COMPROMISED</code>.
+              This creates a Recovery Service request only. It does not prove independent Guardian DID signatures, split or recover key shares, rotate keys, change credential status, notify guardians, or submit an on-chain transaction. The active service policy is shown only when the backend returns it.
             </p>
 
             <form onSubmit={handleInitiateRecovery} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -592,7 +532,7 @@ export const SecuritySettingsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingRecovery}
+                  disabled={submittingRecovery || !recoveryCanStart}
                   style={{
                     padding: "8px 18px",
                     borderRadius: "8px",
@@ -601,16 +541,17 @@ export const SecuritySettingsPage: React.FC = () => {
                     color: "#ffffff",
                     fontSize: "0.85rem",
                     fontWeight: 700,
-                    cursor: submittingRecovery ? "not-allowed" : "pointer"
+                    cursor: submittingRecovery || !recoveryCanStart ? "not-allowed" : "pointer",
+                    opacity: recoveryCanStart ? 1 : 0.55
                   }}
                 >
-                  {submittingRecovery ? "Initiating..." : "Confirm & Broadcast Petition"}
+                  {submittingRecovery ? "Creating request..." : "Create Recovery Request"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 };

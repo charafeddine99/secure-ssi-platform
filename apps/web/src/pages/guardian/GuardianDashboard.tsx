@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import { StatusChip } from "../../components/common/StatusChip";
 import { RecoveryTimeline, GuardianSigner } from "../../components/guardian/RecoveryTimeline";
 import {
   fetchGuardians,
   fetchRecoveryRequests,
+  fetchCurrentUserId,
   approveRecoveryPetition,
   RecoveryRequest
 } from "../../services/api";
@@ -19,30 +19,56 @@ export const GuardianDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [authorizedGuardianIds, setAuthorizedGuardianIds] = useState<string[]>([]);
+  const [authorizedGuardianDids, setAuthorizedGuardianDids] = useState<Record<string, string>>({});
 
   const loadData = async () => {
     setLoading(true);
     setActionError(null);
     try {
-      const [guardianData, petitionData] = await Promise.all([
+      const [guardianData, petitionData, currentUserId] = await Promise.all([
         fetchGuardians(),
-        fetchRecoveryRequests(10)
+        fetchRecoveryRequests(50),
+        fetchCurrentUserId()
       ]);
 
-      setPetitions(petitionData);
-      const pending = petitionData.find(
-        (p) => p.status === "PENDING" || p.status === "APPROVED" || p.status === "TIMELOCKED"
+      const activeAssignments = guardianData.filter(
+        (guardian) => guardian.guardian_user_id === currentUserId && guardian.approved === 1
       );
-      setActivePetition(pending || (petitionData.length > 0 ? petitionData[0] : null));
+      const assignedWallets = new Set(activeAssignments.map((guardian) => guardian.wallet_address));
+      const guardianPetitions = petitionData.filter(
+        (petition) => assignedWallets.has(petition.walletId) &&
+          (petition.status === "PENDING_APPROVALS" || petition.status === "QUORUM_REACHED" || petition.status === "WAITING_TIMELOCK")
+      );
+      setPetitions(guardianPetitions);
+      const pending = guardianPetitions.find((petition) => petition.status === "PENDING_APPROVALS");
+      const selectedPetition = pending || guardianPetitions[0] || null;
+      setActivePetition(selectedPetition);
+      const selectedGuardianIds = activeAssignments
+        .filter((guardian) => guardian.wallet_address === selectedPetition?.walletId)
+        .map((guardian) => guardian.guardian_id)
+        .filter(Boolean);
+      setAuthorizedGuardianIds(selectedGuardianIds);
+      setAuthorizedGuardianDids(
+        Object.fromEntries(
+          activeAssignments
+            .filter((guardian) => guardian.wallet_address === selectedPetition?.walletId)
+            .map((guardian) => [guardian.guardian_id, guardian.guardian_did]),
+        ),
+      );
 
       // Map guardians to signers
-      const signers: GuardianSigner[] = guardianData.map((g, idx) => ({
-        address: g.guardian_address || `0x70997970C51812dc3A010C7d01b50e0d17dc79C${idx}`,
+      const signers: GuardianSigner[] = activeAssignments.map((g) => ({
+        guardianId: g.guardian_id || null,
+        walletId: g.wallet_address,
+        displayIdentifier: g.guardian_address || g.guardian_did || "Identifier unavailable",
         name: g.guardian_name,
         role: g.guardian_role,
-        hasApproved: pending ? idx < pending.approvalsCount : g.approved === 1,
+        // The Recovery API reports an aggregate count, not which guardian
+        // approved; never infer per-guardian approval from array order/status.
+        hasApproved: null,
         approvalDate: g.created_at,
-        txHash: pending?.txHash || undefined
+        canApprove: selectedGuardianIds.includes(g.guardian_id)
       }));
 
       setGuardians(signers);
@@ -65,36 +91,38 @@ export const GuardianDashboard: React.FC = () => {
     setActionError(null);
     setActionSuccess(null);
     try {
-      await approveRecoveryPetition(activePetition.requestId, guardianAddr);
-      setActionSuccess(`Cryptographic approval signed by ${guardianAddr.slice(0, 10)}...`);
-      setGuardians((prev) =>
-        prev.map((g) => (g.address === guardianAddr ? { ...g, hasApproved: true } : g))
-      );
-      if (activePetition) {
-        setActivePetition({
-          ...activePetition,
-          approvalsCount: Math.min(activePetition.requiredCount, activePetition.approvalsCount + 1)
-        });
+      if (!authorizedGuardianIds.includes(guardianAddr)) {
+        throw new Error("This signed-in account is not assigned as that Guardian.");
       }
+      if (!activePetition.challenge) {
+        throw new Error("The Recovery Service did not provide its active challenge.");
+      }
+      const guardianDid = authorizedGuardianDids[guardianAddr];
+      if (!guardianDid) {
+        throw new Error("The assigned Guardian DID is not available for signing.");
+      }
+      const result = await approveRecoveryPetition(
+        activePetition,
+        guardianAddr,
+        guardianDid,
+      );
+      setActionSuccess(`Decision recorded by the Recovery Service. Current state: ${result.recovery.status}.`);
+      await loadData();
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : "Failed to sign recovery approval.");
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div className="role-dashboard role-dashboard--guardian" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
         <div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-            <TrustBadge level="STANDARDS_ALIGNED" />
-            <TrustBadge level="BLOCKCHAIN_ANCHORED" />
-            <TrustBadge level="DEMO_TRUST_LEVEL" />
-          </div>
+          <p className="workspace-eyebrow">Recovery assignments</p>
           <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Guardian Social Recovery Network
+            Recovery approvals
           </h1>
           <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Decentralized sovereign account recovery via 3-of-5 Shamir Secret Sharing multi-sig consensus and time-locked key rotation.
+            Review requests for wallets with an active Guardian assignment. Approval signing and recovery key management remain server-managed.
           </p>
         </div>
 
@@ -137,7 +165,7 @@ export const GuardianDashboard: React.FC = () => {
             }}
           >
             <ShieldAlert size={16} />
-            View Active Petitions ({petitions.filter((p) => p.status === "PENDING" || p.status === "TIMELOCKED").length})
+          View Assigned Recovery Requests ({petitions.length})
           </button>
         </div>
       </div>
@@ -207,7 +235,7 @@ export const GuardianDashboard: React.FC = () => {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {activePetition.status === "PENDING" && (
+            {activePetition.status === "PENDING_APPROVALS" && (
               <button
                 onClick={() => navigate(`/guardian/approve/${activePetition.requestId}`)}
                 style={{
@@ -224,7 +252,7 @@ export const GuardianDashboard: React.FC = () => {
                   gap: "6px"
                 }}
               >
-                Review & Sign Petition <ArrowRight size={14} />
+                Review & Submit Decision <ArrowRight size={14} />
               </button>
             )}
           </div>
@@ -233,10 +261,11 @@ export const GuardianDashboard: React.FC = () => {
 
       {/* Live Quorum Visualizer */}
       <RecoveryTimeline
-        requiredThreshold={activePetition?.requiredCount || 3}
-        totalGuardians={guardians.length > 0 ? guardians.length : 5}
+        requiredThreshold={activePetition?.requiredCount ?? null}
+        approvedCount={activePetition?.approvalsCount ?? null}
+        totalGuardians={guardians.length}
         guardians={guardians}
-        onApprove={handleSign}
+        onApprove={activePetition?.status === "PENDING_APPROVALS" ? handleSign : undefined}
       />
 
       {/* Protected Wallets Directory */}
@@ -258,54 +287,58 @@ export const GuardianDashboard: React.FC = () => {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div
-            style={{
-              backgroundColor: "#0d131f",
-              borderRadius: "10px",
-              border: "1px solid #1f2937",
-              padding: "16px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "12px"
-            }}
-          >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontWeight: 700, color: "#f8fafc", fontSize: "0.95rem" }}>
-                  Charaf Eddine Bessanane (Sovereign Holder)
-                </span>
-                <StatusChip status="ACTIVE" size="sm" />
-              </div>
-              <div style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "4px" }}>
-                Wallet ID: wallet_holder_primary (0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266)
-              </div>
-              <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "2px" }}>
-                Policy: 3-of-5 Shamir Secret Sharing Quorum — 300s Time-lock Delay
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate("/guardian/requests")}
+          {Array.from(new Set(guardians.map((guardian) => guardian.walletId).filter((walletId): walletId is string => Boolean(walletId)))).map((walletId) => (
+            <div
+              key={walletId}
               style={{
-                padding: "8px 14px",
-                borderRadius: "8px",
-                backgroundColor: "#1f2937",
-                border: "1px solid #374151",
-                color: "#fbbf24",
-                fontSize: "0.8rem",
-                fontWeight: 600,
-                cursor: "pointer",
+                backgroundColor: "#0d131f",
+                borderRadius: "10px",
+                border: "1px solid #1f2937",
+                padding: "16px",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: "6px"
+                flexWrap: "wrap",
+                gap: "12px"
               }}
             >
-              <span>Recovery Petitions</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#f8fafc", fontSize: "0.95rem" }}>
+                  Wallet assignment
+                </div>
+                <div style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "4px" }}>
+                  Wallet ID: {walletId}
+                </div>
+                <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "2px" }}>
+                  {guardians.filter((guardian) => guardian.walletId === walletId).length} Guardian assignment(s)
+                </div>
+              </div>
+              <button
+                onClick={() => navigate("/guardian/requests")}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #374151",
+                  color: "#fbbf24",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+              >
+                <span>Recovery requests</span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          ))}
+          {guardians.length === 0 && (
+            <p style={{ color: "#94a3b8", fontSize: "0.85rem" }}>
+              No wallet Guardian assignments are available to this account.
+            </p>
+          )}
         </div>
       </div>
     </div>

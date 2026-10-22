@@ -11,7 +11,7 @@ class _StatusListApiModel(BaseModel):
 class StatusListCredentialSubject(_StatusListApiModel):
     id: str
     type: Literal["BitstringStatusList"]
-    statusPurpose: Literal["revocation"]
+    statusPurpose: Literal["revocation", "suspension"]
     encodedList: str
     ttl: Annotated[int, Field(ge=1_000)]
 
@@ -38,7 +38,7 @@ class BitstringStatusListCredentialResponse(_StatusListApiModel):
 class StatusListMetadataResponse(_StatusListApiModel):
     statusListId: str
     statusListCredential: str
-    statusPurpose: Literal["revocation"]
+    statusPurpose: Literal["revocation", "suspension"]
     issuer: str
     listLength: int
     capacity: int

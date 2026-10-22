@@ -1,10 +1,11 @@
 """Web3 Blockchain Bridge for Secure SSI Platform.
 
-Integrates Identity Service with Ethereum/Hardhat smart contracts:
-- DIDRegistry.sol: Anchors DID document SHA-256 hashes
-- RevocationRegistry.sol: Anchors W3C Bitstring Status List roots and credential revocations
-- EmergencyRecovery.sol: On-chain AI-quarantine locking
-- AuditLogger.sol: Append-only tamper-evident security audit logs
+Integrates Identity Service with optional Ethereum/Hardhat integrity contracts:
+- DIDRegistry.sol: Anchors a DID-key digest and document digest
+- RevocationRegistry.sol: Anchors status-list roots and credential revocation digests
+- AuditLogger.sol: Stores approved event digests, including quarantine-event digests
+- EmergencyRecovery.sol: Guardian recovery contract; the integrity bridge does not
+  submit wallet addresses or free-text quarantine reasons to it
 
 Adheres strictly to the S16 Non-PII and Fail-Open principles:
 - Zero PII or private keys stored on-chain.
@@ -38,6 +39,23 @@ from app.infrastructure.persistence.blockchain_anchor_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class TransactionReceiptPending(RuntimeError):
+    """A transaction was submitted, but no receipt was available before timeout."""
+
+    def __init__(self, tx_hash: str) -> None:
+        self.tx_hash = tx_hash
+        super().__init__("Transaction was submitted; receipt confirmation is pending.")
+
+
+class TransactionReverted(RuntimeError):
+    """A real transaction receipt reported status zero."""
+
+    def __init__(self, tx_hash: str, block_number: int) -> None:
+        self.tx_hash = tx_hash
+        self.block_number = block_number
+        super().__init__("Transaction receipt reports status 0 (reverted).")
 
 # Minimal ABIs for runtime independence and fallback
 DID_REGISTRY_ABI = [
@@ -185,7 +203,7 @@ AUDIT_CATEGORY_MAP = {
 
 
 class BlockchainBridge:
-    """Manages secure on-chain transaction lifecycle and fallback caching."""
+    """Manages receipt-backed optional integrity transactions."""
 
     def __init__(
         self,
@@ -248,10 +266,29 @@ class BlockchainBridge:
         signed = self.w3.eth.account.sign_transaction(tx, private_key=self.settings.private_key)
         tx_hash_bytes = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         tx_hash_hex = Web3.to_hex(tx_hash_bytes)
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=self.settings.timeout_seconds)
+        try:
+            receipt = self.w3.eth.wait_for_transaction_receipt(
+                tx_hash_bytes, timeout=self.settings.timeout_seconds
+            )
+        except Exception as exc:
+            raise TransactionReceiptPending(tx_hash_hex) from exc
         if receipt["status"] != 1:
-            raise RuntimeError(f"Transaction reverted on-chain. Receipt status: {receipt['status']}")
+            raise TransactionReverted(tx_hash_hex, int(receipt["blockNumber"]))
         return tx_hash_hex, int(receipt["blockNumber"])
+
+    @staticmethod
+    def _record_tx_failure(
+        record: BlockchainAnchorRecord, error: Exception
+    ) -> BlockchainAnchorRecord:
+        if isinstance(error, TransactionReceiptPending):
+            return record.mark_submitted(
+                error.tx_hash,
+                error_message="Transaction submitted; receipt confirmation is pending.",
+            )
+        if isinstance(error, TransactionReverted):
+            submitted = record.mark_submitted(error.tx_hash)
+            return submitted.mark_failed(str(error), block_number=error.block_number)
+        return record.mark_failed(str(error))
 
     # -------------------------------------------------------------------------
     # 1. DID Document Integrity Anchoring
@@ -260,6 +297,9 @@ class BlockchainBridge:
     def anchor_did_document(self, did: str, document_dict: dict[str, Any]) -> BlockchainAnchorRecord:
         digest_bytes, hex_hash = compute_deterministic_hash(document_dict)
         bytes32_hash = to_bytes32(digest_bytes)
+        # The legacy contract accepts a string key. Use only its digest so the
+        # DID itself is not written to the public chain.
+        did_key = compute_deterministic_hash(did.encode("utf-8"))[1]
 
         record = BlockchainAnchorRecord.create_pending(
             event_type=AnchorEventType.DID_DOCUMENT,
@@ -272,31 +312,31 @@ class BlockchainBridge:
         )
 
         if not self.is_connected() or not self.did_contract:
-            record = record.mark_failed("Blockchain RPC node offline or contract not configured.")
+            record = record.mark_offline(
+                "Blockchain RPC is offline or the DID Registry contract is not configured."
+            )
             self._save_record(record)
             return record
 
         try:
-            is_reg = self.did_contract.functions.isDIDRegistered(did).call()
+            is_reg = self.did_contract.functions.isDIDRegistered(did_key).call()
             if not is_reg:
-                fn_call = self.did_contract.functions.registerDID(did, bytes32_hash)
+                fn_call = self.did_contract.functions.registerDID(did_key, bytes32_hash)
             else:
-                current_owner, current_hash, _ = self.did_contract.functions.getDIDRecord(did).call()
+                current_owner, current_hash, _ = self.did_contract.functions.getDIDRecord(did_key).call()
                 if current_hash == bytes32_hash:
-                    # Idempotent skip: identical hash is already anchored
-                    record = record.mark_confirmed(
-                        tx_hash="0x" + "0" * 64,
-                        block_number=self.w3.eth.block_number,
+                    record = record.mark_skipped(
+                        "The requested hash already matches the on-chain state; no new transaction receipt was generated."
                     )
                     self._save_record(record)
                     return record
-                fn_call = self.did_contract.functions.updateVCHash(did, bytes32_hash)
+                fn_call = self.did_contract.functions.updateVCHash(did_key, bytes32_hash)
 
             tx_hash, block_num = self._send_tx(fn_call)
             record = record.mark_confirmed(tx_hash=tx_hash, block_number=block_num)
         except Exception as e:
             logger.warning(f"DID anchoring on-chain failed (fail-open mode active): {e}")
-            record = record.mark_failed(str(e))
+            record = self._record_tx_failure(record, e)
 
         self._save_record(record)
         return record
@@ -308,9 +348,10 @@ class BlockchainBridge:
         try:
             digest_bytes, _ = compute_deterministic_hash(document_dict)
             bytes32_hash = to_bytes32(digest_bytes)
-            if not self.did_contract.functions.isDIDRegistered(did).call():
+            did_key = compute_deterministic_hash(did.encode("utf-8"))[1]
+            if not self.did_contract.functions.isDIDRegistered(did_key).call():
                 return False
-            _, stored_hash, _ = self.did_contract.functions.getDIDRecord(did).call()
+            _, stored_hash, _ = self.did_contract.functions.getDIDRecord(did_key).call()
             return stored_hash == bytes32_hash
         except Exception as e:
             logger.warning(f"Error querying DID on-chain anchor: {e}")
@@ -336,17 +377,20 @@ class BlockchainBridge:
         )
 
         if not self.is_connected() or not self.revocation_contract:
-            record = record.mark_failed("Blockchain RPC node offline or contract not configured.")
+            record = record.mark_offline(
+                "Blockchain RPC is offline or the Revocation Registry contract is not configured."
+            )
             self._save_record(record)
             return record
 
         try:
-            fn_call = self.revocation_contract.functions.anchorStatusList(status_list_id, bytes32_hash, version)
+            status_list_key = compute_deterministic_hash(status_list_id.encode("utf-8"))[1]
+            fn_call = self.revocation_contract.functions.anchorStatusList(status_list_key, bytes32_hash, version)
             tx_hash, block_num = self._send_tx(fn_call)
             record = record.mark_confirmed(tx_hash=tx_hash, block_number=block_num)
         except Exception as e:
             logger.warning(f"Status list anchoring failed: {e}")
-            record = record.mark_failed(str(e))
+            record = self._record_tx_failure(record, e)
 
         self._save_record(record)
         return record
@@ -369,7 +413,9 @@ class BlockchainBridge:
         )
 
         if not self.is_connected() or not self.revocation_contract:
-            record = record.mark_failed("Blockchain RPC offline.")
+            record = record.mark_offline(
+                "Blockchain RPC is offline or the Revocation Registry contract is not configured."
+            )
             self._save_record(record)
             return record
 
@@ -377,7 +423,9 @@ class BlockchainBridge:
             # Check idempotency
             is_revoked = self.revocation_contract.functions.isCredentialRevoked(bytes32_cred).call()
             if is_revoked:
-                record = record.mark_confirmed(tx_hash="0x" + "0" * 64, block_number=self.w3.eth.block_number)
+                record = record.mark_skipped(
+                    "The credential is already revoked on-chain; no new transaction receipt was generated."
+                )
                 self._save_record(record)
                 return record
 
@@ -386,7 +434,7 @@ class BlockchainBridge:
             record = record.mark_confirmed(tx_hash=tx_hash, block_number=block_num)
         except Exception as e:
             logger.warning(f"Credential revocation anchoring failed: {e}")
-            record = record.mark_failed(str(e))
+            record = self._record_tx_failure(record, e)
 
         self._save_record(record)
         return record
@@ -396,44 +444,42 @@ class BlockchainBridge:
     # -------------------------------------------------------------------------
 
     def anchor_quarantine(self, target_address_or_did: str, reason: str) -> BlockchainAnchorRecord:
-        digest_bytes, hex_hash = compute_deterministic_hash(f"QUARANTINE:{target_address_or_did}:{reason}".encode("utf-8"))
+        subject_hash = compute_deterministic_hash(target_address_or_did.encode("utf-8"))[1]
+        reason_hash = compute_deterministic_hash(reason.encode("utf-8"))[1]
+        digest_bytes, hex_hash = compute_deterministic_hash({
+            "event": "ACCOUNT_QUARANTINED",
+            "subject_hash": subject_hash,
+            "reason_hash": reason_hash,
+        })
         record = BlockchainAnchorRecord.create_pending(
             event_type=AnchorEventType.QUARANTINE,
             event_hash=hex_hash,
-            contract_type="EmergencyRecovery",
-            contract_address=self.settings.emergency_recovery_address,
+            contract_type="AuditLogger",
+            contract_address=self.settings.audit_logger_address,
             network=self.settings.network_name,
             chain_id=self.settings.chain_id,
             subject_id=target_address_or_did,
-            metadata={"reason": reason},
+            metadata={"category": "ACCOUNT_QUARANTINED"},
         )
 
-        if not self.is_connected() or not self.recovery_contract:
-            record = record.mark_failed("Blockchain RPC node offline.")
+        if not self.is_connected() or not self.audit_contract:
+            record = record.mark_offline(
+                "Blockchain RPC is offline or the Audit Logger contract is not configured."
+            )
             self._save_record(record)
             return record
 
         try:
-            # EmergencyRecovery requires a valid Ethereum address
-            if Web3.is_address(target_address_or_did):
-                target_wallet = Web3.to_checksum_address(target_address_or_did)
-            else:
-                # Derive deterministic mock wallet from DID string for contract call
-                raw_hash = Web3.keccak(text=target_address_or_did)
-                target_wallet = Web3.to_checksum_address("0x" + raw_hash.hex()[-40:])
-
-            is_already_q = self.recovery_contract.functions.isWalletQuarantined(target_wallet).call()
-            if is_already_q:
-                record = record.mark_confirmed(tx_hash="0x" + "0" * 64, block_number=self.w3.eth.block_number)
-                self._save_record(record)
-                return record
-
-            fn_call = self.recovery_contract.functions.quarantineWallet(target_wallet, reason)
+            # Only the approved digest and event category reach the chain. The
+            # identifier and reason stay in application-side records.
+            fn_call = self.audit_contract.functions.logEvent(
+                to_bytes32(digest_bytes), AUDIT_CATEGORY_MAP["ACCOUNT_QUARANTINED"]
+            )
             tx_hash, block_num = self._send_tx(fn_call)
             record = record.mark_confirmed(tx_hash=tx_hash, block_number=block_num)
         except Exception as e:
-            logger.warning(f"Quarantine on-chain lock failed: {e}")
-            record = record.mark_failed(str(e))
+            logger.warning("Quarantine digest anchoring failed (%s)", type(e).__name__)
+            record = self._record_tx_failure(record, e)
 
         self._save_record(record)
         return record
@@ -478,7 +524,9 @@ class BlockchainBridge:
         )
 
         if not self.is_connected() or not self.audit_contract:
-            record = record.mark_failed("Blockchain RPC node offline.")
+            record = record.mark_offline(
+                "Blockchain RPC is offline or the Audit Logger contract is not configured."
+            )
             self._save_record(record)
             return record
 
@@ -488,7 +536,7 @@ class BlockchainBridge:
             record = record.mark_confirmed(tx_hash=tx_hash, block_number=block_num)
         except Exception as e:
             logger.warning(f"Audit log on-chain anchor failed: {e}")
-            record = record.mark_failed(str(e))
+            record = self._record_tx_failure(record, e)
 
         self._save_record(record)
         return record

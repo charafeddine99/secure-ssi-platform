@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { Modal } from "../common/Modal";
-import { TrustBadge } from "../common/TrustBadge";
 import { StatusChip } from "../common/StatusChip";
-import { CredentialCardData } from "./CredentialCard";
-import { CheckCircle2, Copy, Check } from "lucide-react";
+import type { CredentialCardData } from "./CredentialCard";
+import { ShieldAlert, Copy, Check } from "lucide-react";
 
 interface CredentialDetailModalProps {
   credential: CredentialCardData | null;
@@ -23,8 +22,7 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
 
   const w3cDocument = {
     "@context": [
-      "https://www.w3.org/ns/credentials/v2",
-      "https://w3id.org/security/suites/ed25519-2020/v1"
+      "https://www.w3.org/ns/credentials/v2"
     ],
     id: credential.id,
     type: ["VerifiableCredential", credential.category + "Credential"],
@@ -37,19 +35,6 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
     credentialSubject: {
       ...credential.claims
     },
-    credentialStatus: {
-      id: `https://ssi.platform.local/status-list#${credential.statusListIndex ?? 100}`,
-      type: "BitstringStatusListEntry",
-      statusPurpose: "revocation",
-      statusListIndex: credential.statusListIndex ?? 100
-    },
-    proof: {
-      type: "Ed25519Signature2020",
-      created: credential.issuedDate + "T00:00:00Z",
-      verificationMethod: `${credential.issuer}#key-1`,
-      proofPurpose: "assertionMethod",
-      proofValue: credential.proofValue
-    }
   };
 
   const handleCopy = () => {
@@ -66,14 +51,15 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
       subtitle={`ID: ${credential.id}`}
       maxWidth="680px"
     >
+      <div className="holder-credential-detail-modal">
       {/* Header status bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div className="holder-detail-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           <StatusChip status={credential.status} />
-          <TrustBadge level="STANDARDS_ALIGNED" />
-          <TrustBadge level="ED25519_SIGNED" />
         </div>
         <button
+          type="button"
+          className="holder-secondary-action"
           onClick={handleCopy}
           style={{
             display: "inline-flex",
@@ -89,13 +75,17 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
           }}
         >
           {copied ? <Check size={14} color="#34d399" /> : <Copy size={14} />}
-          {copied ? "Copied JSON" : "Copy JSON-LD"}
+          {copied ? "Copied preview" : "Copy display preview"}
         </button>
+        <span className="holder-sr-only" aria-live="polite">{copied ? "Credential display preview copied." : ""}</span>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid #1f2937", marginBottom: "16px" }}>
+      <div className="holder-detail-tabs" role="group" aria-label="Credential detail sections" style={{ display: "flex", gap: "4px", borderBottom: "1px solid #1f2937", marginBottom: "16px" }}>
         <button
+          type="button"
+          aria-pressed={activeTab === "CLAIMS"}
+          className={activeTab === "CLAIMS" ? "is-active" : undefined}
           onClick={() => setActiveTab("CLAIMS")}
           style={{
             padding: "8px 16px",
@@ -111,6 +101,9 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
           Claims & Attributes
         </button>
         <button
+          type="button"
+          aria-pressed={activeTab === "PROOF"}
+          className={activeTab === "PROOF" ? "is-active" : undefined}
           onClick={() => setActiveTab("PROOF")}
           style={{
             padding: "8px 16px",
@@ -126,6 +119,9 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
           Cryptographic Proof
         </button>
         <button
+          type="button"
+          aria-pressed={activeTab === "RAW"}
+          className={activeTab === "RAW" ? "is-active" : undefined}
           onClick={() => setActiveTab("RAW")}
           style={{
             padding: "8px 16px",
@@ -138,14 +134,14 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
             cursor: "pointer"
           }}
         >
-          Raw W3C JSON-LD
+          JSON-LD Preview
         </button>
       </div>
 
       {/* Tab Content */}
       {activeTab === "CLAIMS" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ backgroundColor: "#161f33", padding: "14px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+        <div className="holder-detail-content" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div className="holder-detail-issuer" style={{ backgroundColor: "#161f33", padding: "14px", borderRadius: "8px", border: "1px solid #1f2937" }}>
             <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Issuer Authority</span>
             <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#f8fafc", marginTop: "2px" }}>
               {credential.issuerName}
@@ -155,10 +151,11 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            {Object.entries(credential.claims || {}).map(([key, value]) => (
+          <div className="holder-detail-claims" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            {Object.entries(credential.claims || {}).length > 0 ? Object.entries(credential.claims || {}).map(([key, value]) => (
               <div
                 key={key}
+                className="holder-detail-claim"
                 style={{
                   backgroundColor: "#0d131f",
                   padding: "12px",
@@ -171,38 +168,36 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
                   {typeof value === "object" ? JSON.stringify(value) : String(value)}
                 </div>
               </div>
-            ))}
+            )) : <p className="holder-detail-empty">No claim fields were returned for this credential.</p>}
           </div>
         </div>
       )}
 
       {activeTab === "PROOF" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.85rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", backgroundColor: "rgba(16, 185, 129, 0.08)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-            <CheckCircle2 color="#34d399" size={20} />
+        <div className="holder-detail-content" style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.85rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", backgroundColor: "rgba(245, 158, 11, 0.08)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
+            <ShieldAlert color="#fbbf24" size={20} />
             <div>
-              <div style={{ fontWeight: 600, color: "#34d399" }}>Ed25519 Cryptographic Signature Valid</div>
-              <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>W3C DataIntegrity canonicalized via RFC 8785 (JCS)</div>
+              <div style={{ fontWeight: 600, color: "#fbbf24" }}>Proof verification not performed in this view</div>
+              <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>The displayed proof value is not evidence of a valid signature.</div>
             </div>
           </div>
 
-          <div style={{ backgroundColor: "#0d131f", padding: "14px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-            <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Proof Signature Value (Base58 / Hex)</div>
+          <div className="holder-detail-proof" style={{ backgroundColor: "#0d131f", padding: "14px", borderRadius: "8px", border: "1px solid #1f2937" }}>
+            <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Proof value supplied by the credential record</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "#38bdf8", wordBreak: "break-all", marginTop: "4px" }}>
-              {credential.proofValue}
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: "#0d131f", padding: "14px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-            <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>W3C Bitstring Revocation Index</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem", color: "#f8fafc", marginTop: "4px" }}>
-              Index #{credential.statusListIndex ?? 104} on StatusList2021
+              {credential.proofValue || "No proof value supplied"}
             </div>
           </div>
         </div>
       )}
 
       {activeTab === "RAW" && (
+        <>
+        <div className="holder-detail-content">
+        <p style={{ margin: "0 0 10px", color: "#fbbf24", fontSize: "0.78rem" }}>
+          This display preview is assembled from wallet fields. It is not the original serialized credential and does not verify its proof.
+        </p>
         <pre
           style={{
             margin: 0,
@@ -219,7 +214,10 @@ export const CredentialDetailModal: React.FC<CredentialDetailModalProps> = ({
         >
           {JSON.stringify(w3cDocument, null, 2)}
         </pre>
+        </div>
+        </>
       )}
+      </div>
     </Modal>
   );
 };

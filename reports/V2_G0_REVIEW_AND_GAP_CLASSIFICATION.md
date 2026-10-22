@@ -7,6 +7,13 @@
 **Tracking Remote**: `https://github.com/charafeddine99/secure-ssi-platform.git` (`origin/main`)  
 **Gate Decision**: **`G0_BASELINE_FROZEN`**  
 
+> **Historical read-only snapshot — 4 October 2026.** The frozen baseline and
+> gap classifications below describe commit `cac1217` and are not current
+> implementation acceptance. Use the controlling
+> [final plan](../docs/implementation/SECURE_SSI_PLATFORM_FINAL_IMPLEMENTATION_PLAN.md),
+> [G0–G16 gate matrix](../docs/implementation/SECURE_SSI_PLATFORM_GATE_ACCEPTANCE.md),
+> and [dated test evidence](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 ---
 
 ## 1. Executive Decision

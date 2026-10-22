@@ -459,6 +459,114 @@ class HolderPresentationService:
         )
         return persisted
 
+    def create_for_oid4vp_session(
+        self,
+        credential_ids: Sequence[str],
+        *,
+        session_id: str,
+        wallet_id: str,
+        challenge: str,
+        domain: str,
+        audience: str,
+        lifetime_seconds: int,
+        actor_id: str,
+        correlation_id: str,
+        expected_holder_did: str,
+    ) -> PersistedPresentation:
+        """Create a session-bound VP using credentials and signing key from an owned wallet."""
+        if self._wallets is None:
+            raise PresentationCredentialError(
+                "Authenticated wallet presentation is unavailable."
+            )
+        now = self._clock().astimezone(UTC).replace(microsecond=0)
+        wallet = self._wallets.require_owned_active(
+            wallet_id,
+            owner_user_id=actor_id,
+            correlation_id=correlation_id,
+        )
+        if wallet.holder_did != expected_holder_did:
+            raise PresentationCredentialError(
+                "The holder wallet does not match the consent decision."
+            )
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise PresentationCredentialError(
+                "Presentation creation time must be timezone-aware."
+            )
+        if not 1 <= lifetime_seconds <= 600:
+            raise PresentationCredentialError(
+                "OID4VP presentation lifetime is outside session policy."
+            )
+        try:
+            records = self._credentials.require_for_creation(
+                credential_ids,
+                now=now,
+                expected_holder=wallet.holder_did,
+                expected_wallet_id=wallet.wallet_id,
+                expected_owner_user_id=wallet.owner_user_id,
+            )
+        except HolderOwnershipError:
+            self._wallets.record_ownership_rejection(
+                wallet_id=wallet.wallet_id,
+                actor_id=actor_id,
+                correlation_id=correlation_id,
+                reason="CREDENTIAL_NOT_OWNED",
+            )
+            raise
+
+        documents = [
+            copy.deepcopy(dict(record.raw_credential))
+            for record in records
+            if record.raw_credential is not None
+        ]
+        if len(documents) != len(records):
+            raise PresentationCredentialError(
+                "A selected credential document is unavailable."
+            )
+        document = self._builder.build(
+            documents,
+            holder_did=wallet.holder_did,
+            challenge=challenge,
+            domain=domain,
+            created_at=now,
+            lifetime_seconds=lifetime_seconds,
+            audience=audience,
+            key_reference=wallet.key_reference,
+        )
+        expires_at = datetime.fromisoformat(
+            document["validUntil"].replace("Z", "+00:00")
+        )
+        presentation = PersistedPresentation(
+            id=self._id_generator(),
+            presentation_id=document["id"],
+            holder_did=wallet.holder_did,
+            challenge=challenge,
+            domain=domain,
+            credential_ids=tuple(credential_ids),
+            document=document,
+            verification_result=PresentationVerificationState.PENDING,
+            created_at=now,
+            expires_at=expires_at,
+            updated_at=now,
+            wallet_id=wallet.wallet_id,
+            owner_user_id=wallet.owner_user_id,
+            challenge_id=session_id,
+            audience=audience,
+        )
+        try:
+            persisted = self._repository.add(presentation)
+        except DuplicateEntityError as error:
+            raise PresentationReplayError(
+                "The session challenge and verifier domain were already used."
+            ) from error
+        self._audit.record(
+            AuditEventType.PRESENTATION_CREATED,
+            presentation=persisted,
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+            occurred_at=now,
+        )
+        return persisted
+
     def get(
         self,
         presentation_id: str,

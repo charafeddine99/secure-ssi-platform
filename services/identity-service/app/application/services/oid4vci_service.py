@@ -21,6 +21,7 @@ from app.domain.oid4vci import (
     InvalidNonceError,
     UnsupportedProofTypeError,
     UnsupportedCredentialConfigurationError,
+    InvalidCredentialSubjectError,
 )
 from app.domain.persistence import (
     AuditEvent,
@@ -88,11 +89,11 @@ class Oid4vciService:
             "deferred_credential_endpoint": f"{self._base_issuer_url}/api/v1/oid4vci/deferred",
             "display": [
                 {
-                    "name": "Secure SSI European Trust Framework Issuer",
+                    "name": "Secure SSI Platform Issuer",
                     "locale": "en-US",
                     "logo": {
                         "uri": f"{self._base_issuer_url}/assets/logo.png",
-                        "alt_text": "Secure SSI Issuer"
+                    "alt_text": "Secure SSI Platform Issuer"
                     }
                 }
             ],
@@ -132,6 +133,9 @@ class Oid4vciService:
             }
         }
 
+    def supports_issuer(self, issuer_did: str) -> bool:
+        return self._issuance.supports_issuer(issuer_did)
+
     def create_offer(
         self,
         *,
@@ -141,6 +145,7 @@ class Oid4vciService:
         ttl_seconds: int = 1800,
         user_pin: str | None = None,
     ) -> CredentialOffer:
+        self._validate_offer_subject(credential_configuration_ids, subject_data)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
         offer_id = f"offer_{ObjectId()}"
@@ -161,6 +166,75 @@ class Oid4vciService:
             version=1
         )
         return self._offers.add(offer)
+
+    @staticmethod
+    def _validate_offer_subject(
+        credential_configuration_ids: tuple[str, ...],
+        subject_data: Mapping[str, Any],
+    ) -> None:
+        routing_keys = {
+            "id", "holder_did", "holderDid", "recipient_did", "recipientDid",
+            "userId", "user_id",
+        }
+        for credential_type in credential_configuration_ids:
+            if credential_type == "UniversityAffiliationCredential":
+                Oid4vciService._university_claims(subject_data)
+                continue
+
+            claims = {
+                key: value
+                for key, value in subject_data.items()
+                if key not in routing_keys and value is not None and value != ""
+            }
+            if not claims:
+                raise InvalidCredentialSubjectError(
+                    f"Credential subject claims are required for {credential_type}."
+                )
+
+    @staticmethod
+    def _university_claims(subject_data: Mapping[str, Any]) -> dict[str, Any]:
+        required = ("affiliation", "programCode", "degree", "graduationYear")
+        missing = [
+            key for key in required
+            if subject_data.get(key) is None
+            or (isinstance(subject_data.get(key), str) and not subject_data[key].strip())
+        ]
+        if missing:
+            raise InvalidCredentialSubjectError(
+                "UniversityAffiliationCredential requires actual values for: "
+                + ", ".join(missing)
+                + "."
+            )
+
+        affiliation = subject_data["affiliation"]
+        program_code = subject_data["programCode"]
+        degree = subject_data["degree"]
+        graduation_year = subject_data["graduationYear"]
+        if not isinstance(affiliation, str) or affiliation not in {"student", "faculty", "alumni", "staff"}:
+            raise InvalidCredentialSubjectError("University affiliation value is not supported.")
+        if not isinstance(program_code, str) or not program_code.strip():
+            raise InvalidCredentialSubjectError("University programCode must be a non-empty string.")
+        if not isinstance(degree, str) or degree not in {
+            "Bachelor of Science", "Master of Science", "Doctor of Philosophy"
+        }:
+            raise InvalidCredentialSubjectError("University degree value is not supported.")
+        if isinstance(graduation_year, bool):
+            raise InvalidCredentialSubjectError("University graduationYear must be an integer.")
+        try:
+            parsed_year = int(graduation_year)
+        except (TypeError, ValueError) as error:
+            raise InvalidCredentialSubjectError(
+                "University graduationYear must be an integer."
+            ) from error
+        if isinstance(graduation_year, float) and graduation_year != parsed_year:
+            raise InvalidCredentialSubjectError("University graduationYear must be an integer.")
+
+        return {
+            "affiliation": affiliation,
+            "programCode": program_code.strip(),
+            "degree": degree,
+            "graduationYear": parsed_year,
+        }
 
     def get_offer(self, offer_id: str) -> CredentialOffer:
         offer = self._offers.get_by_offer_id(offer_id)
@@ -460,19 +534,26 @@ class Oid4vciService:
         if self._wallets is not None:
             wallet = None
             if resolved_wallet_id:
-                try:
-                    wallet = self._wallets.get(resolved_wallet_id)
-                except Exception:
-                    wallet = None
+                wallet = self._wallets.get(resolved_wallet_id)
+                if wallet is None:
+                    raise InvalidProofError("The requested holder wallet does not exist.")
             if wallet is None:
-                try:
-                    wallet = self._wallets.get_by_holder_did(holder_did)
-                except Exception:
-                    wallet = None
+                wallet = self._wallets.get_by_holder_did(holder_did)
             if wallet is not None:
+                if wallet.holder_did != holder_did:
+                    raise InvalidProofError(
+                        "Holder proof DID does not match the target wallet."
+                    )
+                if owner_user_id and owner_user_id != wallet.owner_user_id:
+                    raise InvalidProofError(
+                        "The target wallet owner does not match the issuance request."
+                    )
                 resolved_wallet_id = wallet.wallet_id
-                if not resolved_owner_id:
-                    resolved_owner_id = wallet.owner_user_id
+                resolved_owner_id = wallet.owner_user_id
+            elif wallet_id and wallet_id != "wallet_holder_default":
+                raise InvalidProofError(
+                    "No holder wallet is bound to the verified proof DID."
+                )
 
         cred_uuid = f"urn:uuid:{secrets.token_hex(4)}-{secrets.token_hex(2)}-4{secrets.token_hex(2)[1:]}-a{secrets.token_hex(2)[1:]}-{secrets.token_hex(6)}"
 
@@ -480,19 +561,16 @@ class Oid4vciService:
         if cred_type == "UniversityAffiliationCredential":
             subject: dict[str, Any] = {
                 "id": holder_did,
-                "affiliation": str(raw_subj.get("affiliation") or "student"),
-                "programCode": str(raw_subj.get("programCode") or "SYN-CS-2026"),
-                "degree": str(raw_subj.get("degree") or "Bachelor of Science"),
-                "graduationYear": int(raw_subj.get("graduationYear") or 2026),
+                **self._university_claims(raw_subj),
             }
-            if subject["degree"] not in {"Bachelor of Science", "Master of Science", "Doctor of Philosophy"}:
-                subject["degree"] = "Bachelor of Science"
-            if subject["affiliation"] not in {"student", "faculty", "alumni", "staff"}:
-                subject["affiliation"] = "student"
         else:
             subject = {
                 "id": holder_did,
-                **{k: v for k, v in raw_subj.items() if k not in ("id", "holder_did")},
+                **{
+                    k: v
+                    for k, v in raw_subj.items()
+                    if k not in ("id", "holder_did", "recipient_did")
+                },
             }
 
         vc_types = ["VerifiableCredential"]
@@ -622,7 +700,18 @@ class Oid4vciService:
             )
 
         # Cryptographically validate holder proof-of-possession and obtain verified holder DID
-        holder_did = self.validate_holder_proof(proof)
+        holder_did = self.validate_holder_proof(
+            proof,
+            expected_nonce=token_info.get("bound_c_nonce"),
+        )
+        expected_holder = (
+            offer.subject_data.get("recipient_did")
+            or offer.subject_data.get("holder_did")
+        )
+        if expected_holder and expected_holder != holder_did:
+            raise InvalidProofError(
+                "Holder proof DID does not match the offer recipient."
+            )
 
         # Build and persist the credential holder-bound to holder_did
         persisted = self._build_and_persist_credential(

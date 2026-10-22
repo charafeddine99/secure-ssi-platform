@@ -105,9 +105,10 @@ class StatusListService:
                 "The requested status list does not exist."
             )
         issuer_did = entries[0].issuer_did
+        status_purpose = entries[0].status_purpose
         if any(
             entry.issuer_did != issuer_did
-            or entry.status_purpose is not StatusPurpose.REVOCATION
+            or entry.status_purpose is not status_purpose
             for entry in entries
         ):
             raise StatusListConflictError(
@@ -132,6 +133,7 @@ class StatusListService:
         return self._publish(
             status_list_id=normalized,
             issuer_did=issuer_did,
+            status_purpose=status_purpose,
             encoded_list=encoded_list,
             content_hash=fingerprint,
             assigned_entries=len(entries),
@@ -144,6 +146,7 @@ class StatusListService:
         *,
         status_list_id: str,
         issuer_did: str,
+        status_purpose: StatusPurpose = StatusPurpose.REVOCATION,
         encoded_list: str,
         content_hash: str,
         assigned_entries: int,
@@ -156,7 +159,7 @@ class StatusListService:
             id=self._id_generator() if existing is None else existing.id,
             status_list_id=status_list_id,
             issuer_did=issuer_did,
-            status_purpose=StatusPurpose.REVOCATION,
+            status_purpose=status_purpose,
             encoded_list=encoded_list,
             content_hash=content_hash,
             document=self._generator.generate(
@@ -165,6 +168,7 @@ class StatusListService:
                 encoded_list=encoded_list,
                 ttl_seconds=self._settings.ttl_seconds,
                 published_at=published_at,
+                status_purpose=status_purpose.value,
             ),
             list_length=self._settings.list_length,
             capacity=self._settings.capacity,

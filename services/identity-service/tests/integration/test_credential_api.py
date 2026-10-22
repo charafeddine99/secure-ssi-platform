@@ -11,6 +11,7 @@ from app.api.v1.dependencies import (
     get_clock,
     get_credential_api_service,
     get_credential_issuance_repository,
+    get_holder_wallet_repository,
     get_status_list_entry_repository,
 )
 from app.application.services.credential_api_service import CredentialApiService
@@ -28,6 +29,9 @@ from app.infrastructure.persistence.issuance_repository import (
 )
 from app.infrastructure.persistence.status_list_repositories import (
     MongoCredentialStatusEntryRepository,
+)
+from app.infrastructure.persistence.holder_wallet_repositories import (
+    MongoHolderWalletRepository,
 )
 from app.infrastructure.fixtures.tampered_credentials import (
     build_tampered_credentials,
@@ -67,6 +71,11 @@ def client() -> TestClient:
     ] = lambda: MongoCredentialStatusEntryRepository(
         database["credential_status_entries"],  # type: ignore[arg-type]
         database["credentials"],  # type: ignore[arg-type]
+    )
+    app.dependency_overrides[get_holder_wallet_repository] = lambda: (
+        MongoHolderWalletRepository(
+            database["holder_wallets"]  # type: ignore[arg-type]
+        )
     )
     app.state.issuance_database = database
     with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -267,8 +276,8 @@ def test_sign_rejects_unknown_issuer_without_leaking_domain_message(
         headers=issuer_auth_headers(client),
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "UNKNOWN_ISSUER"
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "PERMISSION_DENIED"
     assert "local key provider" not in response.text
 
 

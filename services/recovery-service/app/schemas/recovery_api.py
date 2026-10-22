@@ -117,7 +117,7 @@ class RecoveryCreateRequest(StrictModel):
 class GuardianDecisionRequest(StrictModel):
     guardian_id: str = Field(alias="guardianId", pattern=_GUARDIAN_PATTERN)
     challenge: str = Field(min_length=32, max_length=256)
-    proof: str | None = Field(default=None, min_length=16, max_length=4096)
+    proof: str = Field(min_length=16, max_length=4096)
 
 
 class RecoveryResultResponse(StrictModel):

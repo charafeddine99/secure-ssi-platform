@@ -19,6 +19,14 @@ import httpx
 logger = logging.getLogger(__name__)
 
 FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://127.0.0.1:8002").rstrip("/")
+FALLBACK_MODEL_VERSION = "identity-fallback-heuristic-v1"
+FALLBACK_RISK_SIGNALS = [
+    "failed_attempt_velocity",
+    "presentation_frequency",
+    "device_fingerprint_mismatch",
+    "tor_or_proxy_indicator",
+    "geo_distance",
+]
 
 
 class FraudRiskClient:
@@ -43,8 +51,8 @@ class FraudRiskClient:
         is_tor_or_proxy: bool = False,
     ) -> Dict[str, Any]:
         """
-        Synchronously queries Fraud Service for hybrid AI risk assessment.
-        Returns a dictionary with risk_score (0-100), risk_level, is_anomaly, recommended_action, reasons.
+        Synchronously queries Fraud Service for advisory heuristic risk.
+        Returns the score together with its engine version and signal names.
         Falls back to local heuristic if Fraud Service is unreachable.
         """
         payload = {
@@ -74,7 +82,10 @@ class FraudRiskClient:
                         "is_anomaly": bool(data.get("is_anomaly", False)),
                         "recommended_action": data.get("recommended_action", "ALLOW"),
                         "reasons": data.get("reasons", []),
-                        "model_breakdown": data.get("model_breakdown", {}),
+                        "model_version": data.get("model_version", "unknown"),
+                        "risk_signals": data.get("risk_signals", []),
+                        "advisory_only": data.get("advisory_only") is True,
+                        "source": "fraud_service",
                     }
         except Exception as exc:
             logger.debug("Fraud Service evaluate unreachable (%s), applying heuristic", exc)
@@ -172,7 +183,10 @@ class FraudRiskClient:
             "is_anomaly": score >= 40,
             "recommended_action": action,
             "reasons": reasons or ["Tüm parametreler normal profil ile uyumlu."],
-            "model_breakdown": {"fallback_heuristic": True},
+            "model_version": FALLBACK_MODEL_VERSION,
+            "risk_signals": list(FALLBACK_RISK_SIGNALS),
+            "advisory_only": True,
+            "source": "identity_fallback_heuristic",
         }
 
 

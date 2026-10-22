@@ -13,16 +13,11 @@ from pathlib import Path
 from typing import Mapping
 
 
-DEFAULT_HARDHAT_DEPLOYER_KEY = (
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-)
-
-
 @dataclass(frozen=True)
 class BlockchainSettings:
     rpc_url: str = "http://127.0.0.1:8545"
     chain_id: int = 1337
-    private_key: str = DEFAULT_HARDHAT_DEPLOYER_KEY
+    private_key: str = ""
     did_registry_address: str = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
     revocation_registry_address: str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
     emergency_recovery_address: str = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
@@ -43,10 +38,12 @@ def load_blockchain_settings(
     dep_file = deployment_path
     if dep_file is None:
         # Search workspace paths for deployed-contracts.json
+        source_path = Path(__file__).resolve()
         candidates = [
-            Path(__file__).resolve().parents[4] / "blockchain" / "deployed-contracts.json",
-            Path.cwd() / "blockchain" / "deployed-contracts.json",
+            parent / "blockchain" / "deployed-contracts.json"
+            for parent in source_path.parents
         ]
+        candidates.append(Path.cwd() / "blockchain" / "deployed-contracts.json")
         for c in candidates:
             if c.is_file():
                 dep_file = c
@@ -69,7 +66,7 @@ def load_blockchain_settings(
     return BlockchainSettings(
         rpc_url=values.get("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),
         chain_id=int(values.get("BLOCKCHAIN_CHAIN_ID", "1337")),
-        private_key=values.get("BLOCKCHAIN_PRIVATE_KEY", DEFAULT_HARDHAT_DEPLOYER_KEY),
+        private_key=values.get("BLOCKCHAIN_PRIVATE_KEY", ""),
         did_registry_address=values.get(
             "DID_REGISTRY_ADDRESS",
             addresses.get("DIDRegistry") or "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -88,5 +85,5 @@ def load_blockchain_settings(
         ),
         timeout_seconds=float(values.get("BLOCKCHAIN_TIMEOUT_SECONDS", "8.0")),
         network_name=values.get("BLOCKCHAIN_NETWORK", "localhost"),
-        enabled=values.get("BLOCKCHAIN_ENABLED", "true").lower() in ("true", "1", "yes"),
+        enabled=values.get("BLOCKCHAIN_ENABLED", "false").lower() in ("true", "1", "yes"),
     )

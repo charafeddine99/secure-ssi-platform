@@ -7,13 +7,13 @@ export type AdminScreen =
 export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (screen: AdminScreen) => void }> = ({
   activeScreen,
 }) => {
-  const [gatewayStatus, setGatewayStatus] = useState<string>("ONLINE");
-  const [systemHealth, setSystemHealth] = useState<string>("OPTIMAL");
+  const [gatewayStatus, setGatewayStatus] = useState<string>("LOADING");
+  const [systemHealth, setSystemHealth] = useState<string>("UNKNOWN");
   const [services, setServices] = useState<Record<string, string>>({
-    identity_service: "HEALTHY",
-    fraud_service: "HEALTHY",
-    recovery_service: "HEALTHY",
-    blockchain_node: "HEALTHY"
+    identity_service: "UNKNOWN",
+    fraud_service: "UNKNOWN",
+    recovery_service: "UNKNOWN",
+    blockchain_node: "UNKNOWN"
   });
 
   const [blockchainInfo, setBlockchainInfo] = useState<BlockchainStatus | null>(null);
@@ -26,6 +26,10 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
         setGatewayStatus(data.gateway_status);
         setSystemHealth(data.system_health);
         setServices(prev => ({ ...prev, ...data.services }));
+      } else {
+        setGatewayStatus("UNAVAILABLE");
+        setSystemHealth("UNKNOWN");
+        setServices({ identity_service: "UNKNOWN", fraud_service: "UNKNOWN", recovery_service: "UNKNOWN", blockchain_node: "UNKNOWN" });
       }
     });
 
@@ -40,6 +44,9 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <aside role="note" style={{ padding: "12px 16px", border: "1px solid rgba(245, 158, 11, 0.45)", borderRadius: "8px", backgroundColor: "rgba(245, 158, 11, 0.1)", color: "#fbbf24", fontSize: "0.82rem" }}>
+        DEMO CONSOLE: user, organization, and trust-registry rows in this embedded portal are illustrative. Service health, blockchain connectivity, and audit entries are displayed only when returned by their endpoints; an unavailable endpoint is not treated as healthy.
+      </aside>
       {/* 1. USERS */}
       {activeScreen === "USERS" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
@@ -47,7 +54,7 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
             Platform Kullanıcıları & Kimlik Durumları
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Platformda kayıtlı egemen kimlik profilleri ve cüzdan durumları.
+            Aşağıdaki satırlar sentetik demo verisidir; gerçek kullanıcı veya güven seviyesi kaydı değildir.
           </p>
 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
@@ -62,17 +69,17 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
             </thead>
             <tbody>
               {[
-                { name: "Charaf Eddine Bessanane", did: "did:key:z6MkuBesna...", role: "HOLDER", loa: "eIDAS High", st: "ACTIVE" },
-                { name: "EUDI Issuer Authority", did: "did:web:trust.eudi.europa.eu", role: "ISSUER", loa: "Qualified TSP", st: "ACTIVE" },
-                { name: "Enterprise Verifier", did: "did:web:enterprise-verifier.eu", role: "VERIFIER", loa: "Relying Party", st: "ACTIVE" },
-                { name: "Security Guardian Node 1", did: "did:key:z6MkuGuardian1...", role: "GUARDIAN", loa: "EIP-4337 Signer", st: "ACTIVE" }
+                { name: "Demo Holder", did: "did:key:example-holder", role: "HOLDER", loa: "Not assessed", st: "DEMO" },
+                { name: "Demo Issuer", did: "did:web:issuer.example", role: "ISSUER", loa: "Not accredited", st: "DEMO" },
+                { name: "Demo Verifier", did: "did:web:verifier.example", role: "VERIFIER", loa: "Not assessed", st: "DEMO" },
+                { name: "Demo Guardian", did: "did:key:example-guardian", role: "GUARDIAN", loa: "Not assessed", st: "DEMO" }
               ].map((u, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <td style={{ padding: "10px", fontWeight: "600", color: "var(--text-main)" }}>{u.name}</td>
                   <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#60a5fa" }}>{u.did}</td>
                   <td style={{ padding: "10px", color: "var(--text-secondary)" }}>{u.role}</td>
-                  <td style={{ padding: "10px", color: "#10b981" }}>{u.loa}</td>
-                  <td style={{ padding: "10px", textAlign: "right", color: "#4ade80", fontWeight: "700" }}>{u.st}</td>
+                  <td style={{ padding: "10px", color: "var(--text-muted)" }}>{u.loa}</td>
+                  <td style={{ padding: "10px", textAlign: "right", color: "var(--text-muted)", fontWeight: "700" }}>{u.st}</td>
                 </tr>
               ))}
             </tbody>
@@ -87,20 +94,20 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
             Yetkilendirilmiş Kurumlar & Güven Ağları
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Platform ekosisteminde belge ihraç ve doğrulama yetkisi tanımlanmış tüzel kişilikler.
+            Aşağıdaki kuruluş adları ve alan adları yalnızca sentetik örneklerdir; yetki veya akreditasyon göstermez.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             {[
-              { name: "European Digital Identity Trust Authority", type: "ISSUER", domain: "trust.eudi.europa.eu", status: "VERIFIED" },
-              { name: "T.C. Nüfus ve Vatandaşlık İşleri Genel Müdürlüğü", type: "ISSUER", domain: "nvi.gov.tr", status: "VERIFIED" },
-              { name: "Enterprise Banking & AML Consortium", type: "VERIFIER", domain: "fin-authority.eudi.eu", status: "VERIFIED" },
-              { name: "Global Cloud Services Relying Party", type: "VERIFIER", domain: "enterprise-verifier.eu", status: "VERIFIED" }
+              { name: "Demo Issuer One", type: "ISSUER", domain: "issuer.example", status: "DEMO ONLY" },
+              { name: "Demo Issuer Two", type: "ISSUER", domain: "issuer-two.example", status: "DEMO ONLY" },
+              { name: "Demo Verifier One", type: "VERIFIER", domain: "verifier.example", status: "DEMO ONLY" },
+              { name: "Demo Verifier Two", type: "VERIFIER", domain: "verifier-two.example", status: "DEMO ONLY" }
             ].map((org, i) => (
               <div key={i} style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                   <span style={{ fontSize: "10px", fontWeight: "700", color: "#60a5fa" }}>{org.type}</span>
-                  <span style={{ fontSize: "10px", color: "#4ade80", fontWeight: "700" }}>✓ {org.status}</span>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: "700" }}>{org.status}</span>
                 </div>
                 <h4 style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>{org.name}</h4>
                 <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginTop: "4px" }}>{org.domain}</div>
@@ -114,10 +121,10 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
       {activeScreen === "TRUST" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            EUDI Trust Framework & Güven Kökleri (Trust Registry)
+            Yerel Trust Registry Görünümü
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            W3C DID Registry ve eIDAS 2.0 Güvenilen İhraççılar Listesi (Trusted Issuers List).
+            Bu proje içindeki kayıtları gösterir; EUDI/eIDAS güven listesi, resmi akreditasyon veya dış güven kökü değildir.
           </p>
 
           <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)", marginBottom: "16px" }}>
@@ -125,51 +132,27 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
               Blokzincir Güven Çapası (Trust Anchor)
             </h4>
             <div style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.6" }}>
-              Tüm ihraççı DID belgeleri ve iptal listesi kök hash'leri yerel Hardhat EVM akıllı sözleşmelerine (<code style={{ color: "#60a5fa" }}>DIDRegistry.sol</code> ve <code style={{ color: "#a855f7" }}>RevocationRegistry.sol</code>) anchor edilir.
+              EVM anchoring opsiyoneldir. Yalnızca gerçek bir işlem makbuzu döndüğünde anchor kanıtı gösterilir; anchor credential trust veya status kararı vermez.
             </div>
           </div>
         </div>
       )}
 
-      {/* 4. FRAUD (AI ENGINE & XGBOOST/AUTOENCODER) */}
+      {/* 4. FRAUD HEURISTIC STATUS */}
       {activeScreen === "FRAUD" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            AI Fraud & Davranışsal Risk Yönetimi (NIST AI RMF)
+            Sentetik Risk Heuristiği
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            XGBoost Sınıflandırıcı + Autoencoder Anomali Tespiti hibrit model telemetrisi.
+            [DEMO LAB / SYNTHETIC] Sabit kurallı prototip; eğitilmiş model veya bağımsız etiketli değerlendirme bulunmuyor.
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "20px" }}>
-            <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Precision (Hassasiyet)</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "4px" }}>%98.4</div>
-              <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>Düşük False Positive</div>
-            </div>
-            <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Recall (Yakalama)</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "4px" }}>%97.2</div>
-              <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>Yüksek Tehdit Kapsamı</div>
-            </div>
-            <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>ROC-AUC Skoru</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#60a5fa", marginTop: "4px" }}>0.991</div>
-              <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>Üstün Ayrıştırma Gücü</div>
-            </div>
-            <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>F1-Score</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#a855f7", marginTop: "4px" }}>0.978</div>
-              <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>Dengeli Doğruluk</div>
-            </div>
-          </div>
-
           <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
-            <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-              NIST AI Risk Yönetim İlkesi:
-            </h4>
-            <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.6" }}>
-              "AI, kriptografik doğrulamanın yerine geçmez. Geçersiz imzalı veya iptal edilmiş credential, AI düşük risk verse bile kabul edilmez. AI'nin görevi davranışsal risk/fraud/anomaly sinyali üretmektir." (Master Plan Sayfa 4)
+            <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Engine version</div>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-main)", marginTop: "4px" }}>rule-heuristic-v1 · NOT TRAINED</div>
+            <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.6", marginBottom: 0 }}>
+              Risk is advisory only. It cannot establish issuer trust, credential validity, or credential status; protocol and cryptographic checks remain authoritative.
             </p>
           </div>
         </div>
@@ -250,10 +233,10 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
       {activeScreen === "AUDIT" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Sistem Genel Denetim Kayıtları (Audit Ledger)
+            Servis Denetim Olayları
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            W3C SSI standart olay sözlüğü ile kaydedilmiş, SHA-256 zincirlenmiş denetim izi.
+            Yalnızca denetim endpoint'inden dönen olaylar gösterilir. Bu görünüm değiştirilemez saklama veya hash zinciri kanıtı değildir.
           </p>
 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
@@ -261,23 +244,21 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
               <tr style={{ borderBottom: "1px solid var(--border-default)", textAlign: "left", color: "var(--text-muted)" }}>
                 <th style={{ padding: "10px" }}>Olay Türü</th>
                 <th style={{ padding: "10px" }}>Aktör DID</th>
-                <th style={{ padding: "10px" }}>Hash / İmza</th>
+                <th style={{ padding: "10px" }}>Hedef Cüzdan</th>
                 <th style={{ padding: "10px" }}>Zaman Damgası</th>
                 <th style={{ padding: "10px", textAlign: "right" }}>Sonuç</th>
               </tr>
             </thead>
             <tbody>
-              {(realAuditLogs.length > 0 ? realAuditLogs.slice(0, 10) : [
-                { id: 1, event_type: "CREDENTIAL_ISSUED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "10 dk önce" },
-                { id: 2, event_type: "PRESENTATION_VERIFIED", actor_did: "did:web:enterprise-verifier.eu", target_wallet: "0xf39Fd...", created_at: "25 dk önce" },
-                { id: 3, event_type: "BITSTRING_STATUS_UPDATED", actor_did: "did:web:trust.eudi.europa.eu", target_wallet: "0xf39Fd...", created_at: "1 saat önce" }
-              ]).map((ev: { id: number; event_type: string; actor_did: string; target_wallet: string; created_at: string }, i: number) => (
-                <tr key={ev.id || i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+              {realAuditLogs.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: "16px", color: "var(--text-muted)" }}>Henüz görüntülenebilir bir denetim olayı yok.</td></tr>
+              ) : realAuditLogs.slice(0, 10).map((ev) => (
+                <tr key={ev.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <td style={{ padding: "10px", fontWeight: "700", color: "#60a5fa" }}>{ev.event_type}</td>
-                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{ev.actor_did || "system:node"}</td>
-                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{ev.target_wallet ? `${ev.target_wallet.slice(0, 16)}...` : "0x91a5ef...3451"}</td>
-                  <td style={{ padding: "10px", color: "var(--text-tertiary)" }}>{ev.created_at ? ev.created_at.substring(0, 19).replace("T", " ") : "Az önce"}</td>
-                  <td style={{ padding: "10px", textAlign: "right", color: "#4ade80", fontWeight: "700" }}>COMMITTED</td>
+                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{ev.actor_did || "—"}</td>
+                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{ev.target_wallet || "—"}</td>
+                  <td style={{ padding: "10px", color: "var(--text-tertiary)" }}>{ev.created_at ? ev.created_at.substring(0, 19).replace("T", " ") : "—"}</td>
+                  <td style={{ padding: "10px", textAlign: "right", color: "var(--text-muted)", fontWeight: "700" }}>RECORDED BY SERVICE</td>
                 </tr>
               ))}
             </tbody>
@@ -289,16 +270,16 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
       {activeScreen === "SYSTEM" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Mikroservis Telemetrisi & Canlı Sistem Durumu
+            Mikroservis Telemetrisi
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            API Gateway (:8000) üzerinden toplanan anlık servis sağlık telemetrisi.
+            Gateway'den gelen son durum; eksik telemetri UNKNOWN olarak gösterilir.
           </p>
 
           <div style={{
             padding: "16px",
-            backgroundColor: "rgba(22, 163, 74, 0.12)",
-            border: "1px solid rgba(22, 163, 74, 0.3)",
+            backgroundColor: "rgba(148, 163, 184, 0.08)",
+            border: "1px solid rgba(148, 163, 184, 0.2)",
             borderRadius: "8px",
             marginBottom: "20px",
             display: "flex",
@@ -306,39 +287,39 @@ export const AdminPortal: React.FC<{ activeScreen: AdminScreen; onNavigate?: (sc
             alignItems: "center"
           }}>
             <div>
-              <div style={{ fontSize: "14px", fontWeight: "700", color: "#4ade80" }}>
+              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>
                 API Gateway Durumu: {gatewayStatus} ({systemHealth})
               </div>
               <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                Tüm domain mikroservisleri API Gateway arkasında güvenli proxy tünelleriyle çalışmaktadır.
+                Bu durum endpoint'inden bildirilen gateway özeti; servislerin tamamı veya ağ güvenliği hakkında ek kanıt değildir.
               </div>
             </div>
-            <span style={{ fontSize: "20px" }}>🟢</span>
+            <span style={{ fontSize: "20px", color: "var(--text-muted)" }}>●</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Port :8001</div>
               <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>SSI Identity Core</div>
-              <div style={{ fontSize: "12px", color: "#10b981", fontWeight: "700", marginTop: "4px" }}>● {services.identity_service || "HEALTHY"}</div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "700", marginTop: "4px" }}>● {services.identity_service || "UNKNOWN"}</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Port :8002</div>
-              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>AI Fraud Service</div>
-              <div style={{ fontSize: "12px", color: "#10b981", fontWeight: "700", marginTop: "4px" }}>● {services.fraud_service || "HEALTHY"}</div>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>Fraud Heuristic Service</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "700", marginTop: "4px" }}>● {services.fraud_service || "UNKNOWN"}</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Port :8003</div>
               <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>Guardian Recovery</div>
-              <div style={{ fontSize: "12px", color: "#10b981", fontWeight: "700", marginTop: "4px" }}>● {services.recovery_service || "HEALTHY"}</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "700", marginTop: "4px" }}>● {services.recovery_service || "UNKNOWN"}</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-subtle)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Port :8545</div>
               <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>Hardhat EVM Node</div>
-              <div style={{ fontSize: "12px", color: "#10b981", fontWeight: "700", marginTop: "4px" }}>● HEALTHY (Mining)</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "700", marginTop: "4px" }}>● {blockchainInfo?.connected ? `CONNECTED · ${blockchainInfo.currentBlockNumber ?? blockchainInfo.block_number ?? "block unknown"}` : "UNKNOWN / OFFLINE"}</div>
             </div>
           </div>
         </div>

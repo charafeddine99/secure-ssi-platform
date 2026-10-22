@@ -16,10 +16,10 @@ class FraudEvaluationRequest(BaseModel):
     device_fingerprint_match: bool = Field(True, description="Kayıtlı cihaz ile eşleşme durumu")
     is_tor_or_proxy: bool = Field(False, description="IP'nin bilinen anonimleştirici/VPN/Tor olup olmadığı")
 
-class ModelBreakdown(BaseModel):
-    xgboost_score: float
-    autoencoder_recon_error: float
-    autoencoder_score: float
+class HeuristicBreakdown(BaseModel):
+    rule_score: float
+    behavioral_deviation: float
+    combined_score: float
 
 class FraudEvaluationResponse(BaseModel):
     evaluation_id: str
@@ -29,7 +29,10 @@ class FraudEvaluationResponse(BaseModel):
     is_anomaly: bool
     recommended_action: str  # "ALLOW", "REQUIRE_STEP_UP_AUTH", "MANUAL_REVIEW", "QUARANTINE_ACCOUNT"
     reasons: List[str]
-    model_breakdown: ModelBreakdown
+    heuristic_breakdown: HeuristicBreakdown
+    model_version: str
+    risk_signals: List[str] = Field(default_factory=list)
+    advisory_only: bool = True
     evaluated_at: str
 
 class QuarantineRequest(BaseModel):
@@ -44,21 +47,13 @@ class QuarantineResponse(BaseModel):
     reason: Optional[str] = None
 
 class ModelStatsResponse(BaseModel):
-    model_type: str = "Hybrid (XGBoost + Autoencoder)"
-    accuracy: float = 0.943
-    precision: float = 0.938
-    recall: float = 0.948
-    f1_score: float = 0.943
-    confusion_matrix: Dict[str, int] = {
-        "true_positives": 474,
-        "true_negatives": 469,
-        "false_positives": 31,
-        "false_negatives": 26
-    }
-    sample_count: int = 1000
-    latency_ms_avg: float = 4.2
-    model_quantization: str = "FP16"
-    last_trained: str
+    model_type: str
+    model_version: str
+    model_status: str
+    evaluation_status: str
+    dataset_label: str
+    advisory_only: bool
+    risk_signals: List[str]
 
 
 class PlatformSecurityEvent(BaseModel):

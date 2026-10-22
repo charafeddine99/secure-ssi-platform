@@ -67,6 +67,11 @@ def test_live_did_document_anchoring_and_verification(live_bridge: BlockchainBri
     assert record.contract_type == "DIDRegistry"
     assert record.subject_id == did
 
+    # The contract key is the DID digest; the raw DID remains application-side.
+    did_key = compute_deterministic_hash(did.encode("utf-8"))[1]
+    assert live_bridge.did_contract.functions.isDIDRegistered(did_key).call() is True
+    assert live_bridge.did_contract.functions.isDIDRegistered(did).call() is False
+
     # 2. Verify on-chain record matches local document hash
     is_valid = live_bridge.verify_did_anchor(did, did_doc)
     assert is_valid is True
@@ -102,7 +107,7 @@ def test_live_w3c_status_list_anchoring(live_bridge: BlockchainBridge):
     deployer = live_bridge.account.address
     stored_root, stored_ver, updated_at = live_bridge.revocation_contract.functions.getStatusListAnchor(
         deployer,
-        status_list_id,
+        compute_deterministic_hash(status_list_id.encode("utf-8"))[1],
     ).call()
 
     _, hex_hash = compute_deterministic_hash(bitstring)
@@ -126,28 +131,29 @@ def test_live_credential_revocation_and_idempotency(live_bridge: BlockchainBridg
 
     # 2. Repeated revocation should be handled idempotently
     record_2 = live_bridge.anchor_credential_revocation(cred_id, reason)
-    assert record_2.status == BlockchainAnchorStatus.CONFIRMED
+    assert record_2.status == BlockchainAnchorStatus.SKIPPED
+    assert record_2.tx_hash is None
 
 
-def test_live_emergency_quarantine_on_chain(live_bridge: BlockchainBridge):
-    target_wallet = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"  # Hardhat Account #1
-    reason = "AI risk score 92 > 70 threshold: automated quarantine"
-
-    # 1. Anchor quarantine on EmergencyRecovery.sol
+def test_live_quarantine_anchors_only_digest_to_audit_logger(live_bridge: BlockchainBridge):
+    target_wallet = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+    reason = "synthetic high heuristic signal"
     record = live_bridge.anchor_quarantine(target_wallet, reason)
     assert record.status == BlockchainAnchorStatus.CONFIRMED
     assert record.tx_hash is not None and record.tx_hash.startswith("0x")
-    assert record.contract_type == "EmergencyRecovery"
-
-    # 2. Verify smart contract state
-    is_q = live_bridge.is_quarantined_on_chain(target_wallet)
-    assert is_q is True
-
-    # 3. Test with DID string target (derived address)
-    target_did = "did:key:z6MkuAttackerDeviceCompromised"
-    rec_did = live_bridge.anchor_quarantine(target_did, "Suspicious rapid replay attacks")
-    assert rec_did.status == BlockchainAnchorStatus.CONFIRMED
-    assert live_bridge.is_quarantined_on_chain(target_did) is True
+    assert record.contract_type == "AuditLogger"
+    tx = live_bridge.w3.eth.get_transaction(record.tx_hash)
+    expected_digest, _ = compute_deterministic_hash({
+        "event": "ACCOUNT_QUARANTINED",
+        "subject_hash": compute_deterministic_hash(target_wallet.encode("utf-8"))[1],
+        "reason_hash": compute_deterministic_hash(reason.encode("utf-8"))[1],
+    })
+    expected_call = live_bridge.audit_contract.functions.logEvent(
+        expected_digest, 4
+    )._encode_transaction_data()
+    assert Web3.to_hex(tx["input"]) == expected_call
+    assert target_wallet.encode("utf-8").hex() not in tx["input"].hex()
+    assert reason.encode("utf-8").hex() not in tx["input"].hex()
 
 
 def test_live_audit_logger_security_event(live_bridge: BlockchainBridge):
@@ -181,7 +187,7 @@ def test_negative_invalid_rpc_handling():
     bridge = BlockchainBridge(settings=bad_settings)
 
     rec = bridge.anchor_did_document("did:key:z6MkuBadRPC", {"doc": 1})
-    assert rec.status == BlockchainAnchorStatus.FAILED
+    assert rec.status == BlockchainAnchorStatus.OFFLINE
     assert rec.error_message is not None
     err_msg = rec.error_message.lower()
     assert "offline" in err_msg or "not reachable" in err_msg or "connection" in err_msg

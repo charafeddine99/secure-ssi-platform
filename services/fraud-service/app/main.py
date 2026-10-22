@@ -15,7 +15,7 @@ logging.basicConfig(
 app = FastAPI(
     title=SERVICE_NAME,
     version=APP_VERSION,
-    description="AI-powered Fraud Detection & Anomaly Engine for Decentralized Identity (DID) Systems (XGBoost + Autoencoder)"
+    description="Deterministic, advisory risk heuristics for synthetic SSI prototype events; no trained model is deployed."
 )
 
 # Enable CORS for frontend & API gateway access

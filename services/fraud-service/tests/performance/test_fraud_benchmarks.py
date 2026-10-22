@@ -7,6 +7,7 @@ Measures:
 4. End-to-end evaluation throughput.
 """
 
+import json
 import time
 import pytest
 
@@ -66,6 +67,8 @@ def test_ai_single_and_batch_inference_benchmarks(fraud_detector):
             "p95_ms": latencies_ms[int(size * 0.95)],
             "p99_ms": latencies_ms[int(size * 0.99)],
         }
+
+    print("FRAUD_BENCHMARK=" + json.dumps(results, sort_keys=True))
 
     # Verify that single/batch latency meets academic targets (< 10 ms per evaluation)
     assert results[100]["avg_ms"] < 10.0, f"Average batch evaluation too high: {results[100]['avg_ms']:.2f} ms"

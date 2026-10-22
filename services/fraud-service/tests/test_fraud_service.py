@@ -39,7 +39,7 @@ def test_normal_user_evaluation_low_risk():
     assert data["is_anomaly"] is False
     assert data["risk_score"] < 0.30
 
-def test_impossible_travel_triggers_critical_quarantine():
+def test_impossible_travel_returns_critical_advice_without_mutating_quarantine():
     payload = {
         "did": "did:key:z6MkuImpossibleTraveler",
         "action": "presentation_verification",
@@ -59,6 +59,13 @@ def test_impossible_travel_triggers_critical_quarantine():
     assert data["risk_level"] in ("HIGH", "CRITICAL")
     assert data["is_anomaly"] is True
     assert any("İmkansız seyahat" in r for r in data["reasons"])
+    assert detector.is_quarantined(payload["did"]) is False
+
+    repeated = client.post("/api/v1/fraud/evaluate", json=payload)
+    assert repeated.status_code == 200
+    assert repeated.json()["risk_score"] == data["risk_score"]
+    assert repeated.json()["risk_level"] == data["risk_level"]
+    assert detector.is_quarantined(payload["did"]) is False
 
 def test_brute_force_failure_requires_step_up_or_review():
     payload = {
@@ -107,7 +114,7 @@ def test_manual_quarantine_and_release_lifecycle():
     assert q_res.status_code == 200
     assert q_res.json()["is_quarantined"] is True
 
-    # 2. Değerlendirme isteğinde hesap direkt CRITICAL dönmeli
+    # 2. Risk evaluation remains advisory and does not change the explicit state.
     eval_res = client.post("/api/v1/fraud/evaluate", json={
         "did": target_did,
         "action": "presentation_verification",
@@ -122,8 +129,9 @@ def test_manual_quarantine_and_release_lifecycle():
         "is_tor_or_proxy": False
     })
     assert eval_res.status_code == 200
-    assert eval_res.json()["risk_level"] == "CRITICAL"
-    assert eval_res.json()["recommended_action"] == "QUARANTINE_ACCOUNT"
+    assert eval_res.json()["risk_level"] == "LOW"
+    assert eval_res.json()["recommended_action"] == "ALLOW"
+    assert detector.is_quarantined(target_did) is True
 
     # 3. Karantina durumunu sorgula
     stat_res = client.get(f"/api/v1/fraud/quarantine/{target_did}")
@@ -135,15 +143,36 @@ def test_manual_quarantine_and_release_lifecycle():
     assert rel_res.status_code == 200
     assert rel_res.json()["status"] == "RELEASED"
 
-def test_model_stats_meets_report_targets():
+def test_model_stats_report_heuristic_status_without_model_metrics():
     response = client.get("/api/v1/fraud/stats")
     assert response.status_code == 200
     data = response.json()
-    assert data["accuracy"] >= 0.94
-    assert data["f1_score"] >= 0.94
-    assert "true_positives" in data["confusion_matrix"]
-    assert "true_negatives" in data["confusion_matrix"]
-    assert data["model_type"] == "Hybrid (XGBoost + Autoencoder)"
+    assert data["model_type"] == "Deterministic rule-based heuristic engine"
+    assert data["model_version"] == "rule-heuristic-v1"
+    assert data["model_status"] == "NOT_TRAINED"
+    assert data["evaluation_status"] == "NO_INDEPENDENT_LABELLED_EVALUATION"
+    assert data["dataset_label"] == "[DEMO LAB / SYNTHETIC]"
+    assert data["advisory_only"] is True
+    assert "impossible_travel" in data["risk_signals"]
+    assert not {"accuracy", "f1_score", "confusion_matrix", "last_trained"}.intersection(data)
+
+
+def test_evaluation_returns_versioned_advisory_heuristic():
+    response = client.post("/api/v1/fraud/evaluate", json={
+        "did": "did:key:z6MkuHeuristicMetadata",
+        "failed_attempts": 0,
+        "geo_distance_km": 0,
+        "presentation_frequency_10m": 1,
+        "device_fingerprint_match": True,
+        "is_tor_or_proxy": False,
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["model_version"] == "rule-heuristic-v1"
+    assert "failed_attempt_velocity" in data["risk_signals"]
+    assert data["advisory_only"] is True
+    assert "heuristic_breakdown" in data
+    assert "model_breakdown" not in data
 
 def test_inference_latency_benchmark():
     payload = {

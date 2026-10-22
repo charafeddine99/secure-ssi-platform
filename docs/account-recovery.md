@@ -138,10 +138,36 @@ access, device loss, and key loss. A recovery request always targets
 
 An assigned active Guardian must authenticate with the existing short-lived
 Identity JWT and submit its own assignment ID plus the exact request challenge.
-One deterministic approval ID is allowed per request and Guardian. Repeating
-the same decision is idempotent; changing an existing decision conflicts.
-Optional proof material is digested and bound to idempotency but is not yet
-validated as an independent DID signature.
+The Guardian's authenticated Identity session requests a compact EdDSA JWT
+from `POST /api/v1/wallets/guardian-recovery-proof`. Identity checks wallet
+ownership, wallet/key usability, and that the active managed key's
+verification method exactly matches the Guardian DID. The proof is bound to
+the Guardian assignment, recovery request/session/wallet, decision, and
+challenge, and expires after 120 seconds.
+
+Every approval and rejection requires this proof. Recovery verifies the
+signature against the registered Ed25519 `did:key` verification method and
+checks the exact issuer, subject, audience, context claims, token lifetime,
+header, and challenge before storing the approval. Missing proof is rejected
+by request validation; malformed, expired, mismatched, unsupported, or
+bad-signature proof fails closed and emits a rejection audit event. Only
+Ed25519 `did:key` Guardian proofs are currently supported; other DID methods,
+including `did:web`, cannot approve or reject.
+
+This establishes cryptographic DID-bound proof, but the signing key is held by
+the server-side Identity managed-key provider. It does not establish an
+independent Guardian-device signature, hardware-backed custody, or MFA. One
+deterministic approval ID is allowed per request and Guardian. Repeating the
+same decision with another valid proof remains idempotent; changing an
+existing decision conflicts.
+
+This challenge-response design follows the purpose of DID Core's
+`authentication` verification relationship; the project profile uses Ed25519
+signatures as specified by RFC 8032. Those standards do not require this
+project's chosen `did:key`-only method support or its server-managed key
+custody; those remain explicit profile and prototype boundaries. See
+[DID Core §5.3.1](https://www.w3.org/TR/did-1.0/#authentication) and
+[RFC 8032](https://www.rfc-editor.org/rfc/rfc8032).
 
 Parallel decisions use unique Mongo indexes and optimistic compare-and-set
 updates. Quorum is recalculated from persisted, still-active, wallet-bound
@@ -214,6 +240,11 @@ shares, envelope keys, service grants, or private-key material.
 `GET /internal/metrics` is deliberately absent from public OpenAPI and requires
 the admin permission.
 
+The approval and rejection endpoints require the `proof` returned by the
+Identity signing endpoint above. Recovery never accepts a client-supplied
+public key or verification method as authority; it uses the method registered
+on the Guardian assignment.
+
 ## MongoDB persistence
 
 Compose provisions a separate `secure_recovery` database and least-privilege
@@ -279,11 +310,13 @@ or key labels.
 - Production mode refuses development fallback secrets.
 
 Important residual threats are Guardian social compromise, owner-token theft,
-central envelope-key compromise, malicious database administrators, lack of
-independent Guardian signature verification, denial of service, and missing
-production notification/incident operations. Rate limiting, MFA, device
-attestation, independent share custody, production KMS attestation, and token
-revocation remain required external controls.
+central envelope-key compromise, malicious database administrators, the
+server-managed Guardian signing boundary, denial of service, and missing
+production notification/incident operations. The current service verifies
+challenge-bound EdDSA proofs for registered `did:key` Guardians, but does not
+prove independent device possession or MFA. Distributed rate limiting, MFA,
+device attestation, independent share custody, production KMS attestation, and
+durable/shared token revocation remain required controls.
 
 ## Configuration
 
@@ -335,7 +368,7 @@ is advanced by the deterministic clock and is not counted as processing time.
 | 67 | IMPLEMENTED | Key-loss request, threshold approval, and managed-key rotation |
 | 68 | PARTIAL | Compromise marks old managed key unusable; existing JWT remains valid until expiry because no blacklist was added |
 | 69 | IMPLEMENTED | Guardian domain, lifecycle, ownership, persistence, API, and tests |
-| 70 | PARTIAL | Generic M-of-N decision quorum; optional proof is not independently verified as a Guardian DID signature |
+| 70 | PARTIAL | Generic M-of-N quorum and required Ed25519 `did:key` signature verification; signing remains server-managed and is not an independent Guardian-device proof |
 | 71 | IMPLEMENTED | Configurable default 3-of-5 and explicit tests |
 | 72 | IMPLEMENTED | Parallel idempotent decisions with unique indexes and optimistic CAS |
 | 73 | IMPLEMENTED | Persisted, tested time lock blocks early execution |
@@ -350,14 +383,14 @@ is advanced by the deterministic clock and is not counted as processing time.
 | 82 | PARTIAL | In-memory benchmark is below 2.7 seconds; production end-to-end latency is unproven |
 | 143 | IMPLEMENTED | Sufficient/insufficient quorum and duplicate-decision tests |
 | 145 | IMPLEMENTED | Early execution blocked and due execution tested |
-| 168 | PARTIAL | Parallel assignment/share validation works; no cryptographic Guardian signature verification |
+| 168 | PARTIAL | Parallel assignment/share validation and cryptographic `did:key` proof verification pass; no independent Guardian-device key/MFA ceremony |
 
 ## Known limitations and next work
 
 - Existing access tokens have no blacklist/refresh/logout mechanism and remain
   usable until their short expiry.
 - A Guardian assignment uses an existing holder JWT; no dedicated enrollment,
-  MFA, device attestation, or independent signature-validation ceremony exists.
+  MFA, device attestation, or independent Guardian-device signing ceremony exists.
 - Encrypted shares and their master key are controlled by one service boundary;
   there is no per-Guardian secure delivery or hardware-backed custody.
 - Recovery audit persistence is not transactionally coupled to every state
@@ -371,5 +404,5 @@ is advanced by the deterministic clock and is not counted as processing time.
 
 The recommended next feature sprint is explainable AI fraud detection as an
 advisory-only service. Separately, production readiness requires Guardian
-signature verification, independently delivered shares, token/MFA controls,
+  independent Guardian-device proof, independently delivered shares, token/MFA controls,
 transactional audit reconciliation, and a reviewed vendor KMS/HSM deployment.

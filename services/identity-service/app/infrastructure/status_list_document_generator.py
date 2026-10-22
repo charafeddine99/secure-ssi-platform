@@ -1,5 +1,7 @@
 import base64
 import gzip
+import re
+import zlib
 from collections.abc import Collection, Iterable, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -9,7 +11,11 @@ from typing import Any
 from app.application.ports.canonicalizer import CredentialCanonicalizer
 from app.application.ports.credential_signer import CredentialSigner
 from app.application.ports.key_provider import KeyProvider
-from app.domain.bitstring_status_list import StatusListGenerationError
+from app.domain.bitstring_status_list import (
+    MAXIMUM_STATUS_LIST_ENTRIES,
+    MINIMUM_STATUS_LIST_ENTRIES,
+    StatusListGenerationError,
+)
 from app.infrastructure.crypto.multibase import encode_base58_btc
 
 
@@ -33,10 +39,15 @@ class StatusListDocumentGenerator:
         encoded_list: str,
         ttl_seconds: int,
         published_at: datetime,
+        status_purpose: str = "revocation",
     ) -> Mapping[str, Any]:
         if not status_list_url.startswith(("http://", "https://")):
             raise StatusListGenerationError(
                 "Status list publication URL must use HTTP(S)."
+            )
+        if status_purpose not in {"revocation", "suspension"}:
+            raise StatusListGenerationError(
+                "Status list purpose must be revocation or suspension."
             )
         try:
             signing_key = self._key_provider.get_signing_key(issuer_did)
@@ -52,7 +63,7 @@ class StatusListDocumentGenerator:
                 "credentialSubject": {
                     "id": f"{status_list_url}#list",
                     "type": "BitstringStatusList",
-                    "statusPurpose": "revocation",
+                    "statusPurpose": status_purpose,
                     "encodedList": encoded_list,
                     "ttl": ttl_seconds * 1_000,
                 },
@@ -112,15 +123,48 @@ from functools import lru_cache
 
 @lru_cache(maxsize=64)
 def decompress_status_list(encoded_list: str) -> bytes:
-    """Cached decompression of base64url-encoded gzip bitstring status list.
-    
-    Prevents repeated expensive gzip.decompress operations during high-frequency
-    credential verification passes across the 131,072-entry status list.
-    """
-    raw = encoded_list[1:] if encoded_list.startswith("u") else encoded_list
-    padded = raw + "=" * (-len(raw) % 4)
-    compressed = base64.urlsafe_b64decode(padded.encode("ascii"))
-    return gzip.decompress(compressed)
+    """Decode a bounded W3C multibase base64url-gzip status list."""
+    if not isinstance(encoded_list, str) or not encoded_list.startswith("u"):
+        raise ValueError("Status list must use the base64url multibase prefix.")
+
+    encoded = encoded_list[1:]
+    maximum_bytes = MAXIMUM_STATUS_LIST_ENTRIES // 8
+    maximum_compressed_bytes = maximum_bytes + 65_536
+    maximum_encoded_chars = 4 * ((maximum_compressed_bytes + 2) // 3)
+    if (
+        not encoded
+        or len(encoded) > maximum_encoded_chars
+        or re.fullmatch(r"[A-Za-z0-9_-]+", encoded) is None
+    ):
+        raise ValueError("Status list base64url encoding is invalid.")
+
+    padded = encoded + "=" * (-len(encoded) % 4)
+    try:
+        compressed = base64.b64decode(
+            padded.encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (ValueError, UnicodeEncodeError) as error:
+        raise ValueError("Status list base64url encoding is invalid.") from error
+    if (
+        len(compressed) > maximum_compressed_bytes
+        or base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
+        != encoded
+    ):
+        raise ValueError("Status list base64url encoding is non-canonical.")
+
+    try:
+        with gzip.GzipFile(fileobj=BytesIO(compressed), mode="rb") as stream:
+            bitstring = stream.read(maximum_bytes + 1)
+    except (EOFError, OSError, zlib.error) as error:
+        raise ValueError("Status list gzip data is invalid.") from error
+
+    if len(bitstring) * 8 < MINIMUM_STATUS_LIST_ENTRIES:
+        raise ValueError("Status list is shorter than the W3C minimum.")
+    if len(bitstring) > maximum_bytes:
+        raise ValueError("Status list exceeds the configured maximum.")
+    return bitstring
 
 
 def decode_status_list_bit(encoded_list: str, index: int) -> bool:
@@ -130,7 +174,7 @@ def decode_status_list_bit(encoded_list: str, index: int) -> bool:
     byte_index = index // 8
     bit_index = 7 - (index % 8)
     if byte_index >= len(bitstring):
-        return False
+        raise ValueError("Status list index is outside the encoded bitstring.")
     return bool(bitstring[byte_index] & (1 << bit_index))
 
 

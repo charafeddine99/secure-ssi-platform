@@ -25,9 +25,9 @@ This sequence describes the project areas in the academic concept; it is not an 
 
 ## Actors
 
-- **Holder:** Controls an identity wallet and presents credentials or proofs. Holder private keys remain holder-controlled.
-- **Issuer:** Creates and signs credentials after applying an explicit assurance and governance policy.
-- **Verifier:** Requests and validates only the information required for a declared transaction purpose.
+- **Holder:** Uses a wallet to receive and present credentials. In this prototype, wallet signing operations cross a backend custody boundary; independent device-held key custody is not established.
+- **Issuer:** Issues credentials through the local synthetic issuer profile. This prototype does not establish real institutional assurance or production issuer governance.
+- **Verifier:** Creates a purpose-bound request and validates the selected credential and presentation. The current profile sends the complete selected credential; claim-level cryptographic selective disclosure is not implemented.
 - **Guardian:** Participates in a threshold recovery policy. A single guardian cannot complete recovery.
 
 ## Component responsibilities
@@ -104,12 +104,17 @@ Authenticated wallet, presentation-challenge, and presentation routes create
 wallet-bound short-lived presentations and reconcile stale verification work.
 These routes are a
 direct development boundary only; the planned production architecture still
-places authenticated, authorized, rate-limited access behind the API Gateway.
+requires an authenticated, authorized, distributed rate-limited edge. The
+current API Gateway limiter is process-local, and Identity and Recovery do not
+have independent limiters.
 The Recovery Service exposes protected routes under `/api/v1/guardians` and
 `/api/v1/recovery` for Guardian assignments, M-of-N policy, requests,
 decisions, cancellation, status, and admin reconciliation. Its production
-design still requires an API Gateway, rate limiting, MFA/device controls, and
-independent Guardian proof verification.
+design still requires a hardened API Gateway, distributed rate limiting,
+MFA/device controls, and independent Guardian-device assurance. The current
+Recovery Service verifies submitted EdDSA proofs for registered Ed25519
+`did:key` Guardians; that does not establish that a distinct Guardian device
+controls the key, and `did:web` proof verification is unsupported.
 
 The Identity Service also exposes public synthetic login at
 `POST /api/v1/auth/token` and protected current-user resolution at

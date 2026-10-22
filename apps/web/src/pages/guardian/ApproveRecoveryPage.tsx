@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
 import {
   fetchRecoveryRequestById,
+  fetchGuardians,
+  fetchCurrentUserId,
   approveRecoveryPetition,
   rejectRecoveryPetition,
   RecoveryRequest,
@@ -24,17 +25,30 @@ export const ApproveRecoveryPage: React.FC = () => {
   const [signing, setSigning] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [guardianId, setGuardianId] = useState<string | null>(null);
+  const [guardianDid, setGuardianDid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadRequest = async () => {
       setLoading(true);
       try {
-        const found = await fetchRecoveryRequestById(id || "");
+        if (!id) throw new Error("Recovery request ID is missing.");
+        const found = await fetchRecoveryRequestById(id);
+        if (!found) throw new Error("Recovery request was not found for this account.");
         setRequest(found);
-      } catch {
-        setError("Failed to load recovery petition from Recovery Service.");
+        const [userId, guardians] = await Promise.all([
+          fetchCurrentUserId(),
+          fetchGuardians(found.walletId),
+        ]);
+        const assignment = guardians.find(
+          (guardian) => guardian.guardian_user_id === userId && guardian.approved === 1
+        );
+        setGuardianId(assignment?.guardian_id || null);
+        setGuardianDid(assignment?.guardian_did || null);
+        if (!assignment) setError("This signed-in account has no active Guardian assignment for the request.");
+      } catch (loadError: unknown) {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load petition and Guardian assignment.");
       } finally {
         setLoading(false);
       }
@@ -43,15 +57,16 @@ export const ApproveRecoveryPage: React.FC = () => {
   }, [id]);
 
   const handleApprove = async () => {
+    if (!request || !guardianId || !guardianDid || !request.challenge || request.status !== "PENDING_APPROVALS") {
+      setError("An active request, assigned Guardian DID, and current server challenge are required.");
+      return;
+    }
     setSigning(true);
     setError(null);
     try {
-      const res = await approveRecoveryPetition(
-        id || "req_default",
-        "guardian_institutional_notary"
-      );
-      setTxHash(res.txHash || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420");
-      setSuccessMsg("Guardian cryptographic approval committed to M-of-N quorum!");
+      const result = await approveRecoveryPetition(request, guardianId, guardianDid);
+      setRequest(result.recovery);
+      setSuccessMsg(`Guardian account decision recorded. Current state: ${result.recovery.status}.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to submit guardian approval.");
     } finally {
@@ -60,14 +75,16 @@ export const ApproveRecoveryPage: React.FC = () => {
   };
 
   const handleReject = async () => {
+    if (!request || !guardianId || !guardianDid || !request.challenge || request.status !== "PENDING_APPROVALS") {
+      setError("An active request, assigned Guardian DID, and current server challenge are required.");
+      return;
+    }
     setRejecting(true);
     setError(null);
     try {
-      await rejectRecoveryPetition(
-        id || "req_default",
-        "guardian_institutional_notary"
-      );
-      setSuccessMsg("Guardian rejection recorded. Petition has been opposed.");
+      const result = await rejectRecoveryPetition(request, guardianId, guardianDid);
+      setRequest(result.recovery);
+      setSuccessMsg(`Guardian rejection recorded. Current state: ${result.recovery.status}.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to reject petition.");
     } finally {
@@ -96,15 +113,12 @@ export const ApproveRecoveryPage: React.FC = () => {
       </button>
 
       <div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-          <TrustBadge level="STANDARDS_ALIGNED" />
-          <TrustBadge level="BLOCKCHAIN_ANCHORED" />
-        </div>
+        <p className="workspace-eyebrow">Recovery approval</p>
         <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-          Cryptographic Recovery Authorization
+          Guardian Recovery Decision
         </h1>
         <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-          Verify petition legitimacy and sign authorization share via Shamir M-of-N Quorum.
+          Review the request and submit a decision using the assigned Guardian account.
         </p>
       </div>
 
@@ -143,19 +157,10 @@ export const ApproveRecoveryPage: React.FC = () => {
                   {successMsg}
                 </h3>
                 <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: "2px 0 0 0" }}>
-                  The approval has been verified and recorded in the Recovery Service audit ledger.
+                  The Recovery Service verifies a short-lived signature from the registered Guardian DID. The Identity Service performs signing with a server-managed key; this does not establish device-held key custody or an on-chain receipt.
                 </p>
               </div>
             </div>
-
-            {txHash && (
-              <div style={{ backgroundColor: "#0d131f", padding: "12px", borderRadius: "8px", border: "1px solid #1f2937", fontSize: "0.75rem" }}>
-                <span style={{ color: "#94a3b8" }}>On-Chain Attestation Reference:</span>
-                <div style={{ fontFamily: "var(--font-mono)", color: "#c084fc", marginTop: "2px" }}>
-                  {txHash}
-                </div>
-              </div>
-            )}
 
             <button
               onClick={() => navigate("/guardian/requests")}
@@ -186,7 +191,7 @@ export const ApproveRecoveryPage: React.FC = () => {
                 Petition ID: {request?.requestId || id}
               </span>
               <span style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: "9999px", backgroundColor: "rgba(59, 130, 246, 0.2)", color: "#60a5fa", fontWeight: 700 }}>
-                STATUS: {request?.status || "PENDING"}
+                STATUS: {request?.status || "UNKNOWN"}
               </span>
             </div>
 
@@ -194,21 +199,21 @@ export const ApproveRecoveryPage: React.FC = () => {
               <div>
                 <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Target Sovereign Wallet:</span>
                 <div style={{ fontFamily: "var(--font-mono)", color: "#f87171", marginTop: "2px" }}>
-                  {request?.walletId || "wallet_holder_primary"}
+                  {request?.walletId || "Unavailable"}
                 </div>
               </div>
 
               <div>
                 <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Stated Reason for Emergency Recovery:</span>
                 <div style={{ color: "#ffffff", marginTop: "2px", lineHeight: "1.4" }}>
-                  {request?.reason || "Device lost or private key compromised. Holder requested managed-key rotation."}
+                  {request?.reason || "Reason not supplied"}
                 </div>
               </div>
 
               <div>
                 <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Quorum Progress:</span>
                 <div style={{ color: "#fbbf24", fontWeight: 700, marginTop: "2px" }}>
-                  {request?.approvalsCount ?? 2} of {request?.requiredCount ?? 3} approvals gathered (Threshold: 3-of-5)
+                  {request?.approvalsCount ?? "Unknown"} of {request?.requiredCount ?? "Unknown"} approvals recorded
                 </div>
               </div>
             </div>
@@ -224,13 +229,13 @@ export const ApproveRecoveryPage: React.FC = () => {
                 lineHeight: "1.4",
               }}
             >
-              <strong>Security Protocol Warning:</strong> Authorizing this petition reconstructs one share of the 128-bit Shamir recovery secret. Once 3 of 5 guardians approve, a time-lock window activates before the managed presentation key is rotated.
+              <strong>Signing boundary:</strong> The Identity Service signs this decision with a server-managed key. This account does not hold an independent Guardian signing key.
             </div>
 
             <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
               <button
                 onClick={handleApprove}
-                disabled={signing || rejecting}
+                disabled={signing || rejecting || !guardianId || !guardianDid || !request?.challenge || request?.status !== "PENDING_APPROVALS"}
                 style={{
                   flex: 1,
                   padding: "12px",
@@ -248,18 +253,18 @@ export const ApproveRecoveryPage: React.FC = () => {
                 }}
               >
                 {signing ? (
-                  <span>Signing Recovery Share...</span>
+                  <span>Submitting decision...</span>
                 ) : (
                   <>
                     <ShieldCheck size={18} />
-                    Sign Cryptographic Approval
+                    Approve Request
                   </>
                 )}
               </button>
 
               <button
                 onClick={handleReject}
-                disabled={signing || rejecting}
+                disabled={signing || rejecting || !guardianId || !guardianDid || !request?.challenge || request?.status !== "PENDING_APPROVALS"}
                 style={{
                   padding: "12px 20px",
                   borderRadius: "10px",

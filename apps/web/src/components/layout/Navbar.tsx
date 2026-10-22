@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BrandMark } from "../common/BrandMark";
 
 interface NavbarProps {
   isWalletConnected: boolean;
@@ -19,21 +20,15 @@ export function Navbar({
     <header className="web3-navbar">
       <div className="navbar-left">
         <div className="platform-logo">
-          <div className="logo-shield-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              <path d="M9 12l2 2 4-4"/>
-            </svg>
-          </div>
+          <div className="logo-shield-icon"><BrandMark size={32} /></div>
           <div className="logo-text-group">
-            <span className="logo-title">SECURE SSI</span>
-            <span className="logo-subtitle">AI & Blockchain ID</span>
+            <span className="logo-title">Secure SSI Platform</span>
           </div>
         </div>
 
         <div className="network-badge">
           <span className="pulsing-dot"></span>
-          <span className="network-name">Hardhat Localnet #1337</span>
+          <span className="network-name">Local demo network</span>
         </div>
       </div>
 
@@ -42,7 +37,7 @@ export function Navbar({
           <div className="wallet-connected-group">
             <div className="balance-pill">
               <span className="eth-icon">Ξ</span>
-              <span className="balance-amount">2.450 ETH</span>
+              <span className="balance-amount">Balance not loaded</span>
             </div>
 
             <div
@@ -59,8 +54,8 @@ export function Navbar({
               {showDropdown && (
                 <div className="wallet-dropdown-menu">
                   <div className="dropdown-header">
-                    <strong>Charaf Eddine Bessanane</strong>
-                    <span className="role-tag">Holder / Student</span>
+                    <strong>Synthetic Demo Holder</strong>
+                    <span className="role-tag">Demo profile · unassessed</span>
                   </div>
                   <div className="dropdown-item">
                     <span className="label">Aktif DID:</span>

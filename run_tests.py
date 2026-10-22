@@ -1,7 +1,7 @@
-"""Consolidated test runner for all Secure SSI Platform microservices.
+"""Run each Secure SSI Platform pytest tree independently.
 
-Runs pytest independently across each service root to prevent multi-root 'app'
-namespace collisions while verifying 100% test coverage.
+Separate pytest invocations prevent multi-root ``app`` namespace collisions.
+This runner reports test outcomes; it does not measure code coverage.
 """
 
 import sys

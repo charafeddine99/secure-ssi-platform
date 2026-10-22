@@ -8,7 +8,7 @@ interface CredentialItem {
   type: string;
   issuer: string;
   issuedDate: string;
-  status: "ACTIVE" | "REVOKED";
+  status: "ACTIVE" | "REVOKED" | "UNKNOWN";
   claims: Record<string, unknown>;
   proofValue: string;
 }
@@ -45,29 +45,28 @@ interface GuardianItem {
 
 export function StatusPage() {
   const [activeSection, setActiveSection] = useState<NavSection>("wallet");
-  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(true);
-  const [walletAddress] = useState<string>("0x71C2a8F8bC1623b3781290aE201b22308947bE09");
-  const [userDid, setUserDid] = useState<string>("did:key:z6MkuBesnaStudentKey2026SUBUEVM");
+  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(false);
+  const [walletAddress] = useState<string>("0x0000000000000000000000000000000000000000");
+  const [userDid, setUserDid] = useState<string>("did:example:holder-001");
 
   // 1. CÜZDAN & DİPLOMA STATE
   const [credentials, setCredentials] = useState<CredentialItem[]>([
     {
-      id: "urn:uuid:subu-diploma-2026-b210109591",
-      title: "Bilgisayar Mühendisliği Lisans Diploması",
+      id: "urn:uuid:synthetic-degree-demo-0001",
+      title: "Synthetic Demo Degree Credential",
       type: "UniversityDegreeCredential",
-      issuer: "did:web:subu.edu.tr",
+      issuer: "did:example:issuer-001",
       issuedDate: "2026-06-25",
-      status: "ACTIVE",
+      status: "UNKNOWN",
       claims: {
-        ogrenciAdi: "Charaf Eddine Bessanane",
-        ogrenciNo: "B210109591",
-        fakulte: "Teknoloji Fakültesi",
-        bolum: "Bilgisayar Mühendisliği",
-        derece: "Lisans (B.Sc.)",
-        gpa: "3.82 / 4.00",
-        tcKimlik: "12345678901"
+        exampleName: "Synthetic Demo Holder",
+        exampleIdentifier: "DEMO-0001",
+        exampleDepartment: "Example Department",
+        exampleDegree: "Synthetic degree fixture",
+        exampleGpa: "Not assessed",
+        exampleNationalId: "NOT_ASSESSED"
       },
-      proofValue: "z3s9PqRtXvM8SUBUSignedProofValueValidW3C2026Ed25519"
+      proofValue: "DEMO_ONLY_NO_CREDENTIAL_PROOF"
     }
   ]);
 
@@ -76,10 +75,10 @@ export function StatusPage() {
   const [didCopied, setDidCopied] = useState<boolean>(false);
 
   // 2. ISSUER STATE (YENİ DİPLOMA ÜRETME)
-  const [issuerStudentName, setIssuerStudentName] = useState("Charaf Eddine Bessanane");
-  const [issuerStudentId, setIssuerStudentId] = useState("B210109591");
-  const [issuerDepartment, setIssuerDepartment] = useState("Bilgisayar Mühendisliği");
-  const [issuerGpa, setIssuerGpa] = useState("3.82");
+  const [issuerStudentName, setIssuerStudentName] = useState("Synthetic Demo Holder");
+  const [issuerStudentId, setIssuerStudentId] = useState("DEMO-0001");
+  const [issuerDepartment, setIssuerDepartment] = useState("Example Department");
+  const [issuerGpa, setIssuerGpa] = useState("Not assessed");
   const [issuerNotification, setIssuerNotification] = useState<string | null>(null);
 
   // 3. VERIFIER STATE
@@ -99,18 +98,18 @@ export function StatusPage() {
 
   // 5. RECOVERY STATE
   const [guardians, setGuardians] = useState<GuardianItem[]>([
-    { id: 1, name: "Dr. Danışman Hoca", role: "Akademik Danışman", did: "did:key:z6MkuGuardian1Danisman", approved: true },
-    { id: 2, name: "Fakülte Sekreterliği", role: "Kurumsal Onaycı", did: "did:key:z6MkuGuardian2Fakulte", approved: true },
-    { id: 3, name: "Güvenilir Arkadaş", role: "Bireysel Temsilci", did: "did:key:z6MkuGuardian3Arkadas", approved: false },
-    { id: 4, name: "Yedek Donanım Anahtarı", role: "Yedek Cihaz", did: "did:key:z6MkuGuardian4Yedek", approved: false },
-    { id: 5, name: "Dijital Noter Servisi", role: "Bağımsız Şahit", did: "did:key:z6MkuGuardian5Noter", approved: false }
+    { id: 1, name: "Synthetic guardian 1", role: "Demo guardian", did: "did:example:guardian-001", approved: true },
+    { id: 2, name: "Synthetic guardian 2", role: "Demo guardian", did: "did:example:guardian-002", approved: true },
+    { id: 3, name: "Synthetic guardian 3", role: "Demo guardian", did: "did:example:guardian-003", approved: false },
+    { id: 4, name: "Synthetic guardian 4", role: "Demo guardian", did: "did:example:guardian-004", approved: false },
+    { id: 5, name: "Synthetic guardian 5", role: "Demo guardian", did: "did:example:guardian-005", approved: false }
   ]);
   const [recoveryExecuted, setRecoveryExecuted] = useState<boolean>(false);
 
   // --- EYLEMLER ---
   const handleGenerateNewDid = () => {
     const randomHex = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-    const newDid = `did:key:z6Mku${randomHex}Besna`;
+    const newDid = `did:example:holder-${randomHex}`;
     setUserDid(newDid);
     setDidCopied(true);
     setTimeout(() => setDidCopied(false), 2500);
@@ -118,28 +117,27 @@ export function StatusPage() {
 
   const handleIssueCredential = (e: React.FormEvent) => {
     e.preventDefault();
-    const newId = `urn:uuid:${Math.random().toString(36).substring(2, 12)}-subu-2026`;
+    const newId = `urn:uuid:synthetic-demo-${Math.random().toString(36).substring(2, 12)}`;
     const newCred: CredentialItem = {
       id: newId,
-      title: `${issuerDepartment} Diploması`,
+      title: `Synthetic ${issuerDepartment} Demo Fixture`,
       type: "UniversityDegreeCredential",
-      issuer: "did:web:subu.edu.tr",
+      issuer: "did:example:issuer-001",
       issuedDate: new Date().toISOString().split("T")[0],
-      status: "ACTIVE",
+      status: "UNKNOWN",
       claims: {
-        ogrenciAdi: issuerStudentName,
-        ogrenciNo: issuerStudentId,
-        fakulte: "Teknoloji Fakültesi",
-        bolum: issuerDepartment,
-        derece: "Lisans (B.Sc.)",
-        gpa: `${issuerGpa} / 4.00`,
-        tcKimlik: "12345678901"
+        exampleName: issuerStudentName,
+        exampleIdentifier: issuerStudentId,
+        exampleDepartment: issuerDepartment,
+        exampleDegree: "Synthetic degree fixture",
+        exampleGpa: issuerGpa,
+        exampleNationalId: "NOT_ASSESSED"
       },
-      proofValue: "z3s" + Math.random().toString(36).substring(2, 25)
+      proofValue: "DEMO_ONLY_NO_CREDENTIAL_PROOF"
     };
     setCredentials([newCred, ...credentials]);
     setSelectedCred(newCred);
-    setIssuerNotification(`Başarılı: ${issuerStudentName} adına W3C Diploması düzenlendi ve imzalandı!`);
+    setIssuerNotification("Demo credential fixture oluşturuldu. Issuer imzası veya credential kaydı yapılmadı.");
     setTimeout(() => setIssuerNotification(null), 4000);
   };
 
@@ -159,65 +157,48 @@ export function StatusPage() {
       if (selectedCred.status === "REVOKED") {
         setVerifierResult({
           valid: false,
-          reason: "KİMLİK GEÇERSİZ: Belge SUBÜ Status List üzerinde iptal edilmiş (REVOKED).",
+          reason: "This legacy demo screen does not verify credential proofs or status lists.",
           policySatisfied: false
         });
       } else {
         setVerifierResult({
-          valid: true,
-          issuer: selectedCred.issuer,
-          algorithm: "DataIntegrityProof - eddsa-jcs-2022",
-          latencyMs: 3.8,
-          policySatisfied: true,
-          policyPredicate: "GPA >= 3.00 (DCQL Politikasına Göre Doğrulandı)",
-          hiddenFields: ["tcKimlik", "ogrenciNo", "ogrenciAdi"]
+          valid: false,
+          reason: "No cryptographic credential validator is connected to this legacy demo screen.",
+          policySatisfied: false
         });
       }
     }, 600);
   };
 
-  const handleRunAiEvaluation = async () => {
+  const handleRunAiEvaluation = () => {
     setAiLoading(true);
-    try {
-      const resp = await fetch("http://127.0.0.1:8002/api/v1/fraud/evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          did: userDid,
-          action: "presentation_verification",
-          client_ip: aiIsTor ? "185.220.101.5" : "192.168.1.100",
-          user_agent: "Mozilla/5.0 SecureSSI",
-          failed_attempts: aiFailedCount,
-          geo_distance_km: aiGeoKm,
-          time_since_last_action_sec: 60,
-          presentation_frequency_10m: aiFreq,
-          device_fingerprint: aiDeviceMatch ? "fp-known" : "fp-unknown",
-          device_fingerprint_match: aiDeviceMatch,
-          is_tor_or_proxy: aiIsTor
-        })
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        setAiEvalResult(data);
-        if (data.recommended_action === "QUARANTINE_ACCOUNT" && !quarantinedList.includes(userDid)) {
-          setQuarantinedList([userDid, ...quarantinedList]);
-        }
-      } else {
-        throw new Error("API hatasi");
-      }
-    } catch {
-      // Offline fallback simülasyonu
-      const score = (aiGeoKm > 500 ? 0.5 : 0) + (aiFailedCount >= 3 ? 0.35 : 0) + (aiIsTor ? 0.4 : 0);
-      const finalScore = Math.min(score, 1.0);
-      setAiEvalResult({
-        risk_score: finalScore,
-        risk_level: finalScore > 0.8 ? "CRITICAL" : finalScore > 0.5 ? "HIGH" : finalScore > 0.25 ? "MEDIUM" : "LOW",
-        recommended_action: finalScore > 0.8 ? "QUARANTINE_ACCOUNT" : finalScore > 0.5 ? "MANUAL_REVIEW" : finalScore > 0.25 ? "REQUIRE_STEP_UP_AUTH" : "ALLOW",
-        reasons: aiGeoKm > 500 ? ["İmkansız seyahat anomalisi tespit edildi."] : ["Normal erişim deseni."]
-      });
-    } finally {
-      setAiLoading(false);
+    const score = Math.min(
+      (aiGeoKm > 500 ? 0.5 : 0) +
+      (aiFailedCount >= 3 ? 0.35 : 0) +
+      (aiIsTor ? 0.4 : 0) +
+      (!aiDeviceMatch ? 0.2 : 0) +
+      (aiFreq > 12 ? 0.15 : 0),
+      1.0
+    );
+    const level = score > 0.8 ? "CRITICAL" : score > 0.5 ? "HIGH" : score > 0.25 ? "MEDIUM" : "LOW";
+    const recommendedAction = score > 0.8 ? "QUARANTINE_ACCOUNT" : score > 0.5 ? "MANUAL_REVIEW" : score > 0.25 ? "REQUIRE_STEP_UP_AUTH" : "ALLOW";
+    const reasons = ["Synthetic scenario only; no live telemetry or trained model was used."];
+    if (aiGeoKm > 500) reasons.push("Configured sample geovelocity signal is elevated.");
+    if (aiFailedCount >= 3) reasons.push("Configured sample failed-attempt count is elevated.");
+    if (aiIsTor) reasons.push("Configured sample proxy signal is enabled.");
+    if (!aiDeviceMatch) reasons.push("Configured sample device mismatch is enabled.");
+    if (aiFreq > 12) reasons.push("Configured sample request frequency is elevated.");
+
+    setAiEvalResult({
+      risk_score: score,
+      risk_level: level,
+      recommended_action: recommendedAction,
+      reasons
+    });
+    if (recommendedAction === "QUARANTINE_ACCOUNT" && !quarantinedList.includes(userDid)) {
+      setQuarantinedList([userDid, ...quarantinedList]);
     }
+    setAiLoading(false);
   };
 
   const handleGuardianApprove = (id: number) => {
@@ -240,6 +221,20 @@ export function StatusPage() {
         <Sidebar activeSection={activeSection} onSelectSection={setActiveSection} />
 
         <main className="app-content">
+          <div
+            role="note"
+            style={{
+              marginBottom: "16px",
+              padding: "12px 16px",
+              border: "1px solid rgba(245, 158, 11, 0.45)",
+              borderRadius: "10px",
+              background: "rgba(245, 158, 11, 0.1)",
+              color: "#fbbf24",
+              fontSize: "0.82rem",
+            }}
+          >
+            DEMO / SİMÜLASYON: Bu ekrandaki örnek veriler ve işlemler yalnızca tarayıcı belleğinde çalışır; servis API’lerine yazmaz, anahtar döndürmez ve zincire işlem göndermez.
+          </div>
           {/* ========================================================= */}
           {/* 1. KİMLİK CÜZDANIM (WALLET PORTAL) */}
           {/* ========================================================= */}
@@ -247,20 +242,20 @@ export function StatusPage() {
             <div>
               <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
                 <div>
-                  <h1>Kimlik Cüzdanım (Holder Wallet)</h1>
-                  <p>W3C standartlarında Verifiable Credentials ve aktif DID anahtarlarınız.</p>
+                  <h1>Local Demo Wallet</h1>
+                  <p>Synthetic fixtures only. No active DID key or credential verification is provided by this legacy screen.</p>
                 </div>
                 <button className="btn-connect-wallet" onClick={handleGenerateNewDid} style={{ padding: "10px 16px" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                   </svg>
-                  Yeni DID Anahtarı Üret
+                  Demo profile identifier oluştur
                 </button>
               </div>
 
               {didCopied && (
                 <div style={{ background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", color: "#34d399", padding: "10px 16px", borderRadius: "10px", marginBottom: "20px", fontSize: "0.88rem" }}>
-                  ✔ Yeni Ed25519 DID başarıyla üretildi: <code>{userDid}</code>
+                  Demo identifier güncellendi: <code>{userDid}</code>. Cryptographic key oluşturulmadı.
                 </div>
               )}
 
@@ -369,8 +364,8 @@ export function StatusPage() {
           {activeSection === "issuer" && (
             <div>
               <div className="page-header">
-                <h1>Belge Düzenleyici (Issuer Portal)</h1>
-                <p>Sakarya Uygulamalı Bilimler Üniversitesi adına W3C uyumlu dijital diploma oluşturun ve imzalayın.</p>
+                <h1>Legacy Demo Issuer Screen</h1>
+                <p>Form only creates a browser-memory fixture. It does not represent a real institution or sign a credential.</p>
               </div>
 
               {issuerNotification && (
@@ -382,8 +377,8 @@ export function StatusPage() {
               <div className="grid-2">
                 <div className="web3-card">
                   <div className="card-title-group">
-                    <h2>Yeni Diploma Düzenleme Formu</h2>
-                    <p>Öğrenci bilgilerini girip kriptografik Ed25519 imzasıyla yayınlayın.</p>
+                    <h2>Synthetic fixture form</h2>
+                    <p>Use synthetic sample fields only. No cryptographic issuance is performed.</p>
                   </div>
 
                   <form onSubmit={handleIssueCredential}>
@@ -507,34 +502,34 @@ export function StatusPage() {
                     onClick={handleVerifyCredential}
                     disabled={isVerifying}
                   >
-                    {isVerifying ? "W3C İmzası & Bitstring Kontrol Ediliyor..." : "Doğrulamayı Başlat (Verify)"}
+                    {isVerifying ? "Demo screen is checking availability..." : "Try verification (validator unavailable)"}
                   </button>
                 </div>
 
                 {/* DOĞRULAMA SONUÇLARI */}
                 <div className="web3-card">
                   <div className="card-title-group">
-                    <h2>Kriptografik Doğrulama Sonucu</h2>
-                    <p>Matematiksel imza, zaman aşımı ve iptal kayıtlarının analizi:</p>
+                    <h2>Credential validation</h2>
+                    <p>This legacy screen has no cryptographic signature or status-list validator.</p>
                   </div>
 
                   {verifierResult ? (
                     verifierResult.valid ? (
                       <div>
                         <div style={{ padding: "14px 18px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", borderRadius: "10px", color: "#34d399", marginBottom: "16px" }}>
-                          <h4 style={{ margin: 0, fontSize: "1.05rem" }}>✅ BELGE %100 GEÇERLİ VE DOĞRULANDI</h4>
-                          <div style={{ fontSize: "0.8rem", marginTop: "4px" }}>Doğrulama Süresi: {verifierResult.latencyMs} ms</div>
+                          <h4 style={{ margin: 0, fontSize: "1.05rem" }}>Demo result — not cryptographically verified</h4>
+                          <div style={{ fontSize: "0.8rem", marginTop: "4px" }}>No verification latency was measured.</div>
                         </div>
 
                         <div style={{ fontSize: "0.85rem", lineHeight: "1.7", color: "var(--text-muted)" }}>
-                          <div>• <strong>İmzacı Güvenilirlik:</strong> SUBÜ Resmi Root Anahtarı ile eşleşti.</div>
+                          <div>• <strong>Issuer trust:</strong> Not evaluated.</div>
                           <div>• <strong>Algoritma:</strong> {verifierResult.algorithm}</div>
-                          <div>• <strong>Revocation Durumu:</strong> Bitstring Status List üzerinde aktif.</div>
+                          <div>• <strong>Credential status:</strong> No status list was checked.</div>
                           {policyMasked && (
                             <div style={{ marginTop: "10px", padding: "10px", background: "#0b192c", borderRadius: "8px", border: "1px solid #1d4ed8" }}>
                               <strong style={{ color: "var(--accent-cyan)" }}>🛡️ Veri Minimizasyonu Talebi:</strong>
                               <div style={{ color: "#fff", fontSize: "0.82rem" }}>{verifierResult.policyPredicate}</div>
-                              <div style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginTop: "2px" }}>Öğrencinin TC Kimlik No ve İsim alanları ifşa edilmedi (Gizlilik Korundu).</div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginTop: "2px" }}>This legacy screen does not implement cryptographic selective disclosure.</div>
                             </div>
                           )}
                         </div>
@@ -547,7 +542,7 @@ export function StatusPage() {
                     )
                   ) : (
                     <div style={{ textAlign: "center", padding: "30px", color: "var(--text-subtle)" }}>
-                      Henüz bir doğrulama yapılmadı. Soldaki butona tıklayın.
+                      This legacy screen has no cryptographic validator; no verification result is available.
                     </div>
                   )}
                 </div>
@@ -561,8 +556,8 @@ export function StatusPage() {
           {activeSection === "ai" && (
             <div>
               <div className="page-header">
-                <h1>Yapay Zekâ Dolandırıcılık Tespiti (AI Fraud Monitor)</h1>
-                <p>XGBoost + Autoencoder hibrit modeliyle gerçek zamanlı davranış analizi ve karantina paneli.</p>
+                <h1>Sentetik Risk Heuristiği Simülasyonu</h1>
+                <p>[DEMO LAB / SYNTHETIC] Sabit kurallı, eğitilmemiş ve yalnızca advisory risk heuristiği.</p>
               </div>
 
               <div className="grid-2">
@@ -610,15 +605,15 @@ export function StatusPage() {
                     onClick={handleRunAiEvaluation}
                     disabled={aiLoading}
                   >
-                    {aiLoading ? "AI Modeli Analiz Ediyor..." : "Backend AI Servisi ile Analiz Et (Port 8002)"}
+                    {aiLoading ? "Sentetik senaryo hesaplanıyor..." : "Yerel sentetik simülasyonu çalıştır"}
                   </button>
                 </div>
 
                 {/* AI SONUÇLARI */}
                 <div className="web3-card">
                   <div className="card-title-group">
-                    <h2>AI Karar ve Güvenlik Aksiyonu</h2>
-                    <p>Gerçek zamanlı çıkarım sonucu:</p>
+                    <h2>Sentetik senaryo çıktısı</h2>
+                    <p>Bu sonuç yerel formülden gelir; bir servis veya yapay zekâ kararı değildir.</p>
                   </div>
 
                   {aiEvalResult ? (
@@ -628,7 +623,7 @@ export function StatusPage() {
                           {(aiEvalResult.risk_score * 100).toFixed(1)}%
                         </div>
                         <div>
-                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Hesaplanan Risk Skoru</div>
+                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Sentetik risk puanı</div>
                           <span className={aiEvalResult.risk_level === "CRITICAL" ? "badge-red" : aiEvalResult.risk_level === "HIGH" ? "badge-red" : aiEvalResult.risk_level === "MEDIUM" ? "badge-yellow" : "badge-green"}>
                             {aiEvalResult.risk_level} RISK
                           </span>
@@ -636,7 +631,7 @@ export function StatusPage() {
                       </div>
 
                       <div style={{ background: "#060c16", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-color)", marginBottom: "16px" }}>
-                        <span style={{ fontSize: "0.75rem", color: "var(--text-subtle)" }}>SİSTEMİN ALDIĞI GÜVENLİK KARARI:</span>
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-subtle)" }}>Örnek eylem (uygulanmaz):</span>
                         <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "var(--accent-cyan)", marginTop: "4px" }}>
                           {aiEvalResult.recommended_action}
                         </div>
@@ -657,12 +652,12 @@ export function StatusPage() {
 
                   {quarantinedList.length > 0 && (
                     <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid var(--border-color)" }}>
-                      <span style={{ fontSize: "0.82rem", color: "var(--accent-red)", fontWeight: "bold" }}>Aktif Karantinadaki Hesaplar ({quarantinedList.length})</span>
+                      <span style={{ fontSize: "0.82rem", color: "var(--accent-red)", fontWeight: "bold" }}>Yerel demo karantina senaryoları ({quarantinedList.length})</span>
                       {quarantinedList.map(did => (
                         <div key={did} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(239, 68, 68, 0.1)", padding: "8px 12px", borderRadius: "6px", marginTop: "8px" }}>
                           <span style={{ fontSize: "0.78rem", color: "#f87171" }}>{did.slice(0, 28)}...</span>
                           <button onClick={() => setQuarantinedList(quarantinedList.filter(x => x !== did))} style={{ background: "#1e293b", border: "none", color: "#fff", padding: "4px 8px", borderRadius: "4px", fontSize: "0.72rem", cursor: "pointer" }}>
-                            Kaldır
+                            Örneği kaldır
                           </button>
                         </div>
                       ))}
@@ -679,31 +674,31 @@ export function StatusPage() {
           {activeSection === "recovery" && (
             <div>
               <div className="page-header">
-                <h1>3/5 Guardian Sosyal Kurtarma Portalı</h1>
-                <p>Anahtar veya cihaz kaybında kimliğinizi 3/5 Guardian onayı ve Time-Lock ile kurtarın.</p>
+                <h1>Guardian Sosyal Kurtarma Simülasyonu</h1>
+                <p>Örnek Guardian kararları ve eşik davranışı; gerçek Recovery Service akışı değildir.</p>
               </div>
 
               <div className="web3-card" style={{ marginBottom: "20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
                   <div>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Onay Durumu</span>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Demo karar durumu</span>
                     <h2 style={{ fontSize: "1.8rem", color: approvedCount >= 3 ? "var(--accent-green)" : "var(--accent-cyan)", margin: "4px 0" }}>
-                      {approvedCount} / 5 Guardian Onayladı
+                      {approvedCount} / {guardians.length} demo Guardian kararı
                     </h2>
                     <span style={{ fontSize: "0.82rem", color: approvedCount >= 3 ? "#34d399" : "var(--text-subtle)" }}>
-                      {approvedCount >= 3 ? "✔ 3/5 M-of-N Quorum Eşiği Sağlandı (Time-Lock Doğrulandı)" : "En az 3 onay gereklidir."}
+                      {approvedCount >= 3 ? "Demo eşiği sağlandı; gerçek quorum veya time-lock doğrulanmadı." : "Demo modelinde 3 karar gerekir."}
                     </span>
                   </div>
 
                   {approvedCount >= 3 && !recoveryExecuted && (
                     <button className="btn-connect-wallet" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }} onClick={() => setRecoveryExecuted(true)}>
-                      Yeni Anahtar Rotasyonunu İcra Et
+                      Demo anahtar rotasyonunu işaretle
                     </button>
                   )}
 
                   {recoveryExecuted && (
                     <div style={{ background: "rgba(16, 185, 129, 0.2)", border: "1px solid #10b981", padding: "10px 18px", borderRadius: "10px", color: "#34d399", fontWeight: "bold" }}>
-                      ✅ Kurtarma Tamamlandı! Yeni DID Aktif Edildi.
+                      Demo state güncellendi. Gerçek anahtar veya DID değişmedi.
                     </div>
                   )}
                 </div>
@@ -714,17 +709,17 @@ export function StatusPage() {
                   <div key={g.id} className="web3-card" style={{ padding: "18px", border: `1px solid ${g.approved ? "rgba(16, 185, 129, 0.4)" : "var(--border-color)"}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <strong>{g.name}</strong>
-                      <span className={g.approved ? "badge-green" : "badge-yellow"}>{g.approved ? "ONAYLANDI" : "BEKLİYOR"}</span>
+                      <span className={g.approved ? "badge-green" : "badge-yellow"}>{g.approved ? "DEMO: KARAR VAR" : "DEMO: KARAR YOK"}</span>
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "12px" }}>{g.role}</div>
                     <div style={{ fontSize: "0.72rem", color: "var(--text-subtle)", fontFamily: "monospace", marginBottom: "14px", wordBreak: "break-all" }}>{g.did}</div>
 
                     {!g.approved ? (
                       <button className="btn-connect-wallet" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: "0.82rem" }} onClick={() => handleGuardianApprove(g.id)}>
-                        Guardian Olarak Onayla
+                        Demo kararını işaretle
                       </button>
                     ) : (
-                      <div style={{ textAlign: "center", fontSize: "0.78rem", color: "#34d399" }}>Şifreli Onay Kaydedildi</div>
+                      <div style={{ textAlign: "center", fontSize: "0.78rem", color: "#34d399" }}>Yalnızca yerel demo state’i</div>
                     )}
                   </div>
                 ))}

@@ -1,287 +1,82 @@
 import React from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { LogOut, UserCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { NetworkIndicator } from "../components/common/NetworkIndicator";
-import { TrustBadge } from "../components/common/TrustBadge";
-import { UserCheck } from "lucide-react";
+import { roleHomePath } from "../routes/roleNavigation";
+import { BrandMark } from "../components/common/BrandMark";
 
 export const RootLayout: React.FC = () => {
-  const { user, isDemoEvaluationMode, switchDemoRole } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isLoginPage = location.pathname === "/login";
+  const accountPath = user ? roleHomePath(user.role) : "/login";
 
-  const handleRoleChange = (role: "HOLDER" | "ISSUER" | "VERIFIER" | "GUARDIAN" | "ADMIN") => {
-    switchDemoRole(role);
-    if (role === "HOLDER") navigate("/wallet");
-    else if (role === "ISSUER") navigate("/issuer");
-    else if (role === "VERIFIER") navigate("/verifier");
-    else if (role === "GUARDIAN") navigate("/guardian");
-    else if (role === "ADMIN") navigate("/admin");
-  };
-
-  const isPublicRoute = location.pathname === "/" || location.pathname === "/ecosystem" || location.pathname === "/docs";
+  const navItems = [
+    { path: "/", label: "Home" },
+    { path: "/ecosystem", label: "Directory" },
+    { path: "/docs", label: "Architecture" }
+  ];
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "#0b0f19", color: "#f8fafc" }}>
-      {/* 1. ACADEMIC PROTOTYPE NOTICE BANNER */}
-      <div
-        style={{
-          backgroundColor: "#1e293b",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          padding: "5px 16px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "0.72rem",
-          color: "#94a3b8"
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ color: "#fbbf24", fontWeight: 700 }}>🔬 ACADEMIC SSI PROTOTYPE:</span>
-          <span>Standards-aligned reference implementation (W3C VC 2.0 / OID4VCI / EUDI ARF inspired) — Not an officially certified production service.</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <NetworkIndicator />
-        </div>
-      </div>
-
-      {/* 2. MAIN APP NAVIGATION BAR */}
-      <header
-        style={{
-          height: "64px",
-          backgroundColor: "#111827",
-          borderBottom: "1px solid #1f2937",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 20px",
-          position: "sticky",
-          top: 0,
-          zIndex: 40
-        }}
-      >
-        {/* Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <Link
-            to="/"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              textDecoration: "none",
-              color: "inherit"
-            }}
-          >
-            <div
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "10px",
-                backgroundColor: "#2563eb",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: "1rem",
-                boxShadow: "0 0 12px rgba(37,99,235,0.5)"
-              }}
-            >
-              SSI
-            </div>
-            <div>
-              <div style={{ fontSize: "1rem", fontWeight: 800, letterSpacing: "-0.02em", color: "#f8fafc", lineHeight: 1.1 }}>
-                SECURE SSI PLATFORM
-              </div>
-              <div style={{ fontSize: "0.68rem", color: "#94a3b8", display: "flex", gap: "6px", alignItems: "center", marginTop: "2px" }}>
-                <span>Self-Sovereign Identity Architecture</span>
-                <TrustBadge level="STANDARDS_ALIGNED" size="sm" />
-              </div>
-            </div>
+    <div className="app-shell" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <header className="app-header" aria-label="Main header">
+        <div className="app-header-brand-nav">
+          <Link className="app-brand-link" to="/" aria-label="Secure SSI Platform home">
+            <span className="app-brand-mark"><BrandMark size={30} /></span>
+            <span className="app-brand-name">Secure SSI Platform</span>
           </Link>
 
-          {/* Public Nav Links */}
-          <nav style={{ display: "flex", gap: "4px", marginLeft: "20px" }}>
-            <Link
-              to="/"
-              style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "0.82rem",
-                fontWeight: 600,
-                color: location.pathname === "/" ? "#ffffff" : "#94a3b8",
-                backgroundColor: location.pathname === "/" ? "rgba(255,255,255,0.06)" : "transparent",
-                textDecoration: "none"
-              }}
-            >
-              Overview
-            </Link>
-            <Link
-              to="/ecosystem"
-              style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "0.82rem",
-                fontWeight: 600,
-                color: location.pathname === "/ecosystem" ? "#ffffff" : "#94a3b8",
-                backgroundColor: location.pathname === "/ecosystem" ? "rgba(255,255,255,0.06)" : "transparent",
-                textDecoration: "none"
-              }}
-            >
-              Ecosystem
-            </Link>
-            <Link
-              to="/docs"
-              style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "0.82rem",
-                fontWeight: 600,
-                color: location.pathname === "/docs" ? "#ffffff" : "#94a3b8",
-                backgroundColor: location.pathname === "/docs" ? "rgba(255,255,255,0.06)" : "transparent",
-                textDecoration: "none"
-              }}
-            >
-              Architecture & APIs
-            </Link>
-          </nav>
+          {!isLoginPage && !user && (
+            <nav className="app-public-nav" aria-label="Main navigation">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  aria-current={location.pathname === item.path ? "page" : undefined}
+                  to={item.path}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
 
-        {/* 3. EVALUATION ROLE SWITCHER (CLEARLY MARKED FOR DEMO/THESIS) */}
-        {isDemoEvaluationMode && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: "#070a12",
-              padding: "4px 8px",
-              borderRadius: "10px",
-              border: "1px solid #1f2937"
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.68rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                color: "#94a3b8",
-                marginRight: "4px",
-                fontWeight: 700
-              }}
-            >
-              DEMO ROLE:
-            </span>
-
-            <button
-              onClick={() => handleRoleChange("HOLDER")}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: user?.role === "HOLDER" && !isPublicRoute ? "#2563eb" : "transparent",
-                color: user?.role === "HOLDER" && !isPublicRoute ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              🪪 Holder
-            </button>
-
-            <button
-              onClick={() => handleRoleChange("ISSUER")}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: user?.role === "ISSUER" && !isPublicRoute ? "#2563eb" : "transparent",
-                color: user?.role === "ISSUER" && !isPublicRoute ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              🏛️ Issuer
-            </button>
-
-            <button
-              onClick={() => handleRoleChange("VERIFIER")}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: user?.role === "VERIFIER" && !isPublicRoute ? "#2563eb" : "transparent",
-                color: user?.role === "VERIFIER" && !isPublicRoute ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              🔍 Verifier
-            </button>
-
-            <button
-              onClick={() => handleRoleChange("GUARDIAN")}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: user?.role === "GUARDIAN" && !isPublicRoute ? "#2563eb" : "transparent",
-                color: user?.role === "GUARDIAN" && !isPublicRoute ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              🛡️ Guardian
-            </button>
-
-            <button
-              onClick={() => handleRoleChange("ADMIN")}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: user?.role === "ADMIN" && !isPublicRoute ? "#2563eb" : "transparent",
-                color: user?.role === "ADMIN" && !isPublicRoute ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              ⚙️ Admin
-            </button>
+        {!isLoginPage && (
+          <div className="app-account-actions">
+            {user ? (
+              <>
+                <Link
+                  aria-current={location.pathname === accountPath ? "page" : undefined}
+                  to={accountPath}
+                  className="app-account-link"
+                >
+                  <UserCheck size={16} aria-hidden="true" />
+                  <span>My workspace</span>
+                </Link>
+                <button
+                  type="button"
+                  className="app-signout-button"
+                  onClick={() => {
+                    logout();
+                    navigate("/login", { replace: true });
+                  }}
+                >
+                  <LogOut size={16} aria-hidden="true" />
+                  <span>Sign out</span>
+                </button>
+              </>
+            ) : (
+              <Link to="/login" className="app-account-link">
+                <UserCheck size={16} aria-hidden="true" />
+                <span>Sign in</span>
+              </Link>
+            )}
           </div>
         )}
-
-        {/* User Account / Sign In */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Link
-            to="/login"
-            style={{
-              padding: "6px 14px",
-              borderRadius: "8px",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              color: location.pathname === "/login" ? "#ffffff" : "#cbd5e1",
-              backgroundColor: location.pathname === "/login" ? "#2563eb" : "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              transition: "all 0.15s ease"
-            }}
-          >
-            <UserCheck size={15} />
-            <span>{user?.name ? user.name.split(" ")[0] : "Sign In"}</span>
-          </Link>
-        </div>
       </header>
 
-      {/* Main Outlet */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <main className="app-main">
         <Outlet />
       </main>
     </div>

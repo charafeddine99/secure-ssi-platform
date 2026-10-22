@@ -6,10 +6,17 @@
  * - AI Fraud & Threat Detection Service (Port 8002)
  */
 
-export const GATEWAY_BASE_URL = "http://localhost:8000";
-export const SSI_CORE_BASE_URL = "http://localhost:8001";
-export const FRAUD_BASE_URL = "http://localhost:8002";
-export const RECOVERY_SERVICE_BASE_URL = "http://localhost:8003";
+const viteEnvironment = (import.meta as ImportMeta & {
+  env?: { VITE_API_BASE_URL?: string };
+}).env;
+
+export const GATEWAY_BASE_URL =
+  viteEnvironment?.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const SSI_CORE_BASE_URL = "http://127.0.0.1:8001";
+export const FRAUD_BASE_URL = "http://127.0.0.1:8002";
+export const RECOVERY_SERVICE_BASE_URL = "http://127.0.0.1:8003";
+
+export type CredentialStatus = "ACTIVE" | "SUSPENDED" | "REVOKED" | "EXPIRED" | "UNKNOWN";
 
 export interface BackendCredential {
   id: string;
@@ -22,10 +29,11 @@ export interface BackendCredential {
   issuer_name: string;
   issued_date: string;
   expiry_date: string;
-  status: "ACTIVE" | "REVOKED";
+  status: CredentialStatus;
   claims: Record<string, unknown>;
   proof_value: string;
-  ai_risk_score: number;
+  ai_risk_score: number | null;
+  raw_credential?: Record<string, unknown>;
   zkp_predicate?: string;
   created_at: string;
   status_list_id?: string;
@@ -34,6 +42,8 @@ export interface BackendCredential {
 
 export interface BackendGuardian {
   id: number;
+  guardian_id: string;
+  guardian_user_id: string;
   wallet_address: string;
   guardian_name: string;
   guardian_role: string;
@@ -54,18 +64,15 @@ export interface BackendAuditLog {
 }
 
 export interface BlockchainStatus {
-  status: string;
   connected: boolean;
-  block_number: number;
-  chain_id: number;
-  gas_price_gwei?: number;
-  network?: string;
-  contracts: {
-    did_registry: string;
-    revocation_registry?: string;
-    emergency_recovery: string;
-    audit_logger?: string;
-  };
+  network: string;
+  chainId: number;
+  currentBlockNumber?: number | null;
+  contracts: Record<string, string>;
+  status?: string;
+  // Accepted only for legacy gateway responses while active consumers migrate.
+  block_number?: number;
+  chain_id?: number;
   recovery_status?: unknown;
 }
 
@@ -88,24 +95,17 @@ export interface SmartContractInfo {
   purpose: string;
   methods: string[];
   status: string;
+  deploymentVerified?: boolean | null;
 }
 
 export interface FraudModelStats {
   model_type: string;
-  accuracy: number;
-  precision: number;
-  recall: number;
-  f1_score: number;
-  confusion_matrix: {
-    true_positives: number;
-    true_negatives: number;
-    false_positives: number;
-    false_negatives: number;
-  };
-  sample_count: number;
-  latency_ms_avg: number;
-  model_quantization: string;
-  last_trained: string;
+  model_version: string;
+  model_status: "NOT_TRAINED" | string;
+  evaluation_status: string;
+  dataset_label: string;
+  advisory_only: boolean;
+  risk_signals: string[];
 }
 
 export interface OnChainAnchor {
@@ -125,91 +125,145 @@ export interface OnChainAnchor {
   errorMessage?: string;
 }
 
-/**
- * Fetch credentials from real database (via API Gateway / Identity Service)
- */
-export async function fetchCredentials(userDid?: string, walletAddress?: string): Promise<BackendCredential[]> {
-  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
 interface RawBackendCredential {
-  id?: string;
   credentialId?: string;
   holderDid?: string;
-  credentialType?: string | string[];
-  title?: string;
-  category?: string;
-  issuerDid?: string;
-  issuer?: string;
-  issuerName?: string;
+  status?: string;
   issuanceDate?: string;
   expirationDate?: string;
-  status?: "ACTIVE" | "REVOKED";
-  claims?: Record<string, unknown>;
-  rawCredential?: {
-    credentialSubject?: Record<string, unknown>;
-    proof?: { proofValue?: string };
-  };
-  proofValue?: string;
-  aiRiskScore?: number;
-  createdAt?: string;
-  status_list_id?: string;
   statusListId?: string;
-  status_list_index?: number;
   statusListIndex?: number;
+  credential?: Record<string, unknown>;
 }
 
-  // 1. Try authoritative API Gateway / Identity wallet credentials
-  try {
-    const walletId = "wallet_holder_primary";
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/wallets/${walletId}/credentials`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.credentials && Array.isArray(data.credentials)) {
-        return data.credentials.map((c: RawBackendCredential) => ({
-          id: c.credentialId || c.id || "cred_default",
-          user_did: c.holderDid || userDid || "did:key:z6MkuBesnaSecureHolder2026Ed25519",
-          wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-          credential_type: Array.isArray(c.credentialType) ? c.credentialType[1] || c.credentialType[0] : (c.credentialType || "UniversityAffiliationCredential"),
-          title: c.title || (Array.isArray(c.credentialType) ? c.credentialType[1] : "Verifiable Credential"),
-          category: c.category || "QUALIFIED",
-          issuer: c.issuerDid || c.issuer || "did:web:issuer.example",
-          issuer_name: c.issuerName || "Accredited Authority",
-          issued_date: c.issuanceDate ? c.issuanceDate.split("T")[0] : "2026-06-30",
-          expiry_date: c.expirationDate ? c.expirationDate.split("T")[0] : "2027-06-30",
-          status: c.status || "ACTIVE",
-          claims: c.claims || (c.rawCredential?.credentialSubject) || {},
-          proof_value: c.proofValue || (c.rawCredential?.proof?.proofValue) || "",
-          ai_risk_score: c.aiRiskScore || 5,
-          created_at: c.createdAt || new Date().toISOString(),
-          status_list_id: c.status_list_id || c.statusListId,
-          status_list_index: c.status_list_index ?? c.statusListIndex
-        }));
-      }
-    }
-  } catch {
-    // Gateway down, try fallback
+function normalizeCredentialStatus(status: unknown): CredentialStatus {
+  if (typeof status !== "string") return "UNKNOWN";
+  const normalized = status.toUpperCase();
+  return ["ACTIVE", "SUSPENDED", "REVOKED", "EXPIRED"].includes(normalized)
+    ? normalized as CredentialStatus
+    : "UNKNOWN";
+}
+
+export interface HolderWallet {
+  walletId: string;
+  holderDid: string;
+}
+
+/** Resolve or create the authenticated user's server-managed prototype wallet. */
+export async function getOrCreateHolderWallet(): Promise<HolderWallet> {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in before opening a holder wallet.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+
+  const meResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/auth/me`, { headers });
+  if (!meResponse.ok) throw new Error(`Could not resolve the signed-in account (HTTP ${meResponse.status}).`);
+  const currentUser = await meResponse.json();
+  if (typeof currentUser.id !== "string" || !currentUser.id) {
+    throw new Error("Identity Service did not return an account identifier.");
   }
 
-  // 2. Try legacy endpoint fallback
-  try {
-    const params = new URLSearchParams();
-    if (userDid) params.append("user_did", userDid);
-    if (walletAddress) params.append("wallet_address", walletAddress);
-
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/credentials?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.credentials || [];
+  const storageKey = `ssi_holder_wallet_id:${currentUser.id}`;
+  const cachedWalletId = localStorage.getItem(storageKey);
+  if (cachedWalletId) {
+    const walletResponse = await fetch(
+      `${GATEWAY_BASE_URL}/api/v1/identity/wallets/${encodeURIComponent(cachedWalletId)}`,
+      { headers }
+    );
+    if (walletResponse.ok) {
+      const wallet = await walletResponse.json();
+      return { walletId: wallet.walletId, holderDid: wallet.holderDid };
     }
-  } catch (err) {
-    console.warn("fetchCredentials fallback due to:", err);
+    if (walletResponse.status !== 404) {
+      throw new Error(`Could not read the holder wallet (HTTP ${walletResponse.status}).`);
+    }
+    localStorage.removeItem(storageKey);
   }
-  return [];
+
+  const createResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/wallets`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  if (!createResponse.ok) {
+    const data = await createResponse.json().catch(() => ({}));
+    throw new Error(data.detail || `Could not create the holder wallet (HTTP ${createResponse.status}).`);
+  }
+  const wallet = await createResponse.json();
+  if (typeof wallet.walletId !== "string" || typeof wallet.holderDid !== "string") {
+    throw new Error("Identity Service returned an incomplete holder wallet.");
+  }
+  localStorage.setItem(storageKey, wallet.walletId);
+  return { walletId: wallet.walletId, holderDid: wallet.holderDid };
+}
+
+/** Fetch only the current authenticated holder's wallet inventory. */
+export async function fetchCredentials(
+  userDid?: string,
+  walletAddress?: string,
+  walletId?: string
+): Promise<BackendCredential[]> {
+  void userDid;
+  void walletAddress;
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in before loading wallet credentials.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const wallet = walletId ? { walletId } : await getOrCreateHolderWallet();
+  const res = await fetch(
+    `${GATEWAY_BASE_URL}/api/v1/identity/wallets/${encodeURIComponent(wallet.walletId)}/credentials`,
+    { headers }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Could not load wallet credentials (HTTP ${res.status}).`);
+  }
+  const data = await res.json();
+  const credentials = Array.isArray(data.credentials) ? data.credentials as RawBackendCredential[] : [];
+  return credentials.flatMap((item) => {
+    const raw = item.credential || {};
+    const rawSubject = raw.credentialSubject;
+    const subject = rawSubject && typeof rawSubject === "object" && !Array.isArray(rawSubject)
+      ? { ...(rawSubject as Record<string, unknown>) }
+      : {};
+    const holderDid = typeof subject.id === "string" ? subject.id : item.holderDid || "";
+    delete subject.id;
+    const rawTypes = raw.type;
+    const types = Array.isArray(rawTypes) ? rawTypes.filter((value): value is string => typeof value === "string") : [];
+    const credentialType = types.find((value) => value !== "VerifiableCredential") || "Credential";
+    const issuerValue = raw.issuer;
+    const issuer = typeof issuerValue === "string"
+      ? issuerValue
+      : issuerValue && typeof issuerValue === "object" && typeof (issuerValue as { id?: unknown }).id === "string"
+        ? (issuerValue as { id: string }).id
+        : "";
+    const proof = raw.proof && typeof raw.proof === "object" ? raw.proof as Record<string, unknown> : {};
+    const credentialId = item.credentialId || (typeof raw.id === "string" ? raw.id : "");
+    if (!credentialId) return [];
+    return [{
+      id: credentialId,
+      user_did: holderDid,
+      wallet_address: "",
+      credential_type: credentialType,
+      title: credentialType,
+      category: "GENERAL",
+      issuer,
+      issuer_name: issuer || "Issuer not supplied",
+      issued_date: typeof raw.validFrom === "string" ? raw.validFrom : item.issuanceDate || "",
+      expiry_date: typeof raw.validUntil === "string" ? raw.validUntil : item.expirationDate || "",
+      status: normalizeCredentialStatus(item.status),
+      claims: subject,
+      proof_value: typeof proof.proofValue === "string" ? proof.proofValue : "",
+      ai_risk_score: null,
+      created_at: item.issuanceDate || "",
+      status_list_id: item.statusListId,
+      status_list_index: item.statusListIndex,
+      raw_credential: raw
+    }];
+  });
 }
 
 /**
- * Issue new W3C Verifiable Credential via real SSI service
+ * Directly sign a local prototype credential via the Identity Service.
+ * This endpoint does not create an OID4VCI offer or a blockchain receipt.
  */
 export async function issueCredential(payload: {
   wallet_address: string;
@@ -240,7 +294,7 @@ export async function issueCredential(payload: {
             "https://www.w3.org/ns/credentials/v2",
             "https://secure-ssi.example/contexts/university-affiliation/v1"
           ],
-          id: `urn:uuid:${Math.random().toString(36).substring(2, 10)}`,
+          id: `urn:uuid:${crypto.randomUUID()}`,
           type: ["VerifiableCredential", payload.credential_type],
           issuer: "did:web:synthetic-issuer.local",
           validFrom: new Date().toISOString(),
@@ -254,40 +308,12 @@ export async function issueCredential(payload: {
 
     if (res.ok) {
       const data = await res.json();
-      return {
-        success: true,
-        credential: data.credential || data,
-        txHash: "0x" + Math.random().toString(16).substring(2, 42)
-      };
+      return { success: true, credential: data.credential || data };
     }
-  } catch {
-    // Gateway down, try legacy SSI service endpoint
-  }
-
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/issue_credential`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        wallet_address: payload.wallet_address,
-        did_id: payload.did_id,
-        ip_address: "127.0.0.1",
-        device_fingerprint: "enterprise-browser-eudi",
-        recent_failed_attempts: 0,
-        credential_type: payload.credential_type,
-        claims: payload.claims
-      })
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      return { success: false, error: data.detail || "İhraç işlemi reddedildi." };
-    }
-
+    const data = await res.json().catch(() => ({}));
     return {
-      success: true,
-      credential: data.credential,
-      txHash: data.blockchain_anchor?.tx_hash
+      success: false,
+      error: typeof data.detail === "string" ? data.detail : `Credential signing failed (HTTP ${res.status}).`
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Bağlantı hatası";
@@ -305,27 +331,7 @@ export async function revokeCredential(credentialId: string, reason: string = "U
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 
-  // 1. Try authoritative API Gateway / Identity Service route
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/credentials/${encodeURIComponent(credentialId)}/revoke`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ reason })
-    });
-    if (res.ok) return true;
-    const data = await res.json().catch(() => ({}));
-    const message = data.detail || `Revocation failed (HTTP ${res.status})`;
-    if (res.status === 403 || res.status === 409 || res.status === 400 || res.status === 404) {
-      throw new Error(message);
-    }
-  } catch (err: unknown) {
-    if (err instanceof Error && (err.message.includes("Revocation failed") || err.message.includes("403") || err.message.includes("409") || err.message.includes("PERMISSION_DENIED"))) {
-      throw err;
-    }
-  }
-
-  // 2. Try direct Identity Service v1 route
-  const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/credentials/${encodeURIComponent(credentialId)}/revoke`, {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/credentials/${encodeURIComponent(credentialId)}/revoke`, {
     method: "POST",
     headers,
     body: JSON.stringify({ reason })
@@ -333,6 +339,24 @@ export async function revokeCredential(credentialId: string, reason: string = "U
   if (res.ok) return true;
   const data = await res.json().catch(() => ({}));
   throw new Error(data.detail || `Revocation failed (HTTP ${res.status})`);
+}
+
+export interface CredentialStatusSnapshot {
+  credential_id: string;
+  status: CredentialStatus;
+  revoked: boolean;
+  revocation_reason?: string | null;
+  revoked_at?: string | null;
+}
+
+export async function fetchCredentialStatus(credentialId: string): Promise<CredentialStatusSnapshot> {
+  const response = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/credentials/${encodeURIComponent(credentialId)}/status`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Could not read credential status (HTTP ${response.status}).`);
+  if (typeof data.credential_id !== "string" || typeof data.status !== "string") {
+    throw new Error("Credential status service returned an invalid response.");
+  }
+  return data as CredentialStatusSnapshot;
 }
 
 export interface RecoveryPolicy {
@@ -345,28 +369,81 @@ export interface RecoveryPolicy {
   maximumAttempts: number;
   cooldownSeconds: number;
   allowCancellation: boolean;
+  allowSelfGuardian?: boolean;
   version?: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
+function isRecoveryPolicyForWallet(value: unknown, walletId: string): value is RecoveryPolicy {
+  if (typeof value !== "object" || value === null) return false;
+  const policy = value as Partial<RecoveryPolicy>;
+  const integerAtLeast = (candidate: unknown, minimum: number): candidate is number =>
+    typeof candidate === "number" && Number.isInteger(candidate) && candidate >= minimum;
+
+  return policy.walletId === walletId
+    && integerAtLeast(policy.minimumApprovals, 1)
+    && integerAtLeast(policy.maximumGuardians, policy.minimumApprovals)
+    && policy.maximumGuardians <= 32
+    && integerAtLeast(policy.approvalWindowSeconds, 60)
+    && integerAtLeast(policy.timeLockSeconds, 0)
+    && policy.timeLockSeconds <= 30 * 24 * 60 * 60
+    && integerAtLeast(policy.recoveryExpirationSeconds, policy.approvalWindowSeconds + policy.timeLockSeconds)
+    && integerAtLeast(policy.maximumAttempts, 1)
+    && policy.maximumAttempts <= 20
+    && integerAtLeast(policy.cooldownSeconds, 0)
+    && typeof policy.allowCancellation === "boolean";
+}
+
+export function canInitiateRecovery(
+  walletId: string | null,
+  policy: RecoveryPolicy | null,
+  activeGuardianCount: number,
+  hasActiveRequest: boolean,
+): boolean {
+  return !hasActiveRequest
+    && Boolean(walletId && policy && policy.walletId === walletId)
+    && Number.isInteger(activeGuardianCount)
+    && activeGuardianCount >= (policy?.minimumApprovals ?? Number.POSITIVE_INFINITY)
+    && activeGuardianCount <= (policy?.maximumGuardians ?? -1);
+}
+
 export interface RecoveryRequest {
   requestId: string;
+  sessionId?: string;
+  ownerUserId?: string;
   walletId: string;
-  status: "PENDING" | "APPROVED" | "TIMELOCKED" | "EXECUTED" | "CANCELLED" | "REJECTED" | "EXPIRED";
+  guardianCount?: number | null;
+  status: RecoveryState;
+  challenge?: string;
   reason: string;
-  approvalsCount: number;
-  requiredCount: number;
+  approvalsCount?: number | null;
+  requiredCount?: number | null;
   createdAt: string;
   expiresAt: string;
   timelockExpiresAt?: string | null;
   executedAt?: string | null;
+  failureCode?: string | null;
   predecessorKeyId?: string | null;
   successorKeyId?: string | null;
   predecessorDid?: string | null;
   successorDid?: string | null;
   txHash?: string | null;
 }
+
+export type RecoveryState =
+  | "PENDING_APPROVALS"
+  | "QUORUM_REACHED"
+  | "WAITING_TIMELOCK"
+  | "READY_FOR_EXECUTION"
+  | "EXECUTING"
+  | "COMPLETED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "FAILED"
+  | "RECONCILIATION_REQUIRED"
+  | "UNKNOWN";
 
 export interface GuardianAssignment {
   guardianId: string;
@@ -381,6 +458,9 @@ export interface GuardianAssignment {
 }
 
 interface RawBackendGuardianItem {
+  guardianId?: string;
+  guardianUserId?: string;
+  walletId?: string;
   displayName?: string;
   label?: string;
   guardianName?: string;
@@ -395,14 +475,30 @@ interface RawBackendGuardianItem {
 interface RawRecoveryRequestItem {
   requestId: string;
   walletId: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "EXECUTED" | "CANCELLED" | "EXPIRED";
+  ownerUserId?: string;
+  sessionId?: string;
+  state?: string;
+  status?: string;
+  challenge?: string;
   reason?: string;
+  approvalCount?: number;
   approvalsCount?: number;
+  minimumApprovals?: number;
+  guardianCount?: number;
   requiredCount?: number;
   createdAt?: string;
   expiresAt?: string;
   timelockExpiresAt?: string | null;
+  executableAfter?: string | null;
   executedAt?: string | null;
+  result?: {
+    predecessorKeyId?: string;
+    successorKeyId?: string;
+    predecessorDid?: string;
+    successorDid?: string;
+    completedAt?: string;
+  } | null;
+  failureCode?: string | null;
   predecessorKeyId?: string | null;
   successorKeyId?: string | null;
   predecessorDid?: string | null;
@@ -410,29 +506,88 @@ interface RawRecoveryRequestItem {
   txHash?: string | null;
 }
 
+export function normalizeRecoveryState(value: string | undefined): RecoveryState {
+  switch (value) {
+    case "PENDING_APPROVALS":
+    case "QUORUM_REACHED":
+    case "WAITING_TIMELOCK":
+    case "READY_FOR_EXECUTION":
+    case "EXECUTING":
+    case "COMPLETED":
+    case "REJECTED":
+    case "CANCELLED":
+    case "EXPIRED":
+    case "FAILED":
+    case "RECONCILIATION_REQUIRED":
+      return value;
+    default:
+      return "UNKNOWN";
+  }
+}
+
+export function mapRecoveryRequest(r: RawRecoveryRequestItem): RecoveryRequest {
+  const result = r.result;
+  return {
+    requestId: r.requestId,
+    sessionId: r.sessionId,
+    ownerUserId: r.ownerUserId,
+    walletId: r.walletId,
+    guardianCount: r.guardianCount ?? null,
+    status: normalizeRecoveryState(r.state),
+    challenge: r.challenge,
+    reason: r.reason || "Reason not supplied",
+    approvalsCount: r.approvalCount ?? r.approvalsCount ?? null,
+    requiredCount: r.minimumApprovals ?? r.requiredCount ?? null,
+    createdAt: r.createdAt || "",
+    expiresAt: r.expiresAt || "",
+    timelockExpiresAt: r.executableAfter ?? r.timelockExpiresAt ?? null,
+    executedAt: result?.completedAt ?? r.executedAt ?? null,
+    predecessorKeyId: result?.predecessorKeyId,
+    successorKeyId: result?.successorKeyId,
+    predecessorDid: result?.predecessorDid,
+    successorDid: result?.successorDid,
+    failureCode: r.failureCode,
+    txHash: null,
+  };
+}
+
+export async function fetchCurrentUserId(): Promise<string> {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/auth/me`, { headers });
+  const user = await response.json().catch(() => ({}));
+  if (!response.ok || typeof user.id !== "string" || !user.id) {
+    throw new Error("Could not resolve the signed-in account.");
+  }
+  return user.id;
+}
+
 /**
  * Fetch Guardians list from Recovery Service via Gateway
  */
-export async function fetchGuardians(walletAddress?: string): Promise<BackendGuardian[]> {
+export async function fetchGuardians(walletId?: string): Promise<BackendGuardian[]> {
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const query = walletId ? `?walletId=${encodeURIComponent(walletId)}` : "";
 
   // 1. Try authoritative Recovery Service via Gateway
   try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/guardians`, { headers });
+    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/guardians${query}`, { headers });
     if (res.ok) {
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
       if (items.length > 0) {
         return items.map((g: RawBackendGuardianItem, idx: number) => ({
           id: idx + 1,
-          wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-          guardian_name: g.displayName || g.label || g.guardianName || `Guardian #${idx + 1}`,
-          guardian_role: g.role || "Quorum Guardian",
-          guardian_did: g.guardianDid || g.did || "did:guardian:social-recovery",
-          guardian_address: g.guardianAddress || "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+          guardian_id: g.guardianId || "",
+          guardian_user_id: g.guardianUserId || "",
+          wallet_address: g.walletId || walletId || "",
+          guardian_name: g.displayName || g.label || g.guardianName || `Guardian details unavailable (${idx + 1})`,
+          guardian_role: g.role || "Role not supplied",
+          guardian_did: g.guardianDid || g.did || "",
+          guardian_address: g.guardianAddress || "",
           approved: g.status === "ACTIVE" ? 1 : 0,
-          created_at: g.createdAt || new Date().toISOString()
+          created_at: g.createdAt || ""
         }));
       }
     }
@@ -442,20 +597,22 @@ export async function fetchGuardians(walletAddress?: string): Promise<BackendGua
 
   // 2. Direct Recovery Service
   try {
-    const res = await fetch(`${RECOVERY_SERVICE_BASE_URL}/api/v1/guardians`, { headers });
+    const res = await fetch(`${RECOVERY_SERVICE_BASE_URL}/api/v1/guardians${query}`, { headers });
     if (res.ok) {
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length > 0) {
         return items.map((g: RawBackendGuardianItem, idx: number) => ({
           id: idx + 1,
-          wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-          guardian_name: g.displayName || `Guardian #${idx + 1}`,
-          guardian_role: "Quorum Guardian",
-          guardian_did: g.guardianDid || "did:key:zApiGuardianRecovery",
-          guardian_address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+          guardian_id: g.guardianId || "",
+          guardian_user_id: g.guardianUserId || "",
+          wallet_address: g.walletId || walletId || "",
+          guardian_name: g.displayName || `Guardian details unavailable (${idx + 1})`,
+          guardian_role: g.role || "Role not supplied",
+          guardian_did: g.guardianDid || g.did || "",
+          guardian_address: g.guardianAddress || "",
           approved: g.status === "ACTIVE" ? 1 : 0,
-          created_at: g.createdAt || new Date().toISOString()
+          created_at: g.createdAt || ""
         }));
       }
     }
@@ -463,39 +620,7 @@ export async function fetchGuardians(walletAddress?: string): Promise<BackendGua
     // Continue
   }
 
-  // 3. Fallback realistic mock data
-  return [
-    {
-      id: 1,
-      wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      guardian_name: "Family Guardian",
-      guardian_role: "Primary Trusted Contact",
-      guardian_did: "did:key:z6MkuFamilyGuardian2026Ed25519",
-      guardian_address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-      approved: 1,
-      created_at: "2026-09-22T17:11:27Z"
-    },
-    {
-      id: 2,
-      wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      guardian_name: "Institutional Notary Agent",
-      guardian_role: "Accredited Recovery Agent",
-      guardian_did: "did:key:z6MkuNotaryGuardian2026Ed25519",
-      guardian_address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-      approved: 1,
-      created_at: "2026-09-22T17:11:28Z"
-    },
-    {
-      id: 3,
-      wallet_address: walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      guardian_name: "Hardware Security Vault",
-      guardian_role: "Offline Cold Signer",
-      guardian_did: "did:key:z6MkuColdVaultGuardian2026Ed25519",
-      guardian_address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
-      approved: 0,
-      created_at: "2026-09-22T17:11:29Z"
-    }
-  ];
+  return [];
 }
 
 /**
@@ -511,23 +636,7 @@ export async function fetchRecoveryRequests(limit: number = 50): Promise<Recover
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.items)) {
-        return data.items.map((r: RawRecoveryRequestItem) => ({
-          requestId: r.requestId,
-          walletId: r.walletId,
-          status: r.status,
-          reason: r.reason || "Wallet key compromised / access lost",
-          approvalsCount: r.approvalsCount ?? (r.status === "APPROVED" || r.status === "EXECUTED" ? 3 : 2),
-          requiredCount: r.requiredCount ?? 3,
-          createdAt: r.createdAt || new Date().toISOString(),
-          expiresAt: r.expiresAt || new Date().toISOString(),
-          timelockExpiresAt: r.timelockExpiresAt,
-          executedAt: r.executedAt,
-          predecessorKeyId: r.predecessorKeyId,
-          successorKeyId: r.successorKeyId,
-          predecessorDid: r.predecessorDid,
-          successorDid: r.successorDid,
-          txHash: r.txHash || (r.status === "EXECUTED" ? "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420" : null)
-        }));
+        return data.items.map((r: RawRecoveryRequestItem) => mapRecoveryRequest(r));
       }
     }
   } catch {
@@ -540,42 +649,14 @@ export async function fetchRecoveryRequests(limit: number = 50): Promise<Recover
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.items)) {
-        return data.items.map((r: RawRecoveryRequestItem) => ({
-          requestId: r.requestId,
-          walletId: r.walletId,
-          status: r.status,
-          reason: r.reason,
-          approvalsCount: r.approvalsCount ?? 2,
-          requiredCount: r.requiredCount ?? 3,
-          createdAt: r.createdAt || new Date().toISOString(),
-          expiresAt: r.expiresAt || new Date().toISOString(),
-          timelockExpiresAt: r.timelockExpiresAt,
-          executedAt: r.executedAt,
-          predecessorKeyId: r.predecessorKeyId,
-          successorKeyId: r.successorKeyId,
-        }));
+        return data.items.map((r: RawRecoveryRequestItem) => mapRecoveryRequest(r));
       }
     }
   } catch {
     // Continue
   }
 
-  // 3. Fallback representative petitions
-  return [
-    {
-      requestId: "recovery_req_101",
-      walletId: "wallet_holder_primary",
-      status: "APPROVED",
-      reason: "Private key compromised via public Wi-Fi malware. Holder initiated emergency key rotation.",
-      approvalsCount: 3,
-      requiredCount: 3,
-      createdAt: "2026-09-22T17:05:00Z",
-      expiresAt: "2026-09-23T17:05:00Z",
-      timelockExpiresAt: "2026-09-22T17:15:00Z",
-      executedAt: "2026-09-22T17:16:00Z",
-      txHash: "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420"
-    }
-  ];
+  return [];
 }
 
 /**
@@ -589,27 +670,14 @@ export async function fetchRecoveryRequestById(requestId: string): Promise<Recov
     const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/requests/${requestId}`, { headers });
     if (res.ok) {
       const r = await res.json();
-      return {
-        requestId: r.requestId,
-        walletId: r.walletId,
-        status: r.status,
-        reason: r.reason,
-        approvalsCount: r.approvalsCount ?? 2,
-        requiredCount: r.requiredCount ?? 3,
-        createdAt: r.createdAt,
-        expiresAt: r.expiresAt,
-        timelockExpiresAt: r.timelockExpiresAt,
-        executedAt: r.executedAt,
-        predecessorKeyId: r.predecessorKeyId,
-        successorKeyId: r.successorKeyId,
-      };
+      return mapRecoveryRequest(r as RawRecoveryRequestItem);
     }
   } catch {
     // Continue
   }
 
   const all = await fetchRecoveryRequests(10);
-  return all.find((item) => item.requestId === requestId || item.requestId.includes(requestId)) || null;
+    return all.find((item) => item.requestId === requestId) || null;
 }
 
 /**
@@ -638,16 +706,7 @@ export async function initiateRecoveryRequest(params: {
 
   if (res.ok) {
     const r = await res.json();
-    return {
-      requestId: r.requestId,
-      walletId: r.walletId,
-      status: r.status,
-      reason: r.reason,
-      approvalsCount: 0,
-      requiredCount: 3,
-      createdAt: r.createdAt,
-      expiresAt: r.expiresAt,
-    };
+    return mapRecoveryRequest(r as RawRecoveryRequestItem);
   }
 
   const data = await res.json().catch(() => ({}));
@@ -671,89 +730,116 @@ export async function cancelRecoveryRequest(requestId: string): Promise<Recovery
 
   if (res.ok) {
     const r = await res.json();
-    return {
-      requestId: r.requestId,
-      walletId: r.walletId,
-      status: r.status,
-      reason: r.reason,
-      approvalsCount: r.approvalsCount ?? 0,
-      requiredCount: r.requiredCount ?? 3,
-      createdAt: r.createdAt,
-      expiresAt: r.expiresAt,
-    };
+    return mapRecoveryRequest(r as RawRecoveryRequestItem);
   }
 
   const data = await res.json().catch(() => ({}));
   throw new Error(data.detail || `Cancel recovery failed (HTTP ${res.status})`);
 }
 
-/**
- * Approve a recovery petition with cryptographic challenge proof
- */
-export async function approveRecoveryPetition(
-  requestId: string,
+async function createGuardianDecisionProof(
+  request: RecoveryRequest,
   guardianId: string,
-  challenge: string = "challenge_recovery_00000001",
-  proof: string = "proof_signature_approved"
-): Promise<{ success: boolean; txHash?: string }> {
+  guardianDid: string,
+  decision: "APPROVE" | "REJECT",
+  headers: Record<string, string>,
+): Promise<string> {
+  if (!request.sessionId || !request.challenge || !request.walletId || !guardianDid) {
+    throw new Error("Recovery session, challenge, wallet, and assigned Guardian DID are required.");
+  }
+  const response = await fetch(
+    `${GATEWAY_BASE_URL}/api/v1/identity/wallets/guardian-recovery-proof`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        requestId: request.requestId,
+        sessionId: request.sessionId,
+        guardianId,
+        walletId: request.walletId,
+        guardianDid,
+        challenge: request.challenge,
+        decision,
+      }),
+    },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.guardianDid !== guardianDid || typeof data.proof !== "string") {
+    throw new Error(data.message || data.detail || "The registered Guardian DID could not sign this recovery decision.");
+  }
+  return data.proof;
+}
+
+/** Sign a request-bound Guardian decision, then submit it for DID verification. */
+export async function approveRecoveryPetition(
+  request: RecoveryRequest,
+  guardianId: string,
+  guardianDid: string,
+): Promise<{ success: true; recovery: RecoveryRequest }> {
+  if (!request.requestId || !guardianId || !request.challenge) {
+    throw new Error("Recovery request, Guardian assignment, and server challenge are required.");
+  }
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
-
-  const payload = {
+  const proof = await createGuardianDecisionProof(
+    request,
     guardianId,
-    challenge,
-    proof
-  };
+    guardianDid,
+    "APPROVE",
+    headers,
+  );
 
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/requests/${requestId}/approve`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        success: true,
-        txHash: data.approval?.onChainTx || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420"
-      };
-    }
-  } catch {
-    // Continue
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/requests/${request.requestId}/approve`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ guardianId, challenge: request.challenge, proof })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || data.detail || `Recovery approval failed (HTTP ${res.status})`);
   }
-
-  // Simulated fallback for demo
-  return {
-    success: true,
-    txHash: "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420"
-  };
+  const data = await res.json();
+  return { success: true, recovery: mapRecoveryRequest(data.recovery as RawRecoveryRequestItem) };
 }
 
 /**
  * Reject a recovery petition
  */
 export async function rejectRecoveryPetition(
-  requestId: string,
+  request: RecoveryRequest,
   guardianId: string,
-  challenge: string = "challenge_recovery_00000001",
-  proof: string = "proof_signature_rejected"
-): Promise<{ success: boolean }> {
+  guardianDid: string,
+): Promise<{ success: true; recovery: RecoveryRequest }> {
+  if (!request.requestId || !guardianId || !request.challenge) {
+    throw new Error("Recovery request, Guardian assignment, and server challenge are required.");
+  }
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
+  const proof = await createGuardianDecisionProof(
+    request,
+    guardianId,
+    guardianDid,
+    "REJECT",
+    headers,
+  );
 
-  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/requests/${requestId}/reject`, {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/requests/${request.requestId}/reject`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ guardianId, challenge, proof })
+    body: JSON.stringify({ guardianId, challenge: request.challenge, proof })
   });
-
-  return { success: res.ok };
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || data.detail || `Recovery rejection failed (HTTP ${res.status})`);
+  }
+  const data = await res.json();
+  return { success: true, recovery: mapRecoveryRequest(data.recovery as RawRecoveryRequestItem) };
 }
 
 /**
@@ -766,23 +852,14 @@ export async function fetchRecoveryPolicy(walletId: string): Promise<RecoveryPol
   try {
     const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/recovery/policy?walletId=${encodeURIComponent(walletId)}`, { headers });
     if (res.ok) {
-      return await res.json();
+      const policy: unknown = await res.json();
+      return isRecoveryPolicyForWallet(policy, walletId) ? policy : null;
     }
   } catch {
     // Continue
   }
 
-  return {
-    walletId,
-    minimumApprovals: 3,
-    maximumGuardians: 5,
-    approvalWindowSeconds: 3600,
-    timeLockSeconds: 300,
-    recoveryExpirationSeconds: 86400,
-    maximumAttempts: 3,
-    cooldownSeconds: 3600,
-    allowCancellation: true
-  };
+  return null;
 }
 
 /**
@@ -827,16 +904,17 @@ export async function approveGuardian(guardianId: number, walletAddress?: string
   onChainTx?: string;
   error?: string;
 }> {
+  void guardianId;
   void walletAddress;
-  const res = await approveRecoveryPetition(`req_${guardianId}`, `g_${guardianId}`);
-  return {
-    success: res.success,
-    onChainTx: res.txHash
-  };
+  return { success: false, error: "Legacy recovery approvals are disabled; use the request-bound Guardian flow." };
 }
 
-export const approveGuardianRecovery = async (petitionId: number | string, guardianAddress: string) => {
-  return approveRecoveryPetition(String(petitionId), guardianAddress);
+export const approveGuardianRecovery = async (
+  request: RecoveryRequest,
+  guardianAddress: string,
+  guardianDid: string,
+) => {
+  return approveRecoveryPetition(request, guardianAddress, guardianDid);
 };
 
 /**
@@ -844,37 +922,21 @@ export const approveGuardianRecovery = async (petitionId: number | string, guard
  */
 export async function fetchAuditLogs(filterType?: string, limit: number = 100): Promise<BackendAuditLog[]> {
   const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
+  if (!token) throw new Error("Sign in with an authorized administrator account to view audit events.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
 
   const queryParams = new URLSearchParams();
   if (filterType && filterType !== "ALL") queryParams.append("event_type", filterType);
   queryParams.append("limit", String(limit));
 
-  // 1. Try Gateway audit route
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/audit_logs?${queryParams.toString()}`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      return data.audit_logs || data.events || [];
-    }
-  } catch {
-    // Continue to direct identity fallback
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/audit_logs?${queryParams.toString()}`, { headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : `Could not load audit events (HTTP ${res.status}).`);
   }
-
-  // 2. Try direct Identity Service database endpoint
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/database/audit_logs?limit=${limit}`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.audit_logs || [];
-    }
-  } catch (err) {
-    console.warn("fetchAuditLogs fallback:", err);
-  }
-  return [];
+  const events = data.audit_logs || data.events;
+  if (!Array.isArray(events)) throw new Error("Audit service returned an invalid event list.");
+  return events;
 }
 
 /**
@@ -923,36 +985,7 @@ export async function fetchBlockchainContracts(): Promise<SmartContractInfo[]> {
     console.warn("fetchBlockchainContracts fallback:", err);
   }
 
-  return [
-    {
-      name: "DIDRegistry.sol",
-      address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-      purpose: "Binds user DIDs to initial VC hashes and manages owner-authorized key rotations.",
-      methods: ["registerDID(string, bytes32)", "updateVCHash(string, bytes32)", "getDIDRecord(string)", "isDIDRegistered(string)"],
-      status: "ACTIVE"
-    },
-    {
-      name: "RevocationRegistry.sol",
-      address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-      purpose: "Anchors W3C Bitstring Status List roots and individual credential revocations.",
-      methods: ["anchorStatusList(string, bytes32, uint256)", "revokeCredential(bytes32, bytes32)", "isCredentialRevoked(bytes32)", "getStatusListAnchor(address, string)"],
-      status: "ACTIVE"
-    },
-    {
-      name: "EmergencyRecovery.sol",
-      address: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-      purpose: "EIP-4337 social recovery with M-of-N guardian consensus threshold & AI quarantine hooks.",
-      methods: ["configureGuardians(address[], uint256)", "initiateRecovery(address, address)", "approveRecovery(address)", "quarantineWallet(address, string)", "isWalletQuarantined(address)"],
-      status: "ACTIVE"
-    },
-    {
-      name: "AuditLogger.sol",
-      address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-      purpose: "Gas-optimized on-chain event log for critical platform security and recovery milestones.",
-      methods: ["logEvent(bytes32, uint8)", "getEventCount()", "getEvent(uint256)"],
-      status: "ACTIVE"
-    }
-  ];
+  return [];
 }
 
 /**
@@ -1008,20 +1041,14 @@ export async function fetchFraudStats(): Promise<FraudModelStats | null> {
  * Fetch database persistence stats from Identity Service
  */
 export async function fetchDatabaseStats(): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/database/stats`);
-    if (res.ok) return await res.json();
-  } catch {
-    // Continue
-  }
-
-  try {
-    const res = await fetch(`${SSI_CORE_BASE_URL}/api/database/stats`);
-    if (res.ok) return await res.json();
-  } catch (err) {
-    console.warn("fetchDatabaseStats fallback:", err);
-  }
-  return null;
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in with an authorized administrator account to view persistence statistics.");
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/database/stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Could not load persistence statistics (HTTP ${res.status}).`);
+  return data;
 }
 
 /**
@@ -1038,13 +1065,13 @@ export async function releaseAccountQuarantine(did: string): Promise<boolean> {
   }
 }
 
-/**
- * Evaluate AI Fraud risk directly via Port 8002
- */
+/** Evaluate a risk heuristic; service failure is surfaced without a fallback score. */
 export async function evaluateAiRisk(context: {
-  failed_attempts?: number;
-  ip_risk?: number;
-  device_anomaly?: number;
+  did_id: string;
+  timestamp: number;
+  ip_address: string;
+  device_fingerprint: string;
+  recent_failed_attempts: number;
 }): Promise<{
   risk_score: number;
   verdict: string;
@@ -1055,37 +1082,34 @@ export async function evaluateAiRisk(context: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        recent_failed_attempts: context.failed_attempts ?? 0,
-        ip_address: "127.0.0.1",
-        device_fingerprint: "enterprise-eudi-browser",
-        wallet_address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        did_id: context.did_id,
+        timestamp: context.timestamp,
+        ip_address: context.ip_address,
+        device_fingerprint: context.device_fingerprint,
+        recent_failed_attempts: context.recent_failed_attempts
       })
     });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        risk_score: (data.risk_score || 4) / 100,
-        verdict: data.risk_score > 70 ? "HIGH_RISK" : "LOW_RISK",
-        is_anomalous: data.risk_score > 70
-      };
-    }
+    if (!res.ok) throw new Error(`Fraud service returned HTTP ${res.status}`);
+    const data = await res.json();
+    return {
+      risk_score: data.risk_score / 100,
+      verdict: data.risk_score > 70 ? "HIGH_RISK" : "LOW_RISK",
+      is_anomalous: data.risk_score > 70
+    };
   } catch (err) {
-    console.warn("AI Fraud API evaluate fallback:", err);
+    console.warn("Risk heuristic unavailable:", err);
+    throw err;
   }
-  return {
-    risk_score: 0.04,
-    verdict: "LOW_RISK",
-    is_anomalous: false
-  };
 }
 
 export interface FraudAssessmentResult {
   risk_score: number;
   is_fraudulent: boolean;
   anomaly_score?: number;
-  xgboost_probability?: number;
-  reconstruction_mse?: number;
   reasons: string[];
+  model_version: string;
+  advisory_only: boolean;
+  risk_signals?: string[];
 }
 
 /**
@@ -1094,9 +1118,9 @@ export interface FraudAssessmentResult {
 export async function assessFraudRisk(payload: {
   wallet_address: string;
   did_id: string;
-  ip_address?: string;
-  device_fingerprint?: string;
-  recent_failed_attempts?: number;
+  ip_address: string;
+  device_fingerprint: string;
+  recent_failed_attempts: number;
 }): Promise<FraudAssessmentResult> {
   try {
     const res = await fetch(`${FRAUD_BASE_URL}/api/fraud_detection`, {
@@ -1105,37 +1129,29 @@ export async function assessFraudRisk(payload: {
       body: JSON.stringify({
         wallet_address: payload.wallet_address,
         did_id: payload.did_id,
-        ip_address: payload.ip_address || "127.0.0.1",
-        device_fingerprint: payload.device_fingerprint || "desktop-vault",
-        recent_failed_attempts: payload.recent_failed_attempts ?? 0
+        ip_address: payload.ip_address,
+        device_fingerprint: payload.device_fingerprint,
+        recent_failed_attempts: payload.recent_failed_attempts
       })
     });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        risk_score: data.risk_score ?? 15,
-        is_fraudulent: data.is_fraudulent ?? (data.risk_score > 70),
-        anomaly_score: data.anomaly_score,
-        xgboost_probability: data.xgboost_probability,
-        reconstruction_mse: data.reconstruction_mse,
-        reasons: data.reasons || ["Normal baseline verification traffic"]
-      };
+    if (!res.ok) throw new Error(`Fraud service returned HTTP ${res.status}`);
+    const data = await res.json();
+    if (typeof data.risk_score !== "number" || typeof data.is_fraudulent !== "boolean") {
+      throw new Error("Fraud service returned an invalid assessment.");
     }
+    return {
+      risk_score: data.risk_score,
+      is_fraudulent: data.is_fraudulent,
+      anomaly_score: data.anomaly_score,
+      reasons: Array.isArray(data.reasons) ? data.reasons : [],
+      model_version: data.model_version,
+      advisory_only: data.advisory_only === true,
+      risk_signals: Array.isArray(data.risk_signals) ? data.risk_signals : undefined
+    };
   } catch (err) {
-    console.warn("assessFraudRisk fallback:", err);
+    console.warn("assessFraudRisk unavailable:", err);
+    throw err;
   }
-
-  // Fallback heuristic simulation
-  const score = (payload.recent_failed_attempts ?? 0) > 3 ? 88 : 14;
-  return {
-    risk_score: score,
-    is_fraudulent: score > 70,
-    xgboost_probability: score > 70 ? 0.92 : 0.12,
-    reconstruction_mse: score > 70 ? 0.6841 : 0.0412,
-    reasons: score > 70
-      ? ["High failed attempt frequency detected", "Device profile mismatch"]
-      : ["Normal baseline verification traffic"]
-  };
 }
 
 /**
@@ -1199,11 +1215,12 @@ export async function verifyPresentation(payload: Record<string, unknown>): Prom
       }
 
       if (res.ok && data) {
-        const isValid = Boolean(
-          data.valid === true ||
-          data.status === "VERIFIED" ||
-          data.result?.finalPolicyResult === "ACCEPTED"
-        );
+        const hasPolicyResult = Object.prototype.hasOwnProperty.call(data, "result");
+        const isValid = typeof data.result?.finalPolicyResult === "string"
+          ? data.result.finalPolicyResult === "ACCEPTED"
+          : hasPolicyResult
+          ? false
+          : data.valid === true || data.status === "VERIFIED";
 
         const status: "VERIFIED" | "REJECTED" = isValid ? "VERIFIED" : "REJECTED";
         const errors: string[] = Array.isArray(data.errors)
@@ -1215,8 +1232,8 @@ export async function verifyPresentation(payload: Record<string, unknown>): Prom
         return {
           verified: isValid,
           status,
-          signature_valid: data.result?.signatureValid ?? (data.signature_valid ?? (isValid ? true : false)),
-          challenge_valid: data.result?.challengeValid ?? (data.challenge_valid ?? (isValid ? true : false)),
+          signature_valid: data.result?.signatureValid ?? data.signature_valid,
+          challenge_valid: data.result?.challengeValid ?? data.challenge_valid,
           claims: data.claims || data.disclosedClaims || (payload.disclosed_claims as Record<string, unknown>) || {},
           details: data,
           errors
@@ -1286,7 +1303,7 @@ export async function approveGuardianRecoveryLegacy(
   const res = await approveGuardian(guardianId, walletAddress);
   return {
     success: res.success,
-    tx_hash: res.onChainTx || "0xafd3ff8307041cb44a092d82bf3148c56b0b7f2d0d38c68190519722804eb420"
+    tx_hash: res.onChainTx || undefined
   };
 }
 
@@ -1303,21 +1320,15 @@ export async function quarantineWallet(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wallet_address: walletAddress, reason })
     });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        success: true,
-        tx_hash: data.blockchain_anchor?.tx_hash || data.tx_hash
-      };
-    }
+    if (!res.ok) return { success: false };
+    const data = await res.json();
+    const anchor = data.blockchain_anchor || data.anchor || data;
+    const confirmed = anchor.status === "CONFIRMED" && typeof anchor.tx_hash === "string";
+    return { success: confirmed, tx_hash: confirmed ? anchor.tx_hash : undefined };
   } catch (err) {
-    console.warn("quarantineWallet fallback:", err);
+    console.warn("quarantineWallet unavailable:", err);
+    return { success: false };
   }
-
-  return {
-    success: true,
-    tx_hash: "0xc3fe981b66a043703996f70192e027ebafeeb2bd121c2f242551a0a9bd5e4b0a"
-  };
 }
 
 // ==========================================
@@ -1334,6 +1345,168 @@ export interface Oid4vciOffer {
   qrPayload: string;
   expiresAt: string;
   subjectData: Record<string, unknown>;
+}
+
+export interface Oid4vciCredentialConfiguration {
+  format?: string;
+  scope?: string;
+  cryptographic_binding_methods_supported?: string[];
+  credential_signing_alg_values_supported?: string[];
+  proof_types_supported?: Record<string, { proof_signing_alg_values_supported?: string[] }>;
+  display?: Array<{ name?: string; locale?: string }>;
+}
+
+export interface Oid4vciIssuerMetadata {
+  credential_issuer: string;
+  credential_configurations_supported: Record<string, Oid4vciCredentialConfiguration>;
+}
+
+export interface PublicTrustRecord {
+  id: string;
+  issuerDid: string;
+  organizationName: string;
+  trustStatus: string;
+  trustSource?: string;
+  auditMetadata?: Record<string, unknown>;
+  roles: string[];
+  permittedCredentialTypes: string[];
+  validFrom: string;
+  validUntil?: string | null;
+}
+
+const publicDirectoryRequestSignal = (signal?: AbortSignal): AbortSignal => {
+  const timeout = AbortSignal.timeout(10_000);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+};
+
+export async function fetchOid4vciIssuerMetadata(signal?: AbortSignal): Promise<Oid4vciIssuerMetadata> {
+  const response = await fetch(
+    `${GATEWAY_BASE_URL}/api/v1/oid4vci/.well-known/openid-credential-issuer`,
+    { signal: publicDirectoryRequestSignal(signal) },
+  );
+  if (!response.ok) throw new Error(`Issuer metadata is unavailable (HTTP ${response.status}).`);
+  const value = await response.json() as Partial<Oid4vciIssuerMetadata>;
+  if (!value.credential_issuer || !value.credential_configurations_supported || typeof value.credential_configurations_supported !== "object") {
+    throw new Error("Issuer metadata did not include supported credential configurations.");
+  }
+  return value as Oid4vciIssuerMetadata;
+}
+
+export async function fetchPublicTrustedIssuers(signal?: AbortSignal): Promise<PublicTrustRecord[]> {
+  const response = await fetch(
+    `${GATEWAY_BASE_URL}/api/v1/identity/trust-registry/issuers?limit=100`,
+    { signal: publicDirectoryRequestSignal(signal) },
+  );
+  if (!response.ok) throw new Error(`Trust Registry is unavailable (HTTP ${response.status}).`);
+  const value: unknown = await response.json();
+  if (!Array.isArray(value)) throw new Error("Trust Registry returned an invalid issuer list.");
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`Trust Registry returned an invalid issuer record at index ${index}.`);
+    }
+    const record = item as Record<string, unknown>;
+    const read = (camelCase: string, snakeCase = camelCase): unknown => record[camelCase] ?? record[snakeCase];
+    const requiredString = (camelCase: string, snakeCase = camelCase): string => {
+      const field = read(camelCase, snakeCase);
+      if (typeof field !== "string" || !field.trim()) {
+        throw new Error(`Trust Registry issuer record at index ${index} is missing ${camelCase}.`);
+      }
+      return field;
+    };
+    const stringList = (camelCase: string, snakeCase = camelCase): string[] => {
+      const field = read(camelCase, snakeCase);
+      if (!Array.isArray(field) || !field.every((entry) => typeof entry === "string")) {
+        throw new Error(`Trust Registry issuer record at index ${index} has an invalid ${camelCase} list.`);
+      }
+      return field;
+    };
+    const validUntil = read("validUntil", "valid_until");
+    if (validUntil !== undefined && validUntil !== null && typeof validUntil !== "string") {
+      throw new Error(`Trust Registry issuer record at index ${index} has an invalid validUntil value.`);
+    }
+    const trustSource = read("trustSource", "trust_source");
+    const auditMetadata = read("auditMetadata", "audit_metadata");
+    if (trustSource !== undefined && typeof trustSource !== "string") {
+      throw new Error(`Trust Registry issuer record at index ${index} has an invalid trustSource value.`);
+    }
+    if (auditMetadata !== undefined && (!auditMetadata || typeof auditMetadata !== "object" || Array.isArray(auditMetadata))) {
+      throw new Error(`Trust Registry issuer record at index ${index} has invalid auditMetadata.`);
+    }
+    return {
+      id: requiredString("id"),
+      issuerDid: requiredString("issuerDid", "issuer_did"),
+      organizationName: requiredString("organizationName", "organization_name"),
+      trustStatus: requiredString("trustStatus", "trust_status"),
+      trustSource: trustSource as string | undefined,
+      auditMetadata: auditMetadata as Record<string, unknown> | undefined,
+      roles: stringList("roles"),
+      permittedCredentialTypes: stringList("permittedCredentialTypes", "permitted_credential_types"),
+      validFrom: requiredString("validFrom", "valid_from"),
+      validUntil: validUntil as string | null | undefined,
+    };
+  });
+}
+
+export interface AdminUserRecord {
+  id: string;
+  username: string;
+  displayName: string;
+  roles: string[];
+  enabled: boolean;
+  issuerDid: string | null;
+  issuerOrganizationName: string | null;
+  version: number;
+}
+
+export interface AdminIssuerScopeOption {
+  issuerDid: string;
+  organizationName: string;
+}
+
+async function adminIdentityRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  const response = await fetch(`${GATEWAY_BASE_URL}/api/v1/identity/admin/users${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  if (!response.ok) {
+    let detail = `Identity Service request failed (HTTP ${response.status}).`;
+    try {
+      const body = await response.json() as { detail?: unknown; message?: unknown };
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (typeof body.message === "string") detail = body.message;
+    } catch {
+      // Keep the HTTP status as the visible error when the response is not JSON.
+    }
+    throw new Error(detail);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function fetchAdminUsers(): Promise<AdminUserRecord[]> {
+  return adminIdentityRequest<AdminUserRecord[]>("");
+}
+
+export function fetchAdminIssuerScopeOptions(): Promise<AdminIssuerScopeOption[]> {
+  return adminIdentityRequest<AdminIssuerScopeOption[]>("/issuer-options");
+}
+
+export function updateAdminIssuerScope(
+  userId: string,
+  issuerDid: string | null,
+  expectedVersion: number,
+): Promise<AdminUserRecord> {
+  return adminIdentityRequest<AdminUserRecord>(`/${encodeURIComponent(userId)}/issuer-scope`, {
+    method: "PUT",
+    body: JSON.stringify({ issuerDid, expectedVersion }),
+  });
 }
 
 export interface NinePointVerificationResult {
@@ -1355,6 +1528,7 @@ export interface Oid4vpSession {
   purpose: string;
   requestedCredentialTypes: string[];
   requestedFields: string[];
+  dcqlQuery?: Record<string, unknown>;
   nonce: string;
   status: "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED";
   consentStatus?: "PENDING" | "GRANTED" | "REJECTED";
@@ -1368,6 +1542,11 @@ export interface Oid4vpSession {
   disclosedClaims?: Record<string, unknown>;
   aiRiskScore?: number;
 }
+
+export type Oid4vpHolderRequest = Pick<
+  Oid4vpSession,
+  "sessionId" | "purpose" | "nonce" | "status" | "consentStatus" | "verifierDid" | "clientId" | "deepLinkUri" | "qrPayload" | "expiresAt" | "dcqlQuery"
+> & { requestedFields: string[] };
 
 /**
  * Issuer creates standard OID4VCI Credential Offer with QR code
@@ -1395,8 +1574,13 @@ export async function createOid4vciOffer(payload: {
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Failed to create OID4VCI offer: ${res.status} ${errorText}`);
+    const data = await res.json().catch(() => ({}));
+    const message = typeof data.detail === "string"
+      ? data.detail
+      : typeof data.error?.message === "string"
+        ? data.error.message
+        : `Failed to create OID4VCI offer (HTTP ${res.status}).`;
+    throw new Error(message);
   }
   return res.json();
 }
@@ -1417,33 +1601,52 @@ export async function getOid4vciOffer(offerId: string): Promise<Oid4vciOffer> {
  */
 export async function fetchPendingOffers(token?: string): Promise<Oid4vciOffer[]> {
   const authToken = token || localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!authToken) throw new Error("Sign in before loading credential offers.");
   const headers: Record<string, string> = {
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
   };
-
-  // 1. Authoritative API Gateway endpoint
+  let gatewayFailure = "The API Gateway could not load credential offers.";
   try {
     const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/offers`, { headers });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      const data = await res.json();
-      return Array.isArray(data) ? data : data.offers || [];
+      const offers = Array.isArray(data) ? data : data.offers;
+      if (!Array.isArray(offers)) throw new Error("Credential offer service returned an invalid response.");
+      return offers;
     }
-  } catch (err) {
-    console.warn("Could not fetch offers from gateway:", err);
+    gatewayFailure = typeof data.detail === "string" ? data.detail : `Credential offers unavailable (HTTP ${res.status}).`;
+    if ([401, 403].includes(res.status)) throw new Error(gatewayFailure);
+    if (![404, 502, 503].includes(res.status)) throw new Error(gatewayFailure);
+  } catch (cause) {
+    if (cause instanceof Error && !cause.message.includes("fetch")) throw cause;
+    gatewayFailure = cause instanceof Error ? cause.message : gatewayFailure;
   }
 
-  // 2. Direct Identity Service endpoint fallback
   try {
     const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/oid4vci/offers`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      return Array.isArray(data) ? data : data.offers || [];
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : `Credential offers unavailable (HTTP ${res.status}).`;
+      throw new Error(detail);
     }
-  } catch {
-    // Continue to empty list
+    const offers = Array.isArray(data) ? data : data.offers;
+    if (!Array.isArray(offers)) throw new Error("Credential offer service returned an invalid response.");
+    return offers;
+  } catch (cause) {
+    throw cause instanceof Error ? cause : new Error(gatewayFailure);
   }
+}
 
-  return [];
+/** Read offers owned by the authenticated issuer; this is not a credential-issuance count. */
+export async function fetchIssuerOffers(): Promise<Oid4vciOffer[]> {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in as an issuer to view your offers.");
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/offers?as_issuer=true`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`Could not load issuer offers (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -1453,51 +1656,66 @@ export async function claimOid4vciOffer(payload: {
   preAuthorizedCode: string;
   holderDid: string;
   walletId?: string;
+  credentialConfigurationId: string;
   userPin?: string;
   token?: string;
 }): Promise<{ credential: Record<string, unknown>; credentialId: string; status: string }> {
-  const token = payload.token || localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
+  const holderToken = payload.token || localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!holderToken) throw new Error("Sign in before claiming a credential offer.");
+  if (!payload.walletId) throw new Error("A server-managed holder wallet is required.");
 
-  // 1. Authoritative API Gateway endpoint
-  try {
-    const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/credential`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        preAuthorizedCode: payload.preAuthorizedCode,
-        holderDid: payload.holderDid,
-        walletId: payload.walletId || "wallet_holder_default",
-        userPin: payload.userPin
-      })
-    });
-    if (res.ok) {
-      return res.json();
-    }
-  } catch (err) {
-    console.warn("Gateway claim failed, trying direct core:", err);
-  }
-
-  // 2. Direct Identity Service fallback
-  const res = await fetch(`${SSI_CORE_BASE_URL}/api/v1/oid4vci/credential`, {
+  const tokenResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/token`, {
     method: "POST",
-    headers,
-    body: JSON.stringify({
-      preAuthorizedCode: payload.preAuthorizedCode,
-      holderDid: payload.holderDid,
-      walletId: payload.walletId || "wallet_holder_default",
-      userPin: payload.userPin
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+      "pre-authorized_code": payload.preAuthorizedCode,
+      ...(payload.userPin ? { user_pin: payload.userPin } : {})
     })
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to claim credential: ${res.status} ${err}`);
+  const tokenData = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || typeof tokenData.access_token !== "string" || typeof tokenData.c_nonce !== "string") {
+    throw new Error(tokenData.error_description || `OID4VCI token exchange failed (HTTP ${tokenResponse.status}).`);
   }
-  return res.json();
+
+  const metadataResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/.well-known/openid-credential-issuer`);
+  const metadata = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok || typeof metadata.credential_issuer !== "string") {
+    throw new Error(`Could not resolve the configured credential issuer (HTTP ${metadataResponse.status}).`);
+  }
+
+  const proofResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/holder-proof`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${holderToken}` },
+    body: JSON.stringify({ walletId: payload.walletId, audience: metadata.credential_issuer, nonce: tokenData.c_nonce })
+  });
+  const proofData = await proofResponse.json().catch(() => ({}));
+  if (!proofResponse.ok || typeof proofData.jwt !== "string") {
+    throw new Error(proofData.detail || `Could not sign the holder proof (HTTP ${proofResponse.status}).`);
+  }
+  if (proofData.holderDid !== payload.holderDid) {
+    throw new Error("The selected holder DID does not match the authenticated wallet.");
+  }
+
+  const credentialResponse = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vci/credential`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenData.access_token}` },
+    body: JSON.stringify({
+      credentialConfigurationId: payload.credentialConfigurationId,
+      proof: { proofType: "jwt", jwt: proofData.jwt },
+      walletId: payload.walletId
+    })
+  });
+  const credentialData = await credentialResponse.json().catch(() => ({}));
+  if (!credentialResponse.ok || !credentialData.credential || typeof credentialData.credential !== "object") {
+    throw new Error(credentialData.error_description || credentialData.detail || `OID4VCI credential request failed (HTTP ${credentialResponse.status}).`);
+  }
+  const credential = credentialData.credential as Record<string, unknown>;
+  const credentialId = typeof credentialData.credentialId === "string"
+    ? credentialData.credentialId
+    : typeof credential.id === "string" ? credential.id : "";
+  if (!credentialId) throw new Error("Identity Service did not return the issued credential identifier.");
+  return { credential, credentialId, status: typeof credentialData.status === "string" ? credentialData.status : "UNKNOWN" };
 }
 
 /**
@@ -1536,21 +1754,131 @@ export async function createOid4vpSession(payload: {
  * Verifier polls OID4VP session to check live presentation verification status
  */
 export async function getOid4vpSession(sessionId: string): Promise<Oid4vpSession> {
-  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${sessionId}`);
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in as the verifier who created this request before polling its result.");
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(sessionId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) {
     throw new Error(`Failed to fetch OID4VP session: ${res.status}`);
   }
   return res.json();
 }
 
+/** Load only the protocol request needed by a signed-in Holder consent flow. */
+export async function getOid4vpHolderRequest(sessionId: string): Promise<Oid4vpHolderRequest> {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in as the holder to inspect this presentation request.");
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(sessionId)}/holder-request`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Could not load the Holder presentation request (HTTP ${res.status}).`);
+  }
+  return res.json();
+}
+
+export interface Oid4vpDcqlMatch {
+  queryId: string;
+  credentialId: string;
+  matchedClaims: Record<string, unknown>;
+}
+
+export interface Oid4vpDcqlEvaluation {
+  isSatisfied: boolean;
+  matchedCredentials: Oid4vpDcqlMatch[];
+  unsatisfiedReason?: string | null;
+  details?: { selectedQueryIds?: string[]; [key: string]: unknown };
+}
+
+/** Evaluate only credential documents already loaded from the authenticated wallet. */
+export async function evaluateOid4vpSession(
+  sessionId: string,
+  candidateCredentials: Record<string, unknown>[],
+): Promise<Oid4vpDcqlEvaluation> {
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(sessionId)}/evaluate-dcql`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${requireHolderToken()}`,
+    },
+    body: JSON.stringify({ candidateCredentials }),
+  });
+  if (!res.ok) {
+    throw new Error(`Could not evaluate the wallet against this request (HTTP ${res.status}).`);
+  }
+  return res.json();
+}
+
+function requireHolderToken(): string {
+  const token = localStorage.getItem("ssi_access_token") || localStorage.getItem("secure_ssi_token") || "";
+  if (!token) throw new Error("Sign in as the holder before approving a presentation request.");
+  return token;
+}
+
+export async function recordWalletOid4vpConsent(payload: {
+  sessionId: string;
+  walletId: string;
+  holderDid: string;
+  action: "APPROVE" | "REJECT";
+  approvedCredentials?: string[];
+  approvedClaims?: Record<string, unknown>;
+  rejectedClaims?: string[];
+  rejectionReason?: string;
+}): Promise<Oid4vpConsentResponse> {
+  const token = requireHolderToken();
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(payload.sessionId)}/wallet-consent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      walletId: payload.walletId,
+      holderDid: payload.holderDid,
+      action: payload.action,
+      approvedCredentials: payload.approvedCredentials || [],
+      approvedClaims: payload.approvedClaims || {},
+      rejectedClaims: payload.rejectedClaims || [],
+      rejectionReason: payload.rejectionReason,
+    }),
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`Could not record wallet-bound consent (HTTP ${res.status}): ${error}`);
+  }
+  return res.json();
+}
+
+export async function createWalletOid4vpPresentation(payload: {
+  sessionId: string;
+  walletId: string;
+  credentialIds: string[];
+  disclosedClaims: Record<string, unknown>;
+}): Promise<{ sessionId: string; vpToken: Record<string, unknown> }> {
+  const token = requireHolderToken();
+  const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/wallet-presentation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      sessionId: payload.sessionId,
+      walletId: payload.walletId,
+      credentialIds: payload.credentialIds,
+      disclosedClaims: payload.disclosedClaims,
+    }),
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`Could not create a wallet-bound presentation (HTTP ${res.status}): ${error}`);
+  }
+  return res.json();
+}
+
 /**
- * Holder wallet submits Verifiable Presentation with selective disclosure via Direct Post
+ * Holder wallet submits the complete signed Verifiable Credential via Direct Post for this profile.
+ * The current eddsa-jcs-2022 profile does not provide claim-level cryptographic selective disclosure.
  */
 export async function submitOid4vpDirectPost(payload: {
   sessionId: string;
   vpToken: Record<string, unknown>;
   disclosedClaims: Record<string, unknown>;
-  aiRiskScore?: number;
 }): Promise<{ status: string; result: NinePointVerificationResult }> {
   const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/response`, {
     method: "POST",
@@ -1565,9 +1893,7 @@ export async function submitOid4vpDirectPost(payload: {
   return res.json();
 }
 
-/**
- * Holder explicitly rejects OID4VP presentation consent request
- */
+/** @deprecated The anonymous legacy endpoint is disabled; use recordWalletOid4vpConsent. */
 export async function rejectOid4vpSession(payload: {
   sessionId: string;
   reason?: string;
@@ -1589,9 +1915,7 @@ export async function rejectOid4vpSession(payload: {
   return res.json();
 }
 
-/**
- * Holder explicitly records an authoritative consent decision (APPROVE or REJECT)
- */
+/** @deprecated The anonymous legacy endpoint is disabled; use recordWalletOid4vpConsent. */
 export interface Oid4vpConsentPayload {
   sessionId: string;
   action?: "APPROVE" | "REJECT";
@@ -1621,6 +1945,7 @@ export interface Oid4vpConsentResponse {
   rejectionReason?: string;
 }
 
+/** @deprecated The anonymous legacy endpoint is disabled; use recordWalletOid4vpConsent. */
 export async function recordOid4vpConsent(payload: Oid4vpConsentPayload): Promise<Oid4vpConsentResponse> {
   const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/oid4vp/requests/${encodeURIComponent(payload.sessionId)}/consent`, {
     method: "POST",
@@ -1646,9 +1971,7 @@ export async function recordOid4vpConsent(payload: Oid4vpConsentPayload): Promis
   return res.json();
 }
 
-/**
- * Holder requests backend to create cryptographic presentation proof bound to session nonce & audience
- */
+/** @deprecated The legacy server signer is disabled; use createWalletOid4vpPresentation. */
 export async function createOid4vpPresentation(payload: {
   sessionId: string;
   disclosedClaims?: Record<string, unknown>;

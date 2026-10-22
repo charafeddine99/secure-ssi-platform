@@ -1,755 +1,164 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { TrustBadge } from "../../components/common/TrustBadge";
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, FileCheck2, Info, LoaderCircle, QrCode, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
 import { QRCodeDisplay } from "../../components/common/QRCodeDisplay";
 import { NinePointVerificationMatrix } from "../../components/verification/NinePointVerificationMatrix";
-import {
-  createOid4vpSession,
-  getOid4vpSession,
-  Oid4vpSession,
-} from "../../services/api";
-import {
-  QrCode,
-  ArrowLeft,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  RefreshCw,
-  XCircle,
-  ShieldAlert,
-  Eye,
-  X,
-  Lock,
-} from "lucide-react";
+import { createOid4vpSession, getOid4vpSession, Oid4vpSession } from "../../services/api";
+
+const credentialType = "UniversityAffiliationCredential";
+const supportedFields = [
+  { id: "affiliation", label: "Affiliation", detail: "Student, faculty or staff" },
+  { id: "programCode", label: "Program code", detail: "Education programme identifier" },
+  { id: "degree", label: "Degree", detail: "Credentialed qualification" },
+  { id: "graduationYear", label: "Graduation year", detail: "Year recorded in the credential" },
+] as const;
+
+const formatExpiry = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Provided by the service" : date.toLocaleString();
+};
 
 export const CreateRequestPage: React.FC = () => {
-  const navigate = useNavigate();
-
-  const [purpose, setPurpose] = useState("Age verification and citizenship confirmation");
-  const [credentialType, setCredentialType] = useState("UniversityAffiliationCredential");
-  const [claims, setClaims] = useState(["affiliation", "degree", "programCode"]);
+  const [purpose, setPurpose] = useState("");
+  const [claims, setClaims] = useState<string[]>([]);
   const [ttlSeconds, setTtlSeconds] = useState(600);
-  const [showPreview, setShowPreview] = useState(false);
-
-  const [creatingSession, setCreatingSession] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [session, setSession] = useState<Oid4vpSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
 
-  const availableClaims = [
-    "affiliation",
-    "programCode",
-    "degree",
-    "graduationYear",
-    "Full Name",
-    "Nationality",
-    "National ID No",
-  ];
-
-  const toggleClaim = (c: string) => {
-    if (claims.includes(c)) setClaims(claims.filter((item) => item !== c));
-    else setClaims([...claims, c]);
-  };
-
-  // Poll active session for status changes
   useEffect(() => {
-    if (!session || session.status === "VERIFIED" || session.status === "REJECTED") {
+    const sessionId = session?.sessionId;
+    const expiresAt = session?.expiresAt;
+    if (!sessionId || session?.status !== "PENDING") return;
+    let active = true;
+    const poll = async () => {
+      const expiry = Date.parse(expiresAt || "");
+      if (Number.isFinite(expiry) && Date.now() >= expiry) {
+        if (active) setSession((current) => current?.sessionId === sessionId ? { ...current, status: "EXPIRED" } : current);
+        return;
+      }
+      try {
+        const updated = await getOid4vpSession(sessionId);
+        if (!active) return;
+        setSession(updated);
+        setPollError(null);
+      } catch (cause) {
+        if (!active) return;
+        const message = cause instanceof Error ? cause.message : "Session status could not be refreshed.";
+        if (message.includes("410")) {
+          setSession((current) => current?.sessionId === sessionId ? { ...current, status: "EXPIRED" } : current);
+        } else setPollError("The service could not refresh this request. It will retry automatically.");
+      }
+    };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 2000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [session?.sessionId, session?.status, session?.expiresAt]);
+
+  const toggleField = (field: string) => setClaims((current) => current.includes(field)
+    ? current.filter((item) => item !== field)
+    : [...current, field]);
+
+  const createSession = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    if (!claims.length) {
+      setError("Select at least one credential field to match.");
       return;
     }
-
-    const interval = setInterval(async () => {
-      try {
-        const updated = await getOid4vpSession(session.sessionId);
-        if (updated.status !== session.status) {
-          setSession(updated);
-        }
-      } catch {
-        // Silently retry polling
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [session]);
-
-  const handleCreateSession = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreatingSession(true);
-    setError(null);
-
+    setCreating(true);
     try {
-      const newSession = await createOid4vpSession({
-        purpose,
+      const created = await createOid4vpSession({
+        purpose: purpose.trim(),
         requestedCredentialTypes: [credentialType],
         requestedFields: claims,
         ttlSeconds,
       });
-      setSession(newSession);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create OID4VP verification session.");
+      setSession(created);
+      setPollError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The verification service could not create this request.");
     } finally {
-      setCreatingSession(false);
+      setCreating(false);
     }
   };
 
+  const reset = () => { setSession(null); setError(null); setPollError(null); };
+  const pending = session?.status === "PENDING";
+  const verified = session?.status === "VERIFIED";
+  const rejected = session?.status === "REJECTED";
+  const expired = session?.status === "EXPIRED";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "880px" }}>
-      <button
-        onClick={() => navigate("/verifier")}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          backgroundColor: "transparent",
-          border: "none",
-          color: "#94a3b8",
-          fontSize: "0.85rem",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        <ArrowLeft size={16} />
-        Back to Verifier Portal
-      </button>
+    <main className="workspace-page verifier-request-page">
+      <Link className="workspace-text-action verifier-back-link" to="/verifier"><ArrowLeft size={16} aria-hidden="true" /> Verifier workspace</Link>
+      <header className="workspace-page-header">
+        <div><p className="workspace-eyebrow">OpenID for Verifiable Presentations</p><h1>Create a presentation request</h1><p>Set the purpose and credential fields the service should match, then share the generated request with the holder.</p></div>
+        <span className="verifier-protocol-label">OID4VP 1.0 <span aria-hidden="true">·</span> DCQL</span>
+      </header>
+      {error && <div className="workspace-error" role="alert"><AlertCircle size={18} aria-hidden="true" />{error}</div>}
 
-      <div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-          <TrustBadge level="STANDARDS_ALIGNED" />
-          <TrustBadge level="DEMO_TRUST_LEVEL" />
-        </div>
-        <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-          Create OID4VP Presentation Request
-        </h1>
-        <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-          Generate standards-compliant DIF Presentation Definition requests with real-time QR flow and 9-point verification.
-        </p>
-      </div>
-
-      {error && (
-        <div
-          style={{
-            padding: "12px 16px",
-            borderRadius: "8px",
-            backgroundColor: "rgba(239, 68, 68, 0.15)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
-            color: "#f87171",
-            fontSize: "0.85rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {session ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Active Session Card */}
-          <div
-            style={{
-              backgroundColor: "#111827",
-              borderRadius: "16px",
-              border: "1px solid #1f2937",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    padding: "8px",
-                    borderRadius: "10px",
-                    backgroundColor:
-                      session.status === "VERIFIED"
-                        ? "rgba(16, 185, 129, 0.2)"
-                        : session.status === "REJECTED"
-                        ? "rgba(239, 68, 68, 0.2)"
-                        : "rgba(59, 130, 246, 0.2)",
-                    color:
-                      session.status === "VERIFIED"
-                        ? "#34d399"
-                        : session.status === "REJECTED"
-                        ? "#f87171"
-                        : "#60a5fa",
-                  }}
-                >
-                  {session.status === "VERIFIED" ? (
-                    <CheckCircle2 size={24} />
-                  ) : session.status === "REJECTED" ? (
-                    <XCircle size={24} />
-                  ) : (
-                    <QrCode size={24} />
-                  )}
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#ffffff" }}>
-                    {session.status === "VERIFIED"
-                      ? "Verifiable Presentation Verified!"
-                      : session.status === "REJECTED"
-                      ? "Presentation Request Rejected"
-                      : "OID4VP Verification Session Active"}
-                  </h3>
-                  <p style={{ margin: "2px 0 0 0", fontSize: "0.8rem", color: "#94a3b8" }}>
-                    {session.status === "VERIFIED"
-                      ? "Direct Post presentation accepted and evaluated through 9-point security checklist."
-                      : session.status === "REJECTED"
-                      ? "Holder reviewed the consent request and explicitly declined to share credentials."
-                      : "Scan QR code with Holder Wallet to submit Verifiable Presentation via Direct Post."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Badge */}
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 14px",
-                  borderRadius: "9999px",
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                  backgroundColor:
-                    session.status === "VERIFIED"
-                      ? "rgba(16, 185, 129, 0.2)"
-                      : session.status === "REJECTED"
-                      ? "rgba(239, 68, 68, 0.2)"
-                      : "rgba(59, 130, 246, 0.2)",
-                  color:
-                    session.status === "VERIFIED"
-                      ? "#34d399"
-                      : session.status === "REJECTED"
-                      ? "#f87171"
-                      : "#60a5fa",
-                  border: `1px solid ${
-                    session.status === "VERIFIED"
-                      ? "rgba(16, 185, 129, 0.4)"
-                      : session.status === "REJECTED"
-                      ? "rgba(239, 68, 68, 0.4)"
-                      : "rgba(59, 130, 246, 0.4)"
-                  }`,
-                }}
-              >
-                {session.status === "PENDING" && <RefreshCw size={12} className="animate-spin" />}
-                STATUS: {session.status}
-              </div>
-            </div>
-
-            {/* If REJECTED: Show Consent Denial & Audit Notice */}
-            {session.status === "REJECTED" && (
-              <div
-                style={{
-                  backgroundColor: "rgba(239, 68, 68, 0.08)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "14px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <ShieldAlert size={22} color="#f87171" />
-                  <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#f87171" }}>
-                    Consent Denied by Holder
-                  </span>
-                </div>
-
-                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", lineHeight: "1.5" }}>
-                  <strong>Reason recorded:</strong>{" "}
-                  <span style={{ color: "#fca5a5" }}>
-                    {session.rejectionReason || "Holder chose not to share requested attributes."}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.3)",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    fontSize: "0.78rem",
-                    color: "#94a3b8",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
-                  }}
-                >
-                  <div>
-                    <strong>Audit Integrity:</strong> A cryptographic audit record of type{" "}
-                    <code style={{ color: "#38bdf8" }}>CONSENT_REJECTED</code> has been committed to
-                    the immutable system audit log.
-                  </div>
-                  <div>
-                    <strong>Session Nonce:</strong>{" "}
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>
-                      {session.nonce}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* If still PENDING: Show QR Code & Live Polling Instructions */}
-            {session.status === "PENDING" && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  gap: "24px",
-                  alignItems: "center",
-                  backgroundColor: "#0d131f",
-                  padding: "20px",
-                  borderRadius: "12px",
-                  border: "1px solid #1f2937",
-                }}
-              >
-                <QRCodeDisplay
-                  value={session.deepLinkUri}
-                  size={210}
-                  title="OID4VP QR Code"
-                  subtitle="Draft 20 / Direct Post"
-                />
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <div>
-                    <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Session Identifier:</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "#60a5fa" }}>
-                      {session.sessionId}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Session Challenge Nonce:</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "#38bdf8" }}>
-                      {session.nonce}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Verification Purpose:</div>
-                    <div style={{ fontSize: "0.85rem", color: "#ffffff", fontWeight: 500 }}>
-                      {session.purpose}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Requested Fields:</div>
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
-                      {session.requestedFields.map((f) => (
-                        <span
-                          key={f}
-                          style={{
-                            padding: "3px 8px",
-                            backgroundColor: "rgba(59, 130, 246, 0.15)",
-                            color: "#93c5fd",
-                            borderRadius: "4px",
-                            fontSize: "0.75rem",
-                          }}
-                        >
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px" }}>
-                    <Clock size={14} color="#94a3b8" />
-                    <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                      Polling backend every 2s for direct-post submission...
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* If VERIFIED: Show NinePointVerificationMatrix */}
-            {session.status === "VERIFIED" && session.verificationResult && (
-              <NinePointVerificationMatrix
-                result={session.verificationResult}
-                disclosedClaims={session.disclosedClaims}
-                aiRiskScore={session.aiRiskScore || 12}
-                nonce={session.nonce}
-                sessionId={session.sessionId}
-              />
-            )}
-
-            {/* Actions */}
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="button"
-                onClick={() => setSession(null)}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  backgroundColor: "#2563eb",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.85rem",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                Create Another Request
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate("/verifier")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  backgroundColor: "#1f2937",
-                  color: "#e2e8f0",
-                  border: "1px solid #374151",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
-              >
-                Back to Verifier Portal
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <form
-          onSubmit={handleCreateSession}
-          style={{
-            backgroundColor: "#111827",
-            borderRadius: "16px",
-            border: "1px solid #1f2937",
-            padding: "24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "18px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#60a5fa" }}>
-            <Sparkles size={20} />
-            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#ffffff" }}>
-              Configure OID4VP Presentation Session
-            </h3>
-          </div>
-
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "4px" }}>
-              Verification Purpose
+      {!session ? (
+        <form className="workspace-panel workspace-form verifier-request-form" onSubmit={(event) => void createSession(event)}>
+          <section className="verifier-form-section" aria-labelledby="request-context-title">
+            <div className="verifier-form-section__heading"><span className="workspace-icon-tile"><FileCheck2 size={19} aria-hidden="true" /></span><div><h2 id="request-context-title">Request context</h2><p>Tell the holder why the credential is needed.</p></div></div>
+            <label className="workspace-field" htmlFor="verification-purpose">
+              <span>Purpose</span>
+              <input id="verification-purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="For example, confirm current university affiliation" maxLength={240} required aria-describedby="purpose-help" />
+              <small id="purpose-help">This text is sent to the Identity Service and included in the holder request.</small>
             </label>
-            <input
-              type="text"
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "8px",
-                backgroundColor: "#0d131f",
-                border: "1px solid #1f2937",
-                color: "#ffffff",
-                fontSize: "0.85rem",
-              }}
-              required
-            />
-          </div>
+          </section>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "4px" }}>
-                Target Credential Schema
-              </label>
-              <select
-                value={credentialType}
-                onChange={(e) => setCredentialType(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  backgroundColor: "#0d131f",
-                  border: "1px solid #1f2937",
-                  color: "#ffffff",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <option value="UniversityAffiliationCredential">
-                  Higher Education Affiliation (W3C Profile)
-                </option>
-                <option value="QualifiedElectronicAttestationCredential">
-                  Qualified Electronic Attestation (QEAA)
-                </option>
-                <option value="NationalIdentityCredential">
-                  National Identity Attestation
-                </option>
-              </select>
-            </div>
+          <section className="verifier-form-section" aria-labelledby="credential-profile-title">
+            <div className="verifier-form-section__heading"><span className="workspace-icon-tile"><ShieldCheck size={19} aria-hidden="true" /></span><div><h2 id="credential-profile-title">Credential profile</h2><p>Only the profile currently supported by this verifier flow is available.</p></div></div>
+            <div className="verifier-credential-profile"><span className="verifier-credential-profile__icon"><FileCheck2 size={20} aria-hidden="true" /></span><span><strong>Higher education affiliation</strong><code>{credentialType}</code></span><span className="verifier-supported-label"><Check size={14} aria-hidden="true" /> Supported</span></div>
+          </section>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "4px" }}>
-                Session Lifetime (TTL)
-              </label>
-              <select
-                value={ttlSeconds}
-                onChange={(e) => setTtlSeconds(Number(e.target.value))}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  backgroundColor: "#0d131f",
-                  border: "1px solid #1f2937",
-                  color: "#ffffff",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <option value={300}>5 Minutes (300s)</option>
-                <option value={600}>10 Minutes (600s)</option>
-                <option value={1800}>30 Minutes (1800s)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Requested Claims Selector */}
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "6px" }}>
-              Requested Claims (Claim Minimization Policy)
-            </label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-              {availableClaims.map((c) => {
-                const selected = claims.includes(c);
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => toggleClaim(c)}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      border: `1px solid ${selected ? "#2563eb" : "#374151"}`,
-                      backgroundColor: selected ? "rgba(37, 99, 235, 0.2)" : "#0d131f",
-                      color: selected ? "#60a5fa" : "#94a3b8",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {selected ? "✓ " : "+ "}
-                    {c}
-                  </button>
-                );
+          <section className="verifier-form-section" aria-labelledby="requested-fields-title">
+            <div className="verifier-form-section__heading"><span className="workspace-icon-tile"><Info size={19} aria-hidden="true" /></span><div><h2 id="requested-fields-title">Credential fields to match</h2><p>Select only the fields relevant to this verification.</p></div><span className="verifier-selected-count">{claims.length} selected</span></div>
+            <div className="verifier-field-options">
+              {supportedFields.map((field) => {
+                const checked = claims.includes(field.id);
+                return <label className={"verifier-field-option" + (checked ? " is-selected" : "")} key={field.id}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleField(field.id)} />
+                  <span className="verifier-field-option__check" aria-hidden="true">{checked ? <Check size={14} /> : null}</span>
+                  <span className="verifier-field-option__copy"><strong>{field.label}</strong><small>{field.detail}</small></span>
+                </label>;
               })}
             </div>
-          </div>
+            <div className="workspace-notice verifier-disclosure-notice"><Info size={17} aria-hidden="true" /><p><strong>Credential matching is not selective disclosure.</strong> These fields define the DCQL match. The current Data Integrity flow may transmit the complete signed credential; it does not cryptographically disclose only the selected fields.</p></div>
+          </section>
 
-          <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-            <button
-              type="button"
-              onClick={() => setShowPreview(true)}
-              style={{
-                padding: "12px 18px",
-                borderRadius: "10px",
-                backgroundColor: "#1e293b",
-                color: "#94a3b8",
-                fontWeight: 600,
-                fontSize: "0.88rem",
-                border: "1px solid #334155",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Eye size={16} />
-              Preview Holder Consent Sheet
-            </button>
+          <section className="verifier-form-section verifier-duration-section" aria-labelledby="request-duration-title">
+            <div className="verifier-form-section__heading"><span className="workspace-icon-tile"><Clock3 size={19} aria-hidden="true" /></span><div><h2 id="request-duration-title">Request lifetime</h2><p>The request expires after the selected interval.</p></div></div>
+            <label className="workspace-field" htmlFor="request-lifetime"><span>Session duration</span><select id="request-lifetime" value={ttlSeconds} onChange={(event) => setTtlSeconds(Number(event.target.value))}><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={1800}>30 minutes</option></select></label>
+          </section>
 
-            <button
-              type="submit"
-              disabled={creatingSession}
-              style={{
-                flex: 1,
-                padding: "12px",
-                borderRadius: "10px",
-                backgroundColor: "#059669",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "0.95rem",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-              }}
-            >
-              {creatingSession ? (
-                <span>Generating OID4VP Session & Challenge Nonce...</span>
-              ) : (
-                <>
-                  <QrCode size={18} />
-                  Generate OID4VP Request & Live QR
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Holder Consent Sheet Preview Modal */}
-          {showPreview && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                backgroundColor: "rgba(0, 0, 0, 0.75)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 9999,
-                padding: "20px",
-              }}
-            >
-              <div
-                style={{
-                  backgroundColor: "#111827",
-                  borderRadius: "16px",
-                  border: "1px solid #374151",
-                  maxWidth: "520px",
-                  width: "100%",
-                  padding: "24px",
-                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "16px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#60a5fa" }}>
-                    <Eye size={20} />
-                    <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#ffffff" }}>
-                      Holder Consent Sheet Preview
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview(false)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#94a3b8",
-                      cursor: "pointer",
-                      padding: "4px",
-                    }}
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
-                    borderRadius: "8px",
-                    padding: "10px 14px",
-                    fontSize: "0.8rem",
-                    color: "#93c5fd",
-                  }}
-                >
-                  This is exactly what the wallet holder will review before choosing to disclose attributes or decline verification.
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: "#0d131f",
-                    borderRadius: "12px",
-                    border: "1px solid #1f2937",
-                    padding: "16px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
-                      Requesting Verifier
-                    </span>
-                    <div style={{ fontSize: "0.85rem", color: "#ffffff", fontWeight: 600 }}>
-                      Secure SSI Platform Verifier Service
-                    </div>
-                  </div>
-
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
-                      Verification Purpose
-                    </span>
-                    <div style={{ fontSize: "0.85rem", color: "#e2e8f0" }}>{purpose}</div>
-                  </div>
-
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
-                      Session Duration (TTL)
-                    </span>
-                    <div style={{ fontSize: "0.85rem", color: "#e2e8f0" }}>
-                      {Math.round(ttlSeconds / 60)} minutes
-                    </div>
-                  </div>
-
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase" }}>
-                      Requested Attributes ({claims.length})
-                    </span>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
-                      {claims.map((c) => (
-                        <span
-                          key={c}
-                          style={{
-                            padding: "4px 8px",
-                            borderRadius: "6px",
-                            backgroundColor: "rgba(37, 99, 235, 0.15)",
-                            color: "#93c5fd",
-                            fontSize: "0.75rem",
-                            border: "1px solid rgba(37, 99, 235, 0.3)",
-                          }}
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      borderTop: "1px solid #1f2937",
-                      paddingTop: "10px",
-                      fontSize: "0.75rem",
-                      color: "#94a3b8",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <Lock size={14} color="#34d399" />
-                    Holder may selectively disclose or redact each attribute before signing.
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPreview(false)}
-                  style={{
-                    padding: "10px",
-                    borderRadius: "8px",
-                    backgroundColor: "#2563eb",
-                    color: "#ffffff",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  Close Preview
-                </button>
-              </div>
+          <div className="verifier-request-footer">
+            <div className="verifier-request-footer__actions">
+              <button className="workspace-secondary-action" type="button" onClick={() => setShowSummary((current) => !current)} aria-expanded={showSummary}>{showSummary ? "Hide request summary" : "Review request summary"}</button>
+              <button className="workspace-primary-action" type="submit" disabled={creating || !purpose.trim() || claims.length === 0}>{creating ? <LoaderCircle className="verifier-spin" size={17} aria-hidden="true" /> : <QrCode size={17} aria-hidden="true" />}{creating ? "Creating request…" : "Create request"}{!creating && <ArrowRight size={16} aria-hidden="true" />}</button>
             </div>
-          )}
+            {showSummary && <div className="verifier-request-summary" role="region" aria-label="Request summary"><strong>Holder request summary</strong><dl><div><dt>Purpose</dt><dd>{purpose.trim() || "Enter a purpose to continue"}</dd></div><div><dt>Credential</dt><dd>{credentialType}</dd></div><div><dt>Matching fields</dt><dd>{claims.length ? claims.map((id) => supportedFields.find((field) => field.id === id)?.label || id).join(", ") : "None selected"}</dd></div><div><dt>Request expires</dt><dd>{Math.round(ttlSeconds / 60)} minutes after creation</dd></div></dl><p>The wallet displays its own consent screen. This summary does not predict its exact layout or change what the credential contains.</p></div>}
+          </div>
         </form>
+      ) : (
+        <section className="workspace-panel verifier-session-panel" aria-labelledby="session-title">
+          <header className="verifier-session-header">
+            <div className={"verifier-session-mark" + (verified ? " is-success" : rejected || expired ? " is-error" : "")}>{pending ? <QrCode size={23} aria-hidden="true" /> : verified ? <CheckCircle2 size={23} aria-hidden="true" /> : <XCircle size={23} aria-hidden="true" />}</div>
+            <div className="verifier-session-title"><p className="workspace-eyebrow">Presentation request</p><h2 id="session-title">{pending ? "Waiting for a holder" : verified ? "Presentation verified" : expired ? "Request expired" : "Presentation not accepted"}</h2><p>{pending ? "Scan with a compatible wallet. The service checks for a submitted presentation automatically." : verified ? "The Identity Service returned a verified outcome for this session." : expired ? "This session has expired. Create a new request to continue." : session.consentStatus === "REJECTED" ? "The holder declined to share the requested credential." : "The Identity Service did not accept the submitted presentation."}</p></div>
+            <span className={"verifier-session-status is-" + session.status.toLowerCase()} role="status">{session.status}</span>
+          </header>
+          {pending && <div className="verifier-session-body"><div className="verifier-session-qr"><QRCodeDisplay value={session.deepLinkUri || session.qrPayload} size={220} title="Scan with a compatible wallet" subtitle="OpenID4VP · DCQL" /></div><div className="verifier-session-details"><div className="verifier-session-instruction"><span className="verifier-pulse" aria-hidden="true" /><span>Waiting for a holder response</span><small aria-live="polite">Request status refreshes automatically.</small></div><dl><div><dt>Purpose</dt><dd>{session.purpose}</dd></div><div><dt>Credential</dt><dd>{session.requestedCredentialTypes.join(", ")}</dd></div><div><dt>Requested matching fields</dt><dd>{session.requestedFields.join(", ") || "No fields returned"}</dd></div><div><dt>Expires</dt><dd>{formatExpiry(session.expiresAt)}</dd></div><div><dt>Session reference</dt><dd><code>{session.sessionId}</code></dd></div></dl>{pollError && <p className="workspace-error verifier-poll-error" role="status"><RefreshCw size={16} aria-hidden="true" />{pollError}</p>}</div></div>}
+          {rejected && <div className="verifier-session-outcome is-rejected" role="status"><XCircle size={18} aria-hidden="true" /><div><strong>{session.consentStatus === "REJECTED" ? "Consent declined" : "Verification rejected"}</strong><p>{session.rejectionReason || (session.consentStatus === "REJECTED" ? "The holder chose not to share this credential." : "No further rejection detail was returned by the service.")}</p></div></div>}
+          {expired && <div className="verifier-session-outcome is-expired" role="status"><Clock3 size={18} aria-hidden="true" /><div><strong>Session is no longer active</strong><p>The session lifetime ended or the service returned an expired status.</p></div></div>}
+          {verified && session.verificationResult && <NinePointVerificationMatrix result={session.verificationResult} disclosedClaims={session.disclosedClaims} aiRiskScore={session.aiRiskScore} sessionId={session.sessionId} />}
+          {verified && !session.verificationResult && <div className="workspace-notice verifier-result-notice" role="status"><Info size={17} aria-hidden="true" /><p>The service marked this session verified but did not return detailed policy evidence.</p></div>}
+          <footer className="verifier-session-footer"><button className="workspace-primary-action" type="button" onClick={reset}><QrCode size={16} aria-hidden="true" /> Create another request</button><Link className="workspace-secondary-action" to="/verifier">Return to workspace</Link></footer>
+        </section>
       )}
-    </div>
+    </main>
   );
 };

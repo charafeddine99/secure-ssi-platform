@@ -9,10 +9,10 @@ import { AppRoutes } from "./routes/AppRoutes";
  * Wraps the SSI Platform with Declarative Routing, Authentication, and Web3 Wallet Providers.
  * Provides specialized modular architectures for:
  * - Public Experience (Landing, Ecosystem Registry, Architecture Docs)
- * - Holder Wallet (Mobile-first tactile credential cards, consent, selective disclosure)
- * - Issuer Console (W3C VC 2.0 issuance wizard, AI threat check, Bitstring revocation)
- * - Verifier Console (OID4VP request builder, 4-step cryptographic verification checklist)
- * - Guardian Network (EIP-4337 M-of-N social recovery quorum visualizer and signing)
+ * - Holder Wallet (prototype credential display and consent flows; selective disclosure is not implemented)
+ * - Issuer Console (OID4VCI and credential-status prototype workflows)
+ * - Verifier Console (OID4VP request builder and backend policy-result view)
+ * - Guardian recovery workflow prototype (independent DID signatures and EIP-4337 account abstraction are not implied)
  * - Admin Cockpit (Microservice telemetry matrix, smart contracts, audit trail)
  */
 export default function App() {

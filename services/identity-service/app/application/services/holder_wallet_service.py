@@ -180,6 +180,19 @@ class HolderWalletService:
             )
         return wallet
 
+    def get_owned_by_holder_did(
+        self,
+        holder_did: str,
+        *,
+        owner_user_id: str,
+    ) -> HolderWallet:
+        wallet = self._wallets.get_by_holder_did(holder_did)
+        if wallet is None or wallet.owner_user_id != owner_user_id:
+            raise HolderWalletNotFoundError(
+                "The requested holder wallet was not found."
+            )
+        return wallet
+
     def require_owned_active(
         self,
         wallet_id: str,

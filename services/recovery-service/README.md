@@ -10,8 +10,16 @@ reconciliation. Once authorized, it calls the Identity Service's existing
 `ManagedKeyService` through a short-lived request-bound service grant.
 
 The Shamir secret authorizes one recovery workflow; it is never a KMS/private
-key. The prototype stores encrypted share envelopes centrally and does not yet
-verify an independent Guardian DID signature.
+key. Every approval and rejection requires a short-lived EdDSA JWT signed by
+the registered Guardian Ed25519 `did:key` verification method. The Recovery
+Service verifies the signature and binds the issuer, Guardian assignment,
+audience, request, session, wallet, decision, and challenge before persisting
+the proof digest. The Identity Service creates this proof with the
+authenticated Guardian account's managed key. This is cryptographic
+DID-bound proof, but the signing key remains server-managed: it is not an
+independent Guardian-device signature or self-custody. Unsupported DID methods
+fail closed; `did:web` signing is not supported. Encrypted share envelopes
+remain centrally stored.
 
 ## Run locally
 

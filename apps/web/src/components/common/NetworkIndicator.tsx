@@ -62,7 +62,7 @@ export const NetworkIndicator: React.FC = () => {
 
       {/* Blockchain Indicator */}
       <div
-        title={isChainOnline ? `Hardhat EVM (Block #${blockchain?.block_number})` : "Hardhat Node Local Testnet"}
+        title={isChainOnline ? `Optional EVM network (${blockchain?.network || "configured"})` : "Optional EVM anchoring is offline or unavailable; credential verification does not depend on it."}
         style={{
           display: "flex",
           alignItems: "center",
@@ -84,7 +84,7 @@ export const NetworkIndicator: React.FC = () => {
           }}
         />
         <span style={{ fontWeight: 500 }}>
-          {isChainOnline ? `EVM #${blockchain?.block_number}` : "EVM Testnet"}
+          {isChainOnline ? `EVM #${blockchain?.currentBlockNumber ?? blockchain?.block_number ?? "online"}` : "EVM optional · offline"}
         </span>
       </div>
     </div>

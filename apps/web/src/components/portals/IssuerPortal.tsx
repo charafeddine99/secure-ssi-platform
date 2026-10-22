@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { useWallet } from "../../context/WalletContext";
-import { issueCredential, revokeCredential, fetchCredentials } from "../../services/api";
+import { createOid4vciOffer, revokeCredential, fetchCredentials, type CredentialStatus, type Oid4vciOffer } from "../../services/api";
 
 export type IssuerScreen = 
   | "DASHBOARD" | "TEMPLATES" | "ISSUE" | "ISSUED" | "REVOCATION" | "ORGANIZATION";
@@ -18,43 +17,42 @@ interface CredentialTemplate {
 const TEMPLATES: CredentialTemplate[] = [
   {
     id: "tmpl-natid-v2",
-    name: "eIDAS Ulusal Dijital Kimlik Belgesi (High LoA)",
+    name: "[SYNTHETIC DEMO] Identity Credential Example",
     type: "NationalIdCredential",
     category: "IDENTITY",
-    schemaVersion: "W3C VC 2.0 / eIDAS Annex I",
+    schemaVersion: "Local profile example; no eIDAS qualification",
     defaultClaims: {
-      "Adı Soyadı": "Charaf Eddine Bessanane",
-      "Ulusal Kimlik No": "TR-10293847561",
-      "Uyruk": "T.C. & AB Uygunluk",
-      "Doğum Tarihi": "1999-04-12",
-      "Doğum Yeri": "İstanbul",
-      "Güven Seviyesi (LoA)": "eIDAS High (Qualified)"
+      "Example name": "Synthetic Holder",
+      "Example identifier": "SYNTHETIC-0001",
+      "Example nationality": "Not a real identity",
+      "Example birth date": "2000-01-01",
+      "Assurance level": "Not assessed"
     }
   },
   {
     id: "tmpl-qeaa-v2",
-    name: "Nitelikli Sistem Mimarı Nitelik Tasdiki (QEAA)",
+    name: "[SYNTHETIC DEMO] Qualification Example",
     type: "QualifiedElectronicAttestationCredential",
     category: "QUALIFIED",
-    schemaVersion: "W3C VC 2.0 / eIDAS Annex V",
+    schemaVersion: "Local profile example; not a qualified attestation",
     defaultClaims: {
-      "Sertifika Sahibi": "Charaf Eddine Bessanane",
-      "Unvan": "Senior Distributed Systems Architect",
-      "Yetki Kapsamı": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine",
-      "Akreditasyon No": "EU-QEAA-9981-SEC"
+      "Example subject": "Synthetic Holder",
+      "Example title": "Prototype systems engineer",
+      "Example scope": "Local SSI demonstration",
+      "Example reference": "DEMO-QEAA-0001"
     }
   },
   {
     id: "tmpl-aml-kyc-v2",
-    name: "Kurumsal Bankacılık AML / KYC Tasdiki",
+    name: "[SYNTHETIC DEMO] AML/KYC Example",
     type: "BankKycCredential",
     category: "FINANCE",
-    schemaVersion: "W3C VC 2.0 / FATF Compliant",
+    schemaVersion: "Local profile example; no compliance assessment",
     defaultClaims: {
-      "Müşteri Adı": "Charaf Eddine Bessanane",
-      "KYC Seviyesi": "Tier 3 (Enhanced Due Diligence)",
-      "AML Risk Profili": "Low Risk / Compliant",
-      "FATF Raporlama": "Verified Clean"
+      "Example customer": "Synthetic Holder",
+      "KYC level": "Not assessed",
+      "AML risk profile": "Not evaluated",
+      "Compliance result": "Not evaluated"
     }
   }
 ];
@@ -64,9 +62,8 @@ interface IssuedItem {
   recipientDid: string;
   templateName: string;
   issuedAt: string;
-  status: "ACTIVE" | "REVOKED";
-  statusListIndex: number;
-  txHash: string;
+  status: CredentialStatus;
+  statusListIndex?: number;
 }
 
 export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (screen: IssuerScreen) => void }> = ({
@@ -74,43 +71,38 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
   onNavigate
 }) => {
   const { user } = useAuth();
-  const { account } = useWallet();
 
   const [issuedList, setIssuedList] = useState<IssuedItem[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<CredentialTemplate>(TEMPLATES[0]);
   
   // Issue wizard state
-  const [recipientDid, setRecipientDid] = useState<string>(user?.did || "did:key:z6MkuBesnaSecureHolder2026Ed25519");
+  const [recipientDid, setRecipientDid] = useState<string>(user?.did || "");
   const [formClaims, setFormClaims] = useState<Record<string, string>>(TEMPLATES[0].defaultClaims);
   const [isIssuing, setIsIssuing] = useState(false);
-  const [issueResult, setIssueResult] = useState<{
-    offerUri: string;
-    credentialId: string;
-    statusListIndex: number;
-    txHash: string;
-  } | null>(null);
+  const [issueResult, setIssueResult] = useState<Oid4vciOffer | null>(null);
+  const [issueError, setIssueError] = useState<string | null>(null);
 
   // Load real issued credentials from database
   useEffect(() => {
     fetchCredentials().then((creds) => {
       if (creds && creds.length > 0) {
-        setIssuedList(creds.map((c, idx) => ({
+        setIssuedList(creds.map((c) => ({
           id: c.id,
           recipientDid: c.user_did,
           templateName: c.title,
           issuedAt: c.issued_date,
           status: c.status,
-          statusListIndex: (idx + 1) * 64,
-          txHash: c.proof_value ? `0x${c.proof_value.slice(0, 10)}...` : "0x91a5...3451"
+          statusListIndex: c.status_list_index
         })));
       }
-    });
+    }).catch(() => setIssuedList([]));
   }, []);
 
   const handleSelectTemplate = (tmpl: CredentialTemplate) => {
     setSelectedTemplate(tmpl);
     setFormClaims(tmpl.defaultClaims);
     setIssueResult(null);
+    setIssueError(null);
   };
 
   const handleClaimChange = (key: string, value: string) => {
@@ -119,44 +111,19 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
 
   const handleExecuteIssuance = async () => {
     setIsIssuing(true);
-    const targetWallet = account || user?.walletAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-
-    // Call real backend API
-    const res = await issueCredential({
-      wallet_address: targetWallet,
-      did_id: recipientDid,
-      credential_type: selectedTemplate.type,
-      title: selectedTemplate.name,
-      category: selectedTemplate.category,
-      claims: formClaims
-    });
-
-    if (res.success && res.credential) {
-      const newIndex = Math.floor(Math.random() * 1000) + 600;
-      const tx = res.txHash || `0x${Math.random().toString(16).substring(2, 10)}...`;
-      const offer = `openid-credential-offer://?credential_issuer=http://localhost:8000/api/v1/identity&credential_definition={"type":["${selectedTemplate.type}"]}&grants={"urn:ietf:params:oauth:grant-type:pre-authorized_code":{"pre-authorized_code":"pac_${Date.now()}"}}`;
-
-      const newItem: IssuedItem = {
-        id: (typeof res.credential.id === "string" ? res.credential.id : undefined) || `urn:uuid:${Date.now()}`,
-        recipientDid,
-        templateName: selectedTemplate.name,
-        issuedAt: new Date().toISOString().replace("T", " ").substring(0, 16),
-        status: "ACTIVE",
-        statusListIndex: newIndex,
-        txHash: tx
-      };
-
-      setIssuedList(prev => [newItem, ...prev]);
-      setIssueResult({
-        offerUri: offer,
-        credentialId: newItem.id,
-        statusListIndex: newIndex,
-        txHash: tx
+    setIssueError(null);
+    try {
+      const offer = await createOid4vciOffer({
+        credentialConfigurationIds: [selectedTemplate.type],
+        subjectData: { ...formClaims, holder_did: recipientDid },
+        ttlSeconds: 1800
       });
-    } else {
-      alert(`İhraç hatası: ${res.error || "Bilinmeyen hata"}`);
+      setIssueResult(offer);
+    } catch (error: unknown) {
+      setIssueError(error instanceof Error ? error.message : "OID4VCI offer creation failed.");
+    } finally {
+      setIsIssuing(false);
     }
-    setIsIssuing(false);
   };
 
   const handleRevoke = async (id: string) => {
@@ -169,13 +136,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
         return item;
       }));
     } else {
-      // Optimistic update
-      setIssuedList(prev => prev.map(item => {
-        if (item.id === id) {
-          return { ...item, status: "REVOKED" };
-        }
-        return item;
-      }));
+      alert("Credential revocation failed; the displayed status was not changed.");
     }
   };
 
@@ -195,13 +156,13 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
           }}>
             <div>
               <div style={{ fontSize: "12px", color: "var(--color-primary)", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Güvenilir İhraççı Portalı (Credential Issuer — OID4VCI 1.0)
+                Local prototype issuer portal · synthetic demonstration data
               </div>
               <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>
-                Yetkili Kimlik ve Belge İhraç Merkezi
+                Credential offer workspace
               </h2>
               <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                Issuer DID: <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>did:web:trust.eudi.europa.eu</span>
+                Issuer identity is provided by the configured local service.
               </p>
             </div>
             <button
@@ -231,13 +192,13 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Aktif İhraç Şablonu</div>
               <div style={{ fontSize: "24px", fontWeight: "800", color: "#60a5fa", marginTop: "6px" }}>{TEMPLATES.length} Adet</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>eIDAS Qualified Schemas</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Synthetic local examples · not accredited</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
               <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>İptal Listesi Durumu</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "6px" }}>Bitstring 2021</div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>RevocationRegistry.sol Anchor</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "#10b981", marginTop: "6px" }}>Bitstring Status List 1.0</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Status is backend-managed; anchoring is optional</div>
             </div>
 
             <div style={{ padding: "16px", backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "8px" }}>
@@ -277,8 +238,8 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                       fontWeight: "700",
                       padding: "2px 8px",
                       borderRadius: "4px",
-                      backgroundColor: item.status === "ACTIVE" ? "rgba(22, 163, 74, 0.15)" : "rgba(220, 38, 38, 0.15)",
-                      color: item.status === "ACTIVE" ? "#4ade80" : "#ef4444"
+                      backgroundColor: item.status === "ACTIVE" ? "rgba(22, 163, 74, 0.15)" : item.status === "REVOKED" ? "rgba(220, 38, 38, 0.15)" : "rgba(245, 158, 11, 0.12)",
+                      color: item.status === "ACTIVE" ? "#4ade80" : item.status === "REVOKED" ? "#ef4444" : "#fbbf24"
                     }}>
                       {item.status}
                     </span>
@@ -298,7 +259,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
             W3C VC 2.0 İhraç Şablon Kataloğu
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Avrupa Dijital Kimlik Çerçevesi (EUDI) ve eIDAS regülasyonu ile uyumlu resmi veri şemaları.
+            Bu katalog sentetik proje örnekleri içerir; resmi EUDI/eIDAS şeması veya akreditasyon iddiası yoktur.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
@@ -366,7 +327,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
             OID4VCI 1.0 Standart İhraç Sihirbazı
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            W3C Verifiable Credentials Data Model 2.0 ve Data Integrity Ed25519Signature2020 ile imzalanır.
+            Yapılandırılmış ihraç servisi W3C VC 2.0 profilini ve eddsa-jcs-2022 Data Integrity imzasını kullanır.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
@@ -448,7 +409,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
 
               <button
                 onClick={handleExecuteIssuance}
-                disabled={isIssuing}
+                disabled={isIssuing || !recipientDid.trim()}
                 style={{
                   padding: "12px 24px",
                   backgroundColor: "var(--color-primary)",
@@ -460,7 +421,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                   cursor: isIssuing ? "not-allowed" : "pointer"
                 }}
               >
-                {isIssuing ? "Kriptografik İmzalanıyor & Blokzincire Anchor Ediliyor..." : "✍️ İmzala ve Belge Teklifi Üret (OID4VCI)"}
+                {isIssuing ? "OID4VCI offer is being created..." : "Create OID4VCI Credential Offer"}
               </button>
             </div>
 
@@ -470,40 +431,42 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                 OID4VCI Çıktısı & Teklif Detayı
               </h4>
 
-              {issueResult ? (
+              {issueError ? (
+                <div role="alert" style={{ color: "#f87171", fontSize: "12px" }}>{issueError}</div>
+              ) : issueResult ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <div style={{
                     padding: "10px 14px",
-                    backgroundColor: "rgba(22, 163, 74, 0.15)",
-                    border: "1px solid rgba(22, 163, 74, 0.3)",
+                    backgroundColor: "rgba(245, 158, 11, 0.12)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
                     borderRadius: "6px",
-                    color: "#4ade80",
+                    color: "#fbbf24",
                     fontSize: "12px",
                     fontWeight: "600"
                   }}>
-                    ✓ Belge Başarıyla İmzalandı & StatusList2021'e Yazıldı
+                    Offer created. No credential has been issued until a holder claims it.
                   </div>
 
                   <div style={{ fontSize: "12px" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Credential ID:</span>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", wordBreak: "break-all" }}>{issueResult.credentialId}</div>
+                    <span style={{ color: "var(--text-muted)" }}>Offer ID:</span>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", wordBreak: "break-all" }}>{issueResult.offerId}</div>
                   </div>
 
                   <div style={{ fontSize: "12px" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Bitstring Status Slot:</span>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#10b981" }}>#{issueResult.statusListIndex} (Active)</div>
+                    <span style={{ color: "var(--text-muted)" }}>Offer status:</span>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#fbbf24" }}>{issueResult.status}</div>
                   </div>
 
                   <div style={{ fontSize: "12px" }}>
-                    <span style={{ color: "var(--text-muted)" }}>On-Chain Hash Anchor:</span>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#a855f7" }}>{issueResult.txHash}</div>
+                    <span style={{ color: "var(--text-muted)" }}>Credential configuration:</span>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>{issueResult.credentialConfigurationIds.join(", ")}</div>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>OID4VCI Credential Offer URI:</span>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>OID4VCI deep link:</span>
                     <textarea
                       readOnly
-                      value={issueResult.offerUri}
+                      value={issueResult.deepLinkUri}
                       rows={4}
                       style={{
                         width: "100%",
@@ -521,7 +484,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                 </div>
               ) : (
                 <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.6" }}>
-                  Formu doldurup "İmzala" butonuna bastığınızda, W3C Data Integrity standartlarında Ed25519 imzası atılacak, Bitstring Status List tahsisi yapılacak ve alıcı cüzdanın okuyabilmesi için OID4VCI teklif bağlantısı üretilecektir.
+                  This local prototype creates an OID4VCI offer. A signed credential and status-list entry exist only after the holder claims it successfully.
                 </p>
               )}
             </div>
@@ -556,15 +519,15 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                   <td style={{ padding: "10px", fontWeight: "600", color: "var(--text-main)" }}>{item.templateName}</td>
                   <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#60a5fa" }}>{item.recipientDid.slice(0, 20)}...</td>
                   <td style={{ padding: "10px", color: "var(--text-muted)" }}>{item.issuedAt}</td>
-                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>#{item.statusListIndex}</td>
+                  <td style={{ padding: "10px", fontFamily: "var(--font-mono)", color: "#10b981" }}>{item.statusListIndex != null ? `#${item.statusListIndex}` : "—"}</td>
                   <td style={{ padding: "10px" }}>
                     <span style={{
                       fontSize: "10px",
                       fontWeight: "700",
                       padding: "2px 8px",
                       borderRadius: "4px",
-                      backgroundColor: item.status === "ACTIVE" ? "rgba(22, 163, 74, 0.15)" : "rgba(220, 38, 38, 0.15)",
-                      color: item.status === "ACTIVE" ? "#4ade80" : "#ef4444"
+                      backgroundColor: item.status === "ACTIVE" ? "rgba(22, 163, 74, 0.15)" : item.status === "REVOKED" ? "rgba(220, 38, 38, 0.15)" : "rgba(245, 158, 11, 0.12)",
+                      color: item.status === "ACTIVE" ? "#4ade80" : item.status === "REVOKED" ? "#ef4444" : "#fbbf24"
                     }}>
                       {item.status}
                     </span>
@@ -601,10 +564,10 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
       {activeScreen === "REVOCATION" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            W3C Bitstring Status List 2021 Yönetimi
+            W3C Bitstring Status List v1.0 Management
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Gizliliği koruyan, O(1) maliyetli bit dizisi iptal kontrol mekanizması ve blokzincir kök hash eşitlemesi.
+            Servis tarafından sunulan Bitstring Status List verisi. Bu gömülü örnek ekran canlı liste veya zincir üstü kök kanıtı sağlamaz.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
@@ -613,10 +576,10 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                 Status List Meta Verisi
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px" }}>
-                <div><span style={{ color: "var(--text-muted)" }}>URI:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>/api/v1/identity/status-lists/status-list-2026</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>Boyut:</span> <span style={{ fontWeight: "600", color: "var(--text-main)" }}>131,072 Bit (16 KB GZIP)</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>Kök Hash (SHA-256):</span> <span style={{ fontFamily: "var(--font-mono)", color: "#10b981" }}>0xa4b190f82...c31e</span></div>
-                <div><span style={{ color: "var(--text-muted)" }}>On-Chain Sözleşme:</span> <span style={{ fontFamily: "var(--font-mono)", color: "#a855f7" }}>RevocationRegistry.sol</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>URI:</span> <span style={{ color: "var(--text-muted)" }}>Not loaded in this embedded demo</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Boyut:</span> <span style={{ color: "var(--text-muted)" }}>Not loaded from service</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Kök Hash:</span> <span style={{ color: "var(--text-muted)" }}>Bu örnek görünümde yüklenmiyor</span></div>
+                <div><span style={{ color: "var(--text-muted)" }}>Zincir üstü kanıt:</span> <span style={{ color: "var(--text-muted)" }}>Gerçek makbuz olmadan gösterilmez</span></div>
               </div>
             </div>
 
@@ -639,7 +602,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
                   }}
                 />
                 <button
-                  onClick={() => alert("Bitstring Status List güncellendi ve on-chain kök hash senkronize edildi.")}
+                  onClick={() => alert("Demo görünüm: liste değiştirilmedi. Gerçek iptal işlemi için bağlı Status List sayfasını kullanın.")}
                   style={{
                     padding: "8px 16px",
                     backgroundColor: "var(--color-danger)",
@@ -663,24 +626,24 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
       {activeScreen === "ORGANIZATION" && (
         <div style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "10px", padding: "24px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", marginBottom: "8px" }}>
-            Kurumsal Kimlik & eIDAS Trust Anchor Profili
+            Yapılandırılmış Demo İhraççı Profili
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "20px" }}>
-            Belge imzalama yetkisine sahip kurumun yasal akreditasyon ve açık anahtar verileri.
+            Bu örnek alan yasal akreditasyon veya dışarıdan doğrulanmış trust anchor göstermez.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "600px", fontSize: "13px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-default)", paddingBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Kurum Unvanı:</span>
-              <span style={{ fontWeight: "600", color: "var(--text-main)" }}>European Digital Identity Trust Authority</span>
+              <span style={{ fontWeight: "600", color: "var(--text-main)" }}>Configured Demo Issuer</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-default)", paddingBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Issuer DID:</span>
-              <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>did:web:trust.eudi.europa.eu</span>
+              <span style={{ fontFamily: "var(--font-mono)", color: "#60a5fa" }}>{user?.did || "did:web:issuer.example"}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-default)", paddingBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Akreditasyon:</span>
-              <span style={{ color: "#10b981", fontWeight: "600" }}>eIDAS Qualified Trust Service Provider (QTSP)</span>
+              <span style={{ color: "var(--text-muted)", fontWeight: "600" }}>Not independently accredited</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-default)", paddingBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>İmzalama Kripto Paketi:</span>
@@ -688,7 +651,7 @@ export const IssuerPortal: React.FC<{ activeScreen: IssuerScreen; onNavigate: (s
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-default)", paddingBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Blokzincir Registry:</span>
-              <span style={{ fontFamily: "var(--font-mono)", color: "#a855f7" }}>DIDRegistry.sol & RevocationRegistry.sol</span>
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>Optional; no deployment assumed</span>
             </div>
           </div>
         </div>

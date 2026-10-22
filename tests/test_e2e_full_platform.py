@@ -139,6 +139,8 @@ def test_full_ssi_ai_blockchain_recovery_pipeline():
     attack_eval = ai_engine.evaluate(attack_req)
     assert attack_eval.risk_level == "CRITICAL"
     assert attack_eval.recommended_action == "QUARANTINE_ACCOUNT"
+    if attack_eval.recommended_action == "QUARANTINE_ACCOUNT":
+        ai_engine.quarantine("did:key:z6MkuBesnaStudent2026", "; ".join(attack_eval.reasons))
     assert ai_engine.is_quarantined("did:key:z6MkuBesnaStudent2026") is True
 
     # ADIM 7: Acil Kurtarma ve 3/5 Guardian Quorum Onayı
