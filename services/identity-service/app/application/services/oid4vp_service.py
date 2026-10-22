@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import logging
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,35 @@ from app.application.services.trust_registry_service import TrustRegistryService
 from app.domain.verification_policy import PolicyCheckName, PolicyCheckResult
 from app.application.services.verification_policy_service import VerificationPolicyEvaluator
 
+logger = logging.getLogger(__name__)
+
+
+def _read_quarantine_status(
+    quarantine_service: Any,
+    subject_id: str | None,
+) -> tuple[bool | None, str | None]:
+    """Return an indeterminate state instead of treating lookup errors as clear."""
+    if not subject_id:
+        return False, None
+    if quarantine_service is None:
+        return None, "QUARANTINE_LOOKUP_UNAVAILABLE"
+
+    lookup = getattr(quarantine_service, "is_quarantined", None)
+    if not callable(lookup):
+        return None, "QUARANTINE_LOOKUP_UNAVAILABLE"
+    try:
+        quarantined = lookup(subject_id)
+    except Exception as error:
+        logger.warning(
+            "Quarantine status lookup failed (%s)", type(error).__name__
+        )
+        return None, f"QUARANTINE_LOOKUP_FAILED:{type(error).__name__}"
+    if type(quarantined) is not bool:
+        logger.warning("Quarantine status lookup returned an invalid result")
+        return None, "QUARANTINE_LOOKUP_INVALID_RESULT"
+    return quarantined, None
+
+
 class Oid4vpService:
     def __init__(
         self,
@@ -66,15 +96,7 @@ class Oid4vpService:
         self._audits = audit_repository
         self._verifier = verifier_presentation_service
         self._status_lists = status_list_service
-        if trust_registry_service is not None:
-            self._trust_registry = trust_registry_service
-        else:
-            from app.infrastructure.persistence.trust_registry_repository import (
-                InMemoryTrustRegistryRepository,
-            )
-            in_memory_repo = InMemoryTrustRegistryRepository()
-            self._trust_registry = TrustRegistryService(repository=in_memory_repo)
-            self._trust_registry.seed_default_demo_issuers()
+        self._trust_registry = trust_registry_service
         self._base_verifier_url = base_verifier_url.rstrip("/")
         if did_resolver is not None:
             self._did_resolver = did_resolver
@@ -90,6 +112,7 @@ class Oid4vpService:
     def create_session(
         self,
         *,
+        owner_user_id: str | None = None,
         verifier_did: str = "did:web:verifier.platform.eudi",
         client_id: str = "https://verifier.platform.eudi/auth",
         purpose: str = "Verification of digital identity and qualifications",
@@ -110,16 +133,8 @@ class Oid4vpService:
             DcqlQuery.from_dict(dcql_query)
             canonical_dcql = dict(dcql_query)
         else:
-            types_to_query = list(requested_credential_types)
-            if any(f in requested_fields for f in ("degree", "gpa")):
-                if "UniversityAffiliationCredential" not in types_to_query:
-                    types_to_query.append("UniversityAffiliationCredential")
-            if any(f in requested_fields for f in ("Sertifika Sahibi", "Unvan", "Yetki Kapsami")):
-                if "UniversityAffiliationCredential" not in types_to_query:
-                    types_to_query.append("UniversityAffiliationCredential")
-
             canonical_dcql = build_dcql_query_from_types_and_fields(
-                requested_types=types_to_query,
+                requested_types=requested_credential_types,
                 requested_fields=requested_fields,
             ).to_dict()
 
@@ -161,6 +176,7 @@ class Oid4vpService:
             id=new_object_id(),
             session_id=session_id,
             verifier_did=verifier_did,
+            owner_user_id=owner_user_id,
             client_id=client_id,
             response_uri=response_uri,
             nonce=nonce,
@@ -179,6 +195,33 @@ class Oid4vpService:
         session = self._sessions.get_by_session_id(session_id)
         if session is None:
             raise SessionNotFoundError(f"Verification session {session_id} not found.")
+        now = datetime.now(timezone.utc)
+        if (
+            session.status == VerificationSessionStatus.PENDING
+            and session.is_expired(now)
+        ):
+            raise SessionExpiredError(f"Verification session {session_id} has expired.")
+        return session
+
+    def get_session_for_owner(
+        self,
+        session_id: str,
+        *,
+        owner_user_id: str,
+    ) -> VerificationSession:
+        """Return verifier-private session state only to its creator.
+
+        Existing records without an owner are deliberately inaccessible through
+        this method; callers must use the Holder request view for protocol input.
+        """
+        session = self._sessions.get_by_session_id(session_id)
+        if (
+            session is None
+            or session.owner_user_id is None
+            or session.owner_user_id != owner_user_id
+        ):
+            # Conceal both existence and ownership from non-owners.
+            raise SessionNotFoundError("Verification session not found.")
         now = datetime.now(timezone.utc)
         if session.status == VerificationSessionStatus.PENDING and session.is_expired(now):
             raise SessionExpiredError(f"Verification session {session_id} has expired.")
@@ -341,7 +384,9 @@ class Oid4vpService:
             expected_version=session.version,
         )
 
-        # Append audit events (Data minimization: counts and claim names only, NO raw claim values)
+        # Keep consent evidence distinct from credential disclosure. This profile
+        # sends a complete signed credential and does not provide claim-level
+        # cryptographic selective disclosure.
         self._audits.append(
             AuditEvent(
                 id=new_object_id(),
@@ -355,9 +400,10 @@ class Oid4vpService:
                     "holder_did": holder_did,
                     "purpose": session.purpose,
                     "approved_items_count": str(len(appr_creds)),
-                    "approved_claims_count": str(len(appr_claims_map)),
-                    "approved_claims": ",".join(appr_claims_map.keys()),
-                    "rejected_claims": ",".join(rej_claims),
+                    "approved_field_count": str(len(appr_claims_map)),
+                    "rejected_field_count": str(len(rej_claims)),
+                    "disclosure_profile": "FULL_SIGNED_VC",
+                    "selective_disclosure_supported": "false",
                     "protocol": "OID4VP-1.0",
                 },
                 created_at=now,
@@ -375,9 +421,10 @@ class Oid4vpService:
                 metadata={
                     "session_id": session.session_id,
                     "verifier_did": session.verifier_did,
-                    "disclosed_claims_count": str(len(appr_claims_map)),
-                    "disclosed_fields": ",".join(appr_claims_map.keys()),
-                    "hidden_fields_count": str(len(rej_claims)),
+                    "approved_field_count": str(len(appr_claims_map)),
+                    "rejected_field_count": str(len(rej_claims)),
+                    "disclosure_profile": "FULL_SIGNED_VC",
+                    "selective_disclosure_supported": "false",
                     "purpose": session.purpose,
                     "protocol": "OID4VP-1.0",
                 },
@@ -595,6 +642,129 @@ class Oid4vpService:
 
         return True, None
 
+    def _verify_status_list_credential(
+        self,
+        *,
+        status_doc: Any,
+        expected_status_list_url: str,
+        expected_issuer: str,
+        expected_purpose: str,
+        expected_list_length: int,
+        verified_at: datetime,
+    ) -> tuple[bool, str | None, str | None]:
+        from collections.abc import Mapping
+        from pydantic import ValidationError
+        from app.schemas.status_list_api import (
+            BitstringStatusListCredentialResponse,
+        )
+
+        if not isinstance(status_doc, Mapping):
+            return False, "STATUS_LIST_CREDENTIAL_MALFORMED", None
+
+        raw_proof = status_doc.get("proof")
+        if not isinstance(raw_proof, Mapping):
+            return False, "STATUS_LIST_PROOF_MISSING", None
+        if raw_proof.get("type") != "DataIntegrityProof":
+            return False, "STATUS_LIST_PROOF_UNSUPPORTED_TYPE", None
+
+        try:
+            credential = BitstringStatusListCredentialResponse.model_validate(
+                dict(status_doc)
+            )
+        except ValidationError:
+            return False, "STATUS_LIST_CREDENTIAL_MALFORMED", None
+
+        if (
+            "VerifiableCredential" not in credential.type
+            or "BitstringStatusListCredential" not in credential.type
+        ):
+            return False, "STATUS_LIST_CREDENTIAL_UNSUPPORTED_TYPE", None
+        if credential.issuer != expected_issuer:
+            return False, "STATUS_LIST_ISSUER_MISMATCH_WITH_PUBLICATION", None
+        if credential.id != expected_status_list_url:
+            return False, "STATUS_LIST_CREDENTIAL_ID_MISMATCH", None
+        if credential.credentialSubject.statusPurpose != expected_purpose:
+            return False, "STATUS_LIST_PURPOSE_MISMATCH", None
+
+        proof_service = self._verifier._credentials._proofs
+        try:
+            proof_valid, proof_error = proof_service.verify_data_integrity_document(
+                credential.model_dump(by_alias=True),
+                verified_at=verified_at,
+            )
+        except Exception as error:
+            logger.warning(
+                "Status-list proof verification failed (%s)",
+                type(error).__name__,
+            )
+            return (
+                False,
+                f"STATUS_LIST_PROOF_VERIFICATION_ERROR:{type(error).__name__}",
+                None,
+            )
+        if not proof_valid:
+            return False, f"STATUS_LIST_PROOF_INVALID:{proof_error}", None
+
+        if self._trust_registry is None:
+            return False, "STATUS_LIST_TRUST_REGISTRY_UNCONFIGURED", None
+        try:
+            trust_result = self._trust_registry.evaluate_issuer_trust(
+                issuer_did=credential.issuer,
+                at_time=verified_at,
+            )
+        except Exception as error:
+            logger.warning(
+                "Status-list Trust Registry lookup failed (%s)",
+                type(error).__name__,
+            )
+            return (
+                False,
+                f"STATUS_LIST_TRUST_REGISTRY_ERROR:{type(error).__name__}",
+                None,
+            )
+        trust_is_valid = getattr(trust_result, "is_trusted", None)
+        if type(trust_is_valid) is not bool:
+            logger.warning(
+                "Status-list Trust Registry returned an invalid result"
+            )
+            return False, "STATUS_LIST_TRUST_REGISTRY_INVALID_RESULT", None
+        if not trust_is_valid:
+            trust_reason = getattr(trust_result, "reason", None)
+            return (
+                False,
+                "STATUS_LIST_ISSUER_NOT_TRUSTED:"
+                f"{trust_reason if isinstance(trust_reason, str) else 'UNTRUSTED'}",
+                None,
+            )
+
+        try:
+            valid_from = proof_service.validator._parse_timestamp(
+                credential.validFrom
+            )
+        except Exception:
+            return False, "STATUS_LIST_VALID_FROM_INVALID", None
+        if valid_from > verified_at:
+            return False, "STATUS_LIST_NOT_YET_VALID", None
+
+        try:
+            from app.infrastructure.status_list_document_generator import (
+                decompress_status_list,
+            )
+
+            decoded_list = decompress_status_list(
+                credential.credentialSubject.encodedList
+            )
+        except Exception as error:
+            return (
+                False,
+                f"STATUS_LIST_ENCODED_LIST_INVALID:{type(error).__name__}",
+                None,
+            )
+        if len(decoded_list) * 8 != expected_list_length:
+            return False, "STATUS_LIST_LENGTH_MISMATCH", None
+
+        return True, None, credential.credentialSubject.encodedList
+
     def create_presentation_for_session(
         self,
         *,
@@ -703,7 +873,7 @@ class Oid4vpService:
         session_id: str,
         vp_token: dict[str, Any],
         disclosed_claims: dict[str, Any] | None = None,
-        ai_risk_score: int | None = 15,
+        ai_risk_score: int | None = None,
         client_ip: str | None = None,
         user_agent: str | None = None,
         device_fingerprint: str | None = None,
@@ -774,16 +944,66 @@ class Oid4vpService:
         trust_record_id_val = None
 
         if self._trust_registry is not None:
-            trust_result = self._trust_registry.evaluate_issuer_trust(
-                issuer_did=issuer_did,
-                credential_types=types_list,
-                at_time=now,
-            )
-            issuer_trusted = trust_result.is_trusted
-            trust_status_val = trust_result.status.value if trust_result.status else "UNKNOWN"
-            trust_reason_val = trust_result.reason
-            trust_source_val = trust_result.trust_source or "LOCAL_TRUST_REGISTRY"
-            trust_record_id_val = trust_result.trust_record_id
+            try:
+                trust_result = self._trust_registry.evaluate_issuer_trust(
+                    issuer_did=issuer_did,
+                    credential_types=types_list,
+                    at_time=now,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Issuer Trust Registry lookup failed (%s)",
+                    type(error).__name__,
+                )
+                issuer_trusted = False
+                trust_status_val = "ERROR"
+                trust_reason_val = (
+                    f"TRUST_REGISTRY_UNAVAILABLE:{type(error).__name__}"
+                )
+                trust_source_val = "LOCAL_TRUST_REGISTRY"
+                trust_record_id_val = None
+            else:
+                result_is_trusted = getattr(
+                    trust_result, "is_trusted", None
+                )
+                trust_status = getattr(trust_result, "status", None)
+                trust_status_value = getattr(
+                    trust_status, "value", trust_status
+                )
+                trust_reason_value = getattr(
+                    trust_result, "reason", None
+                )
+                trust_source_value = getattr(
+                    trust_result, "trust_source", None
+                )
+                issuer_trusted = (
+                    type(result_is_trusted) is bool and result_is_trusted
+                )
+                trust_status_val = (
+                    trust_status_value
+                    if isinstance(trust_status_value, str)
+                    else "UNKNOWN"
+                )
+                trust_reason_val = (
+                    trust_reason_value
+                    if isinstance(trust_reason_value, str)
+                    else "TRUST_REGISTRY_INVALID_RESULT"
+                )
+                trust_source_val = (
+                    trust_source_value
+                    if isinstance(trust_source_value, str)
+                    and trust_source_value
+                    else "LOCAL_TRUST_REGISTRY"
+                )
+                trust_record_id_val = getattr(
+                    trust_result, "trust_record_id", None
+                )
+                if type(result_is_trusted) is not bool:
+                    logger.warning(
+                        "Issuer Trust Registry returned an invalid result"
+                    )
+                    trust_status_val = "ERROR"
+                    trust_reason_val = "TRUST_REGISTRY_INVALID_RESULT"
         else:
             # Fail-closed: unconfigured trust registry MUST NOT pass
             issuer_trusted = False
@@ -843,37 +1063,197 @@ class Oid4vpService:
             except Exception:
                 expiry_valid = False
 
-        # Status / Revocation Check (authoritative persistence + Bitstring Status List resolution)
+        # Status / Revocation / Suspension Check (authoritative persistence + Bitstring Status List resolution)
         cred_id = target_vc.get("id", "")
         revocation_status_clear = True
-        persisted = self._credentials.get_by_credential_id(cred_id) if (self._credentials and cred_id) else None
-        if persisted and (
-            persisted.status.value == "REVOKED"
-            or getattr(persisted.status, "name", "") == "REVOKED"
-        ):
-            revocation_status_clear = False
+        status_eval_reason: str | None = None
+        status_evaluated = False
 
-        # Bitstring Status List inspection
+        # 1. Authoritative persistence check (DB)
+        persisted = None
+        if self._credentials and cred_id:
+            try:
+                persisted = self._credentials.get_by_credential_id(cred_id)
+            except Exception as error:
+                # Persistence is authoritative when configured. An unavailable
+                # lookup cannot be treated as an active credential.
+                logger.warning(
+                    "Credential status persistence lookup failed (%s)",
+                    type(error).__name__,
+                )
+                revocation_status_clear = False
+                status_eval_reason = (
+                    "Credential status persistence unavailable: "
+                    f"{type(error).__name__}"
+                )
+        if persisted:
+            status_evaluated = True
+            status_val = (
+                persisted.status.value
+                if hasattr(persisted.status, "value")
+                else getattr(persisted.status, "name", str(persisted.status))
+            )
+            if status_val == "REVOKED":
+                revocation_status_clear = False
+                status_eval_reason = "Credential revoked in persistence"
+            elif status_val == "SUSPENDED":
+                revocation_status_clear = False
+                status_eval_reason = "Credential suspended in persistence"
+            elif status_val != "ACTIVE":
+                revocation_status_clear = False
+                status_eval_reason = f"Credential status not active: {status_val}"
+
+        # 2. Bitstring Status List inspection (W3C Bitstring Status List 1.0)
         cred_status = target_vc.get("credentialStatus")
-        if isinstance(cred_status, dict):
-            status_purpose = cred_status.get("statusPurpose")
-            if status_purpose == "revocation":
-                status_list_index_raw = cred_status.get("statusListIndex")
-                status_list_url = str(cred_status.get("statusListCredential", ""))
+        if cred_status is not None:
+            status_evaluated = True
+            if isinstance(cred_status, dict):
+                status_entries = [cred_status]
+            elif isinstance(cred_status, list):
+                status_entries = cred_status
+                if not status_entries:
+                    logger.warning(
+                        "Credential status is malformed: empty entry set"
+                    )
+                    revocation_status_clear = False
+                    status_eval_reason = (
+                        "credentialStatus must contain at least one status entry"
+                    )
+            else:
+                logger.warning("Credential status has an invalid structure")
+                revocation_status_clear = False
+                status_eval_reason = "credentialStatus is invalid format"
+                status_entries = []
+
+            for entry in status_entries:
+                if not isinstance(entry, dict):
+                    revocation_status_clear = False
+                    status_eval_reason = "credentialStatus entry is not an object"
+                    break
+
+                if entry.get("type") != "BitstringStatusListEntry":
+                    revocation_status_clear = False
+                    status_eval_reason = (
+                        "credentialStatus entry type is unsupported or missing"
+                    )
+                    break
+
+                status_purpose = entry.get("statusPurpose")
+                # R2: Enforce statusPurpose - only "revocation" and "suspension" are supported
+                if status_purpose not in ("revocation", "suspension"):
+                    revocation_status_clear = False
+                    status_eval_reason = f"Unsupported or malformed statusPurpose: {status_purpose}"
+                    break
+
+                status_list_index_raw = entry.get("statusListIndex")
+                status_list_url = str(entry.get("statusListCredential", ""))
                 status_list_id = status_list_url.rstrip("/").split("/")[-1] if status_list_url else ""
-                if status_list_id and status_list_index_raw is not None:
-                    try:
-                        idx = int(status_list_index_raw)
-                        if self._status_lists is not None:
-                            try:
-                                publication = self._status_lists.get_publication(status_list_id)
-                                from app.infrastructure.status_list_document_generator import decode_status_list_bit
-                                if decode_status_list_bit(publication.encoded_list, idx):
-                                    revocation_status_clear = False
-                            except Exception:
-                                pass
-                    except (ValueError, TypeError):
+
+                if not status_list_id or status_list_index_raw is None:
+                    revocation_status_clear = False
+                    status_eval_reason = "credentialStatus missing required statusListCredential or statusListIndex"
+                    break
+
+                if (
+                    not isinstance(status_list_index_raw, str)
+                    or not status_list_index_raw.isascii()
+                    or not status_list_index_raw.isdecimal()
+                    or len(status_list_index_raw) > 8
+                    or (
+                        len(status_list_index_raw) > 1
+                        and status_list_index_raw.startswith("0")
+                    )
+                ):
+                    revocation_status_clear = False
+                    status_eval_reason = "statusListIndex is invalid"
+                    break
+                idx = int(status_list_index_raw)
+
+                # R1: Status service check must be fail-closed
+                if self._status_lists is None:
+                    revocation_status_clear = False
+                    status_eval_reason = "Status list service unavailable"
+                    break
+
+                try:
+                    publication = self._status_lists.get_publication(status_list_id)
+                except Exception as err:
+                    # R1: Any resolution exception MUST cause status check to fail closed
+                    logger.warning(
+                        "Status-list resolution failed (%s)",
+                        type(err).__name__,
+                    )
+                    revocation_status_clear = False
+                    status_eval_reason = f"Status service resolution failed: {type(err).__name__}"
+                    break
+
+                # R3: Validate status list credential proof & integrity before trusting encodedList
+                status_doc = getattr(publication, "document", None)
+                if not status_doc:
+                    revocation_status_clear = False
+                    status_eval_reason = "Status list credential document missing from publication"
+                    break
+
+                publication_id = getattr(publication, "status_list_id", None)
+                publication_issuer = getattr(publication, "issuer_did", None)
+                publication_purpose = getattr(
+                    getattr(publication, "status_purpose", None),
+                    "value",
+                    getattr(publication, "status_purpose", None),
+                )
+                publication_length = getattr(publication, "list_length", None)
+                if publication_id != status_list_id:
+                    revocation_status_clear = False
+                    status_eval_reason = "Status list publication identifier mismatch"
+                    break
+                if publication_purpose != status_purpose:
+                    revocation_status_clear = False
+                    status_eval_reason = "Status list publication purpose mismatch"
+                    break
+                if not isinstance(publication_issuer, str) or not publication_issuer:
+                    revocation_status_clear = False
+                    status_eval_reason = "Status list publication issuer is invalid"
+                    break
+                if not isinstance(publication_length, int) or idx >= publication_length:
+                    revocation_status_clear = False
+                    status_eval_reason = "statusListIndex is outside the published list"
+                    break
+
+                sl_valid, sl_err, verified_encoded_list = self._verify_status_list_credential(
+                    status_doc=status_doc,
+                    expected_status_list_url=status_list_url,
+                    expected_issuer=publication_issuer,
+                    expected_purpose=status_purpose,
+                    expected_list_length=publication_length,
+                    verified_at=now,
+                )
+                if not sl_valid or not verified_encoded_list:
+                    revocation_status_clear = False
+                    if sl_err and "PROOF" in sl_err:
+                        status_eval_reason = (
+                            f"Status list proof validation failed: {sl_err}"
+                        )
+                    else:
+                        status_eval_reason = (
+                            f"Status list credential validation failed: {sl_err}"
+                        )
+                    break
+
+                # Read status bit from verified encoded list
+                try:
+                    from app.infrastructure.status_list_document_generator import decode_status_list_bit
+                    bit_is_active = decode_status_list_bit(verified_encoded_list, idx)
+                    if bit_is_active:
                         revocation_status_clear = False
+                        if status_purpose == "revocation":
+                            status_eval_reason = "Credential revoked (status bit set)"
+                        else:
+                            status_eval_reason = "Credential suspended (status bit set)"
+                        break
+                except Exception as err:
+                    revocation_status_clear = False
+                    status_eval_reason = f"Failed to decode status bit: {type(err).__name__}"
+                    break
 
         # Challenge / Nonce check (Fail-Closed: strictly bound to session.nonce; zero fallback)
         vp_proof = vp_token.get("proof")
@@ -886,6 +1266,12 @@ class Oid4vpService:
 
         # Dynamic AI Fraud Threat Engine Evaluation (Section 13, 14, 15)
         ai_reasons: list[str] = []
+        ai_risk_evidence: dict[str, Any] = {
+            "source": "request_score_override",
+            "modelVersion": "unverified-score-override",
+            "riskSignals": [],
+            "advisoryOnly": True,
+        }
         if ai_risk_score is None:
             eval_res = fraud_client.evaluate_presentation_risk(
                 did=subject_id or session.verifier_did,
@@ -901,6 +1287,12 @@ class Oid4vpService:
             )
             ai_risk_score = int(eval_res["risk_score"])
             ai_reasons = eval_res.get("reasons", [])
+            ai_risk_evidence = {
+                "source": eval_res.get("source", "unknown"),
+                "modelVersion": eval_res.get("model_version", "unknown"),
+                "riskSignals": list(eval_res.get("risk_signals", [])),
+                "advisoryOnly": eval_res.get("advisory_only") is True,
+            }
 
         # AI Risk Level Mapping
         # 0-39: LOW (Allow)
@@ -916,21 +1308,40 @@ class Oid4vpService:
         else:
             ai_risk_level = "LOW"
 
-        # Check existing blockchain anchor quarantine
+        # An unavailable quarantine check is indeterminate and must not be
+        # represented as a clear result in the final security policy.
         is_already_quarantined = False
-        try:
-            from app.infrastructure.cache_and_anchor import blockchain_anchor
-            if subject_id and hasattr(blockchain_anchor, "is_quarantined"):
-                is_already_quarantined = blockchain_anchor.is_quarantined(subject_id)
-        except Exception:
-            is_already_quarantined = False
+        quarantine_status_error: str | None = None
+        if subject_id:
+            try:
+                from app.infrastructure.cache_and_anchor import blockchain_anchor
+            except Exception as error:
+                quarantine_status_error = (
+                    f"QUARANTINE_LOOKUP_FAILED:{type(error).__name__}"
+                )
+            else:
+                quarantine_state, quarantine_status_error = _read_quarantine_status(
+                    blockchain_anchor,
+                    subject_id,
+                )
+                if quarantine_state is None:
+                    is_already_quarantined = False
+                else:
+                    is_already_quarantined = quarantine_state
 
-        # Blockchain Anchor
-        blockchain_anchored = True
-        try:
-            from app.infrastructure.cache_and_anchor import blockchain_anchor
-        except Exception:
-            blockchain_anchored = True
+        if not revocation_status_clear:
+            logger.warning(
+                "Credential status verification rejected (%s)",
+                status_eval_reason or "STATUS_CHECK_FAILED",
+            )
+        if quarantine_status_error is not None:
+            logger.warning(
+                "Quarantine status unavailable (%s)", quarantine_status_error
+            )
+
+        # This path does not verify an anchor for the presented credential.
+        # Report that fact instead of synthesizing a successful anchor claim.
+        blockchain_anchored = False
 
         # Consent compliance check
         consent_violation = False
@@ -948,6 +1359,16 @@ class Oid4vpService:
                     if k in session.consent_decision.rejected_claims:
                         consent_violation = True
                         consent_violation_reason = f"Disclosed claim '{k}' was rejected by holder consent."
+                        break
+                    if (
+                        k not in session.consent_decision.approved_claims
+                        or session.consent_decision.approved_claims[k]
+                        != disclosed_claims[k]
+                    ):
+                        consent_violation = True
+                        consent_violation_reason = (
+                            f"Disclosed claim '{k}' does not match the holder's approved value."
+                        )
                         break
 
         # WP-08 — EXPLICIT, AUDITABLE POLICY EVALUATION (fail-closed)
@@ -983,14 +1404,29 @@ class Oid4vpService:
             if expiry_valid
             else PolicyCheckResult.fail(PolicyCheckName.EXPIRATION, reason="Credential has expired")
         )
-        # Revocation gate: also blocks if subject is already quarantined
-        _revoc_clear = revocation_status_clear and not is_already_quarantined
+        # Revocation / status gate: also blocks if subject is already quarantined
+        _revoc_clear = (
+            revocation_status_clear
+            and quarantine_status_error is None
+            and not is_already_quarantined
+        )
         _check_revoc = (
             PolicyCheckResult.ok(PolicyCheckName.REVOCATION_STATUS)
             if _revoc_clear
             else PolicyCheckResult.fail(
                 PolicyCheckName.REVOCATION_STATUS,
-                reason="Revoked or locked in quarantine" if is_already_quarantined else "Credential revoked",
+                reason=(
+                    "Revoked or locked in quarantine"
+                    if is_already_quarantined
+                    else (
+                        f"Quarantine status unavailable: {quarantine_status_error}"
+                        if quarantine_status_error
+                        else (
+                            status_eval_reason
+                            or "Credential revoked or status check failed"
+                        )
+                    )
+                ),
             )
         )
         _check_nonce = (
@@ -1027,23 +1463,44 @@ class Oid4vpService:
         final_policy = policy_result.decision.value
         quarantine_triggered = policy_result.quarantine_triggered
         quarantine_reason = policy_result.quarantine_reason
+        quarantine_anchor = {
+            "status": "NOT_REQUESTED",
+            "txHash": None,
+            "blockNumber": None,
+        }
 
         # Execute quarantine side-effect only when evaluator requests it
         if quarantine_triggered:
             try:
                 from app.infrastructure.cache_and_anchor import blockchain_anchor
                 if subject_id and hasattr(blockchain_anchor, "anchor_quarantine"):
-                    blockchain_anchor.anchor_quarantine(subject_id, quarantine_reason)
-            except Exception:
-                pass
+                    anchor_result = blockchain_anchor.anchor_quarantine(
+                        subject_id, quarantine_reason or "High heuristic risk"
+                    )
+                    if isinstance(anchor_result, dict):
+                        quarantine_anchor = {
+                            "status": anchor_result.get("status", "UNANCHORED"),
+                            "txHash": anchor_result.get("tx_hash"),
+                            "blockNumber": anchor_result.get("block_number"),
+                        }
+            except Exception as error:
+                quarantine_anchor["status"] = "UNANCHORED"
+                logger.warning(
+                    "Quarantine side effect failed (%s)",
+                    type(error).__name__,
+                )
 
-        # Data minimization / claim minimization intent breakdown
-        disclosed_dict = dict(disclosed_claims or target_vc.get("credentialSubject", {}))
-        disclosed_keys = [k for k in disclosed_dict.keys() if k != "id"]
+        # Report what is actually sent in the VP. A Data Integrity VC is shared
+        # as a whole; client-provided claim-selection metadata cannot make its
+        # signed claims disappear from the presentation.
+        credential_subject = target_vc.get("credentialSubject")
+        disclosed_keys = (
+            [key for key in credential_subject.keys() if key != "id"]
+            if isinstance(credential_subject, dict)
+            else []
+        )
         req_keys = list(session.requested_fields)
-        hidden_keys = [k for k in req_keys if k not in disclosed_keys]
-        disclosure_ratio = round(len(disclosed_keys) / len(req_keys), 2) if req_keys else 1.0
-        status_minimization = "SELECTIVE_DISCLOSURE_APPLIED" if hidden_keys else "FULL_DISCLOSURE"
+        hidden_keys: list[str] = []
 
         result = NinePointVerificationResult(
             credential_valid=cred_valid,
@@ -1063,15 +1520,21 @@ class Oid4vpService:
                 "verifiedAt": now.isoformat(),
                 "verifierDid": session.verifier_did,
                 "quarantineTriggered": quarantine_triggered,
+                "quarantineAnchor": quarantine_anchor,
+                "aiRisk": {
+                    **ai_risk_evidence,
+                    "score": ai_risk_score,
+                    "level": policy_result.ai_risk_level.value,
+                    "reasons": list(ai_reasons),
+                },
                 "dataMinimization": {
-                    "status": status_minimization,
+                    "status": "FULL_CREDENTIAL_DISCLOSED",
                     "requestedFields": req_keys,
                     "disclosedFields": disclosed_keys,
                     "hiddenFields": hidden_keys,
                     "selectiveDisclosureActive": False,
                     "cryptographicSelectiveDisclosure": False,
                     "limitation": "Claim-level cryptographic selective disclosure is not implemented in the current eddsa-jcs-2022 profile.",
-                    "disclosureRatio": disclosure_ratio,
                 },
                 "evaluations": {
                     "credential": "Valid W3C VC 2.0 profile format" if cred_valid else "Credential validation failed",
@@ -1079,12 +1542,35 @@ class Oid4vpService:
                     "signature": "Cryptographic proof mathematically valid" if sig_valid else "Cryptographic signature invalid or unverified",
                     "holder_binding": "Holder DID bound to presentation signature" if holder_binding_valid else (holder_binding_reason or "Holder mismatch"),
                     "expiration": "Within active validity window" if expiry_valid else "Expired credential",
-                    "revocation": "Status slot is active (unrevoked)" if (revocation_status_clear and not is_already_quarantined) else "Revoked or locked in quarantine",
+                    "revocation": (
+                        status_eval_reason
+                        or (
+                            f"Quarantine status unavailable: {quarantine_status_error}"
+                            if quarantine_status_error
+                            else (
+                                "Credential is locked in quarantine"
+                                if is_already_quarantined
+                                else (
+                                    "Credential status checks passed"
+                                    if status_evaluated
+                                    else "Credential status not supplied; status-list check not applicable"
+                                )
+                            )
+                        )
+                    ),
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "dcql": "DCQL query criteria fully satisfied" if dcql_satisfied else (dcql_reason or "DCQL satisfaction failed"),
                     "consent": "Authorized by holder consent" if not consent_violation else (consent_violation_reason or "Consent violation"),
                     "ai_fraud": "Low fraud risk profile" if policy_result.ai_risk_level.value == "LOW" else f"Elevated threat detected: {policy_result.ai_risk_level.value} ({ai_risk_score}/100)",
-                    "quarantine": f"Active: {quarantine_reason}" if (quarantine_triggered or is_already_quarantined) else "Clear",
+                    "quarantine": (
+                        f"Process-local policy lockout; optional digest anchor status: {quarantine_anchor['status']}"
+                        if (quarantine_triggered or is_already_quarantined)
+                        else (
+                            f"Unavailable: {quarantine_status_error}"
+                            if quarantine_status_error
+                            else "Clear"
+                        )
+                    ),
                 },
                 "dcql": {
                     "satisfied": dcql_satisfied,
@@ -1154,9 +1640,9 @@ class Oid4vpService:
                     metadata={
                         "session_id": session.session_id,
                         "verifier_did": session.verifier_did,
-                        "disclosed_claims_count": str(len(disclosed_keys)),
-                        "disclosed_fields": ",".join(disclosed_keys),
-                        "hidden_fields_count": str(len(hidden_keys)),
+                        "disclosed_field_count": str(len(disclosed_keys)),
+                        "hidden_field_count": str(len(hidden_keys)),
+                        "disclosure_profile": "FULL_SIGNED_VC",
                         "purpose": session.purpose,
                         "protocol": "OID4VP-1.0",
                         "holder_binding_valid": str(holder_binding_valid),
@@ -1203,6 +1689,8 @@ class Oid4vpService:
                     "policy_result": final_policy,
                     "ai_risk_score": str(ai_risk_score),
                     "ai_risk_level": ai_risk_level,
+                    "ai_risk_source": ai_risk_evidence["source"],
+                    "ai_risk_model_version": ai_risk_evidence["modelVersion"],
                     "quarantine_triggered": str(quarantine_triggered),
                     "protocol": "OID4VP-1.0",
                     "issuer_trusted": str(issuer_trusted),

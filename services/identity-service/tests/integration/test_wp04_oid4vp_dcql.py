@@ -30,6 +30,14 @@ from app.infrastructure.fixtures.signed_credentials import (
 
 client = TestClient(app)
 
+
+def test_dcql_builder_rejects_empty_requested_types() -> None:
+    with pytest.raises(MalformedDcqlQueryError, match="At least one credential type"):
+        build_dcql_query_from_types_and_fields(
+            requested_types=[],
+            requested_fields=["degree"],
+        )
+
 PASSWORDS = {
     "holder": "Holder-Prototype-2026!",
     "verifier": "Verifier-Prototype-2026!",
@@ -42,6 +50,15 @@ def _get_verifier_token() -> str:
         json={"username": "verifier@example.test", "password": PASSWORDS["verifier"]},
     )
     assert res.status_code == 200, f"Verifier auth failed: {res.text}"
+    return res.json()["accessToken"]
+
+
+def _get_holder_token() -> str:
+    res = client.post(
+        "/api/v1/auth/token",
+        json={"username": "holder@example.test", "password": PASSWORDS["holder"]},
+    )
+    assert res.status_code == 200, f"Holder auth failed: {res.text}"
     return res.json()["accessToken"]
 
 
@@ -423,16 +440,20 @@ def test_wp04_wallet_evaluation_api_satisfied():
         claims={"degree": "Master of Science", "graduationYear": 2026},
     )
 
+    holder_headers = {"Authorization": f"Bearer {_get_holder_token()}"}
     eval_res = client.post(
         f"/api/v1/oid4vp/requests/{session_id}/evaluate-dcql",
         json={"candidateCredentials": [candidate_vc]},
+        headers=holder_headers,
     )
     assert eval_res.status_code == 200
     data = eval_res.json()
     assert data["isSatisfied"] is True
     assert len(data["matchedCredentials"]) == 1
     matched = data["matchedCredentials"][0]
-    matched_claims = matched.get("matchedClaims") or matched.get("matched_claims") or {}
+    assert matched["queryId"] == "query_1"
+    assert matched["credentialId"] == candidate_vc["id"]
+    matched_claims = matched["matchedClaims"]
     assert "claim_degree" in matched_claims
 
 
@@ -457,9 +478,11 @@ def test_wp04_wallet_evaluation_api_unsatisfied():
         claims={"license_class": "B"},
     )
 
+    holder_headers = {"Authorization": f"Bearer {_get_holder_token()}"}
     eval_res = client.post(
         f"/api/v1/oid4vp/requests/{session_id}/evaluate-dcql",
         json={"candidateCredentials": [candidate_vc]},
+        headers=holder_headers,
     )
     assert eval_res.status_code == 200
     data = eval_res.json()

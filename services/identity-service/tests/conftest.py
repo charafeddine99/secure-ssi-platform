@@ -36,6 +36,25 @@ class FakeMongoConnectionManager:
 
 
 @pytest.fixture(autouse=True)
+def test_quarantine_state_isolation() -> Generator[None, None, None]:
+    """Prevent process-local quarantine decisions leaking between tests."""
+    from app.infrastructure.cache_and_anchor import blockchain_anchor
+
+    blockchain_anchor._quarantined_subjects.clear()
+    yield
+    blockchain_anchor._quarantined_subjects.clear()
+
+
+@pytest.fixture(autouse=True)
+def test_fraud_service_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep identity tests independent of any locally running Fraud Service state."""
+    from app.application.services.oid4vp_service import fraud_client
+
+    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
+    monkeypatch.setattr(fraud_client, "report_event", lambda **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def test_persistence_manager(monkeypatch: pytest.MonkeyPatch) -> Generator[Any, None, None]:
     """
     Transparently provides an in-memory FakeMongoConnectionManager during test runs

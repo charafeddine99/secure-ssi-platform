@@ -29,6 +29,7 @@ def auth_headers_fn():
 def test_holder_reject_verification_session_flow(auth_headers_fn):
     with TestClient(app) as client:
         verifier_hdrs = auth_headers_fn(client, "verifier")
+        holder_hdrs = auth_headers_fn(client, "holder")
 
         # 1. Verifier creates OID4VP presentation request
         req_payload = {
@@ -47,22 +48,35 @@ def test_holder_reject_verification_session_flow(auth_headers_fn):
         assert session_data["consentStatus"] == "PENDING"
         assert session_data["requestedFields"] == ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"]
 
-        # 2. Holder inspects verification session
-        res_inspect = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        # 2. The authenticated holder owns the wallet used to decide consent.
+        wallet_response = client.post(
+            "/api/v1/wallets", json={}, headers=holder_hdrs
+        )
+        assert wallet_response.status_code == 201, wallet_response.text
+        wallet = wallet_response.json()
+
+        # 3. Holder inspects verification session
+        res_inspect = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}/holder-request",
+            headers=holder_hdrs,
+        )
         assert res_inspect.status_code == 200
         inspect_data = res_inspect.json()
         assert inspect_data["sessionId"] == session_id
         assert inspect_data["purpose"] == "Verify security clearance claims"
         assert inspect_data["requestedFields"] == ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"]
 
-        # 3. Holder declines consent / rejects the presentation request
+        # 4. Holder declines consent through the wallet-bound route.
         reject_payload = {
             "rejectionReason": "Holder declined to share security clearance claims for this verification purpose",
-            "holderDid": "did:key:z6MkuBesnaSecureHolder2026Ed25519",
+            "holderDid": wallet["holderDid"],
+            "walletId": wallet["walletId"],
+            "action": "REJECT",
         }
         res_reject = client.post(
-            f"/api/v1/oid4vp/requests/{session_id}/reject",
+            f"/api/v1/oid4vp/requests/{session_id}/wallet-consent",
             json=reject_payload,
+            headers=holder_hdrs,
         )
         assert res_reject.status_code == 200, f"Reject failed: {res_reject.text}"
         reject_data = res_reject.json()
@@ -71,15 +85,17 @@ def test_holder_reject_verification_session_flow(auth_headers_fn):
         assert reject_data["consentStatus"] == "REJECTED"
         assert "Holder declined to share" in reject_data["rejectionReason"]
 
-        # 4. Verifier polls session and sees REJECTED status and reason
-        res_poll = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        # 5. Verifier polls session and sees REJECTED status and reason
+        res_poll = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_poll.status_code == 200
         poll_data = res_poll.json()
         assert poll_data["status"] == "REJECTED"
         assert poll_data["consentStatus"] == "REJECTED"
         assert poll_data["rejectionReason"] == reject_payload["rejectionReason"]
 
-        # 5. Direct Post cannot be submitted for a rejected session (returns 409 Conflict)
+        # 6. Direct Post cannot be submitted for a rejected session (returns 409 Conflict)
         sample_vp = {
             "@context": ["https://www.w3.org/ns/credentials/v2"],
             "type": ["VerifiablePresentation"],
@@ -95,15 +111,16 @@ def test_holder_reject_verification_session_flow(auth_headers_fn):
         res_dp = client.post("/api/v1/oid4vp/response", json=dp_payload)
         assert res_dp.status_code == 409
 
-        # 6. Re-rejecting the already rejected session also returns 409 Conflict
+        # 7. Re-rejecting the already rejected session also returns 409 Conflict
         res_dup_reject = client.post(
-            f"/api/v1/oid4vp/requests/{session_id}/reject",
+            f"/api/v1/oid4vp/requests/{session_id}/wallet-consent",
             json=reject_payload,
+            headers=holder_hdrs,
         )
         assert res_dup_reject.status_code == 409
 
 
-def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
+def test_holder_consent_and_full_credential_disclosure_flow(auth_headers_fn):
     with TestClient(app) as client:
         verifier_hdrs = auth_headers_fn(client, "verifier")
 
@@ -121,7 +138,8 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         session_id = res_create.json()["sessionId"]
         nonce = res_create.json()["nonce"]
 
-        # 2. Holder submits presentation selectively disclosing only 2 of the 4 requested claims
+        # 2. The holder approves a credential, but this profile sends the full
+        # signed credential; the client selection cannot hide signed claims.
         import uuid
         from datetime import UTC, datetime, timedelta
         from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
@@ -158,7 +176,7 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         )
 
 
-        # Selective disclosure: only affiliation and degree
+        # Legacy selection metadata does not alter the signed credential.
         disclosed_claims = {
             "affiliation": "student",
             "degree": "Bachelor of Science",
@@ -177,16 +195,20 @@ def test_holder_selective_disclosure_and_consent_granted_flow(auth_headers_fn):
         # Verify 9-point checklist accepted
         assert dp_result["finalPolicyResult"] == "ACCEPTED"
 
-        # Verify data minimization statistics
+        # Verify the result describes the complete credential actually sent.
         details = dp_result.get("details", {})
         data_min = details.get("dataMinimization", {})
-        assert data_min["status"] == "SELECTIVE_DISCLOSURE_APPLIED"
-        assert set(data_min["disclosedFields"]) == {"affiliation", "degree"}
-        assert set(data_min["hiddenFields"]) == {"programCode", "graduationYear"}
-        assert data_min["disclosureRatio"] == 0.5
+        assert data_min["status"] == "FULL_CREDENTIAL_DISCLOSED"
+        assert set(data_min["disclosedFields"]) == {
+            "affiliation", "degree", "programCode", "graduationYear"
+        }
+        assert data_min["hiddenFields"] == []
+        assert data_min["cryptographicSelectiveDisclosure"] is False
 
         # 3. Verifier checks session state: status is VERIFIED and consentStatus is GRANTED
-        res_session = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        res_session = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_session.status_code == 200
         session_body = res_session.json()
         assert session_body["status"] == "VERIFIED"

@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.infrastructure.cache_and_anchor import blockchain_anchor
+from app.application.services.oid4vp_service import fraud_client
 client = TestClient(app)
 
 PASSWORDS = {
@@ -38,10 +39,17 @@ def _get_headers(c: TestClient, role: str) -> dict[str, str]:
 
 
 @pytest.fixture(autouse=True)
-def clean_state():
+def clean_state(monkeypatch: pytest.MonkeyPatch):
+    # Keep these API tests isolated from a mutable host Fraud Service and its
+    # persistent quarantine state. The fallback case below still exercises the
+    # real client behavior against an intentionally unreachable local port.
+    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
+    monkeypatch.setattr(fraud_client, "report_event", lambda **kwargs: None)
     blockchain_anchor._anchored_events.clear()
+    blockchain_anchor._quarantined_subjects.clear()
     yield
     blockchain_anchor._anchored_events.clear()
+    blockchain_anchor._quarantined_subjects.clear()
 
 
 def _create_mock_vp_token(
@@ -113,13 +121,31 @@ def _create_mock_vp_token(
     )
 
 
+def _set_server_risk_score(monkeypatch: pytest.MonkeyPatch, score: int) -> None:
+    """Control the server evaluator in tests; request JSON is never the score source."""
+    monkeypatch.setattr(
+        fraud_client,
+        "evaluate_presentation_risk",
+        lambda **kwargs: {
+            "risk_score": score,
+            "reasons": ["controlled server-side test signal"],
+            "model_version": "test-server-heuristic-v1",
+            "risk_signals": ["test_server_signal"],
+            "advisory_only": True,
+            "source": "identity_fallback_heuristic",
+        },
+    )
 
-def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_bad_signature():
+
+
+def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_bad_signature(monkeypatch):
     """Hierarchy Invariant: Even if AI risk score is 0, invalid signature MUST be REJECTED."""
+    _set_server_risk_score(monkeypatch, 0)
     # 1. Create session
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Academic Evaluation Matrix Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree", "gpa"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -143,11 +169,13 @@ def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_bad_signature():
     assert res["finalPolicyResult"] == "REJECTED", "AI score 0 must not override signature failure"
 
 
-def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_expiration():
+def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_expiration(monkeypatch):
     """Hierarchy Invariant: Even if AI risk score is 0, expired credential MUST be REJECTED."""
+    _set_server_risk_score(monkeypatch, 0)
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Expiration Hierarchy Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -168,11 +196,13 @@ def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_expiration():
     assert res["finalPolicyResult"] == "REJECTED"
 
 
-def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_nonce_mismatch():
+def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_nonce_mismatch(monkeypatch):
     """Hierarchy Invariant: Replay prevention nonce mismatch must reject regardless of AI score."""
+    _set_server_risk_score(monkeypatch, 0)
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Replay Nonce Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -192,11 +222,13 @@ def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_nonce_mismatch():
     assert res["finalPolicyResult"] == "REJECTED"
 
 
-def test_adaptive_policy_low_risk_acceptance():
+def test_adaptive_policy_low_risk_acceptance(monkeypatch):
     """Valid cryptographic checks + LOW AI risk (< 40) => ACCEPTED."""
+    _set_server_risk_score(monkeypatch, 15)
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Legitimate User Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree", "gpa"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -220,11 +252,13 @@ def test_adaptive_policy_low_risk_acceptance():
     assert res["details"]["quarantineTriggered"] is False
 
 
-def test_adaptive_policy_medium_risk_step_up_required():
+def test_adaptive_policy_medium_risk_step_up_required(monkeypatch):
     """Valid cryptographic checks + MEDIUM AI risk (40-69) => REJECTED (requires step up)."""
+    _set_server_risk_score(monkeypatch, 55)
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Step-up Auth Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -244,13 +278,14 @@ def test_adaptive_policy_medium_risk_step_up_required():
     assert res["finalPolicyResult"] == "REJECTED"
 
 
-def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
+def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout(monkeypatch):
     """Valid cryptographic checks + CRITICAL AI risk (>= 85) => REJECTED + Auto-Quarantine."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives import serialization
     from app.infrastructure.crypto.multibase import encode_base58_btc
     from app.infrastructure.crypto.local_holder_key_provider import ED25519_MULTICODEC_PREFIX
 
+    _set_server_risk_score(monkeypatch, 95)
     attacker_priv = Ed25519PrivateKey.generate()
     pub_bytes = attacker_priv.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
@@ -263,6 +298,7 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     # Step 1: Attempt presentation with critical attack telemetry
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Attack Presentation Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
@@ -282,18 +318,27 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     assert res["finalPolicyResult"] == "REJECTED"
     assert res["details"]["quarantineTriggered"] is True
 
-    # Validate that on-chain quarantine anchor recorded the quarantine event
+    # Verify local quarantine state and receipt-backed optional digest status separately.
     assert blockchain_anchor.is_quarantined(subject_did) is True
+    anchor_state = res["details"]["quarantineAnchor"]
+    assert anchor_state["status"] in {"CONFIRMED", "FAILED", "OFFLINE", "SUBMITTED", "UNANCHORED"}
+    if anchor_state["status"] == "CONFIRMED":
+        assert anchor_state["txHash"].startswith("0x")
+        assert anchor_state["blockNumber"] is not None
+    else:
+        assert anchor_state["txHash"] is None
 
     # Step 2: Subsequent presentation attempt by the same quarantined DID must be locked out
     req_res2 = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Subsequent Attack Attempt",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
     session_id2 = req_res2.json()["sessionId"]
     nonce2 = req_res2.json()["nonce"]
 
+    _set_server_risk_score(monkeypatch, 0)
     vp_token2 = _create_mock_vp_token(subject_did=subject_did, nonce=nonce2, private_key=attacker_priv)
     post_res2 = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id2,
@@ -307,23 +352,29 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout():
     assert "quarantine" in res2["details"]["evaluations"]["revocation"].lower()
 
 
-def test_dynamic_ai_risk_evaluation_fallback_heuristic():
-    """When aiRiskScore is not provided (None), dynamic evaluation computes risk from telemetry."""
+def test_dynamic_ai_risk_evaluation_fallback_heuristic(monkeypatch):
+    """Server risk evaluation retains truthful heuristic provenance and signals."""
+    from app.application.services.oid4vp_service import fraud_client
+
+    # Keep this fallback case deterministic even when a stale local Fraud
+    # container is running on the default port.
+    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Dynamic Evaluation Test",
+        "requestedCredentialTypes": ["UniversityAffiliationCredential"],
         "requestedFields": ["degree"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
     session_id = req_res.json()["sessionId"]
     nonce = req_res.json()["nonce"]
 
-    # Provide attack telemetry without manual aiRiskScore
+    # Client-supplied telemetry and scores must not control the server evaluator.
     vp_token = _create_mock_vp_token(nonce=nonce)
     post_res = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id,
         "vpToken": vp_token,
-        "aiRiskScore": None,
+        "aiRiskScore": 95,
         "failedAttempts": 5,
         "isTorOrProxy": True,
         "presentationFrequency10m": 20,
@@ -331,7 +382,83 @@ def test_dynamic_ai_risk_evaluation_fallback_heuristic():
     assert post_res.status_code == 200
     res = post_res.json()["result"]
 
-    # Dynamic risk must classify as CRITICAL or HIGH and reject
-    assert res["aiRiskScore"] >= 70
-    assert res["aiRiskLevel"] in ("HIGH", "CRITICAL")
-    assert res["finalPolicyResult"] == "REJECTED"
+    # The offline fallback receives neutral server-side context, not forged values.
+    assert res["aiRiskScore"] == 10
+    assert res["aiRiskLevel"] == "LOW"
+    assert res["finalPolicyResult"] == "ACCEPTED"
+    risk_evidence = res["details"]["aiRisk"]
+    assert risk_evidence["source"] in {
+        "fraud_service",
+        "identity_fallback_heuristic",
+    }
+    assert risk_evidence["modelVersion"] in {
+        "rule-heuristic-v1",
+        "identity-fallback-heuristic-v1",
+    }
+    assert risk_evidence["riskSignals"]
+    assert risk_evidence["advisoryOnly"] is True
+
+
+def test_client_supplied_risk_score_and_telemetry_are_ignored(monkeypatch):
+    """Direct Post cannot select a low score or spoof server-side behavior signals."""
+    captured: dict[str, Any] = {}
+
+    def evaluate(**kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {
+            "risk_score": 15,
+            "reasons": [],
+            "model_version": "test-server-heuristic-v1",
+            "risk_signals": ["server_signal"],
+            "advisory_only": True,
+            "source": "identity_fallback_heuristic",
+        }
+
+    monkeypatch.setattr(fraud_client, "evaluate_presentation_risk", evaluate)
+    verifier_hdrs = _get_headers(client, "verifier")
+    req_res = client.post(
+        "/api/v1/oid4vp/requests",
+        json={
+            "purpose": "Untrusted risk input test",
+            "requestedCredentialTypes": ["UniversityAffiliationCredential"],
+            "requestedFields": ["degree"],
+            "ttlSeconds": 300,
+        },
+        headers=verifier_hdrs,
+    )
+    assert req_res.status_code == 201
+    vp_token = _create_mock_vp_token(nonce=req_res.json()["nonce"])
+
+    response = client.post(
+        "/api/v1/oid4vp/response",
+        headers={"User-Agent": "trusted-test-client/1.0"},
+        json={
+            "sessionId": req_res.json()["sessionId"],
+            "vpToken": vp_token,
+            "aiRiskScore": 0,
+            "clientIp": "127.0.0.1",
+            "userAgent": "forged-client-agent",
+            "deviceFingerprint": "forged-trusted-device",
+            "deviceFingerprintMatch": True,
+            "isTorOrProxy": False,
+            "failedAttempts": 0,
+            "geoDistanceKm": 0,
+            "timeSinceLastActionSec": 999999,
+            "presentationFrequency10m": 1,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["aiRiskScore"] == 15
+    assert result["aiRiskLevel"] == "LOW"
+    assert result["details"]["aiRisk"]["modelVersion"] == "test-server-heuristic-v1"
+    assert captured["client_ip"] == "testclient"
+    assert captured["user_agent"] == "trusted-test-client/1.0"
+    assert captured["failed_attempts"] == 0
+    assert captured["is_tor_or_proxy"] is False
+    assert captured["geo_distance_km"] == 0
+    assert captured["time_since_last_action_sec"] == 0
+    assert captured["presentation_frequency_10m"] == 1
+    assert captured["device_fingerprint"] is None
+    assert captured["device_fingerprint_match"] is True

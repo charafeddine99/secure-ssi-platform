@@ -1152,6 +1152,10 @@ def get_oid4vp_service(
     status_list_service: StatusListService = Depends(get_status_list_service),
     trust_registry_service: TrustRegistryService = Depends(get_trust_registry_service),
 ) -> Oid4vpService:
+    combined_resolver = CompositeDidResolver({
+        **_HOLDER_DID_RESOLVER.resolvers,
+        **_DID_RESOLVER.resolvers,
+    })
     return Oid4vpService(
         session_repository=session_repo,
         credential_repository=credential_repo,

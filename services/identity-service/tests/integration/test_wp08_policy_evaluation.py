@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.infrastructure.cache_and_anchor import blockchain_anchor
+from app.application.services.oid4vp_service import fraud_client
 
 client = TestClient(app)
 
@@ -56,6 +57,7 @@ def _create_session(
         "/api/v1/oid4vp/requests",
         json={
             "purpose": "WP-08 Policy Integration Test",
+            "requestedCredentialTypes": ["UniversityAffiliationCredential"],
             "requestedFields": fields or ["degree", "gpa"],
             "ttlSeconds": ttl,
         },
@@ -140,11 +142,30 @@ def _make_invalid_sig_vp_token(*, nonce: str) -> dict[str, Any]:
     )
 
 
+def _set_test_risk_score(monkeypatch: pytest.MonkeyPatch, score: int) -> None:
+    monkeypatch.setattr(
+        fraud_client,
+        "evaluate_presentation_risk",
+        lambda **kwargs: {
+            "risk_score": score,
+            "reasons": ["controlled server-side test signal"],
+            "model_version": "test-server-heuristic-v1",
+            "risk_signals": ["test_server_signal"],
+            "advisory_only": True,
+            "source": "identity_fallback_heuristic",
+        },
+    )
+
+
 @pytest.fixture(autouse=True)
-def _clean_quarantine_state() -> None:  # type: ignore[return]
+def _clean_quarantine_state(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[return]
+    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
+    monkeypatch.setattr(fraud_client, "report_event", lambda **kwargs: None)
     blockchain_anchor._anchored_events.clear()
+    blockchain_anchor._quarantined_subjects.clear()
     yield
     blockchain_anchor._anchored_events.clear()
+    blockchain_anchor._quarantined_subjects.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +193,9 @@ class TestWp08PolicyEvaluatorViaApi:
         assert result["credentialValid"] is True
         assert result["signatureValid"] is True
 
-    def test_invalid_signature_rejected_regardless_of_ai_score(self) -> None:
+    def test_invalid_signature_rejected_regardless_of_ai_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Crypto gate failure → REJECTED even at AI score 0."""
+        _set_test_risk_score(monkeypatch, 0)
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_invalid_sig_vp_token(nonce=sess["nonce"])
@@ -190,8 +212,9 @@ class TestWp08PolicyEvaluatorViaApi:
         assert result["aiRiskScore"] == 0
         assert result["aiRiskLevel"] == "LOW"
 
-    def test_expired_credential_rejected_regardless_of_ai_score(self) -> None:
+    def test_expired_credential_rejected_regardless_of_ai_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Expiration gate failure → REJECTED even at AI score 0."""
+        _set_test_risk_score(monkeypatch, 0)
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_valid_vp_token(nonce=sess["nonce"], expired=True)
@@ -206,8 +229,9 @@ class TestWp08PolicyEvaluatorViaApi:
         assert result["finalPolicyResult"] == "REJECTED"
         assert result["expirationValid"] is False
 
-    def test_nonce_mismatch_rejected(self) -> None:
+    def test_nonce_mismatch_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Session nonce gate failure → REJECTED."""
+        _set_test_risk_score(monkeypatch, 0)
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_valid_vp_token(nonce="wrong-nonce-wp08")  # wrong nonce
@@ -222,8 +246,9 @@ class TestWp08PolicyEvaluatorViaApi:
         assert result["finalPolicyResult"] == "REJECTED"
         assert result["challengeValid"] is False
 
-    def test_medium_ai_risk_rejects_even_when_all_crypto_pass(self) -> None:
+    def test_medium_ai_risk_rejects_even_when_all_crypto_pass(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """All crypto pass + MEDIUM risk (score 55) → REJECTED."""
+        _set_test_risk_score(monkeypatch, 55)
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_valid_vp_token(nonce=sess["nonce"])
@@ -240,8 +265,9 @@ class TestWp08PolicyEvaluatorViaApi:
         # Quarantine must NOT be triggered for MEDIUM risk
         assert result["details"]["quarantineTriggered"] is False
 
-    def test_high_ai_risk_rejects_without_quarantine(self) -> None:
+    def test_high_ai_risk_rejects_without_quarantine(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """All crypto pass + HIGH risk (score 75) → REJECTED, no quarantine."""
+        _set_test_risk_score(monkeypatch, 75)
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_valid_vp_token(nonce=sess["nonce"])
@@ -286,3 +312,18 @@ class TestWp08PolicyEvaluatorViaApi:
         assert expected_fields.issubset(set(result.keys())), (
             f"Missing fields: {expected_fields - set(result.keys())}"
         )
+
+
+def _set_test_risk_score(monkeypatch: pytest.MonkeyPatch, score: int) -> None:
+    monkeypatch.setattr(
+        fraud_client,
+        "evaluate_presentation_risk",
+        lambda **kwargs: {
+            "risk_score": score,
+            "reasons": ["controlled server-side test signal"],
+            "model_version": "test-server-heuristic-v1",
+            "risk_signals": ["test_server_signal"],
+            "advisory_only": True,
+            "source": "identity_fallback_heuristic",
+        },
+    )

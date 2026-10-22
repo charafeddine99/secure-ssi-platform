@@ -79,6 +79,16 @@ class NonceResponse(Oid4ApiModel):
     c_nonce: str = Field(..., serialization_alias="c_nonce")
     c_nonce_expires_in: int = Field(default=600, serialization_alias="c_nonce_expires_in")
 
+class HolderProofRequest(Oid4ApiModel):
+    wallet_id: str
+    audience: str = Field(min_length=1, max_length=2_048)
+    nonce: str = Field(min_length=16, max_length=2_048)
+
+class HolderProofResponse(Oid4ApiModel):
+    holder_did: str
+    proof_type: str = "jwt"
+    jwt: str
+
 class HolderProofSchema(Oid4ApiModel):
     proof_type: str = Field(..., validation_alias=AliasChoices("proof_type", "proofType"))
     jwt: str | None = None
@@ -104,7 +114,8 @@ class CredentialResponseSchema(Oid4ApiModel):
 class CreateVerificationSessionRequest(Oid4ApiModel):
     purpose: str = "Verification of digital identity and qualifications"
     requested_credential_types: list[str] = Field(
-        default_factory=lambda: ["QualifiedElectronicAttestationCredential"]
+        default_factory=lambda: ["QualifiedElectronicAttestationCredential"],
+        min_length=1,
     )
     requested_fields: list[str] = Field(
         default_factory=lambda: ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"]
@@ -140,6 +151,25 @@ class VerificationSessionResponse(Oid4ApiModel):
     approved_credentials: list[str] = Field(default_factory=list)
     approved_claims: dict[str, Any] | None = None
     rejected_claims: list[str] = Field(default_factory=list)
+
+
+class HolderOid4vpRequestResponse(Oid4ApiModel):
+    """Protocol request context returned to an authenticated Holder wallet."""
+
+    session_id: str
+    verifier_did: str
+    client_id: str
+    response_uri: str
+    nonce: str
+    dcql_query: dict[str, Any] = Field(default_factory=dict)
+    presentation_definition: dict[str, Any] = Field(default_factory=dict)
+    status: str
+    consent_status: str
+    deep_link_uri: str
+    qr_payload: str
+    expires_at: datetime
+    purpose: str
+    requested_fields: list[str] = Field(default_factory=list)
 
 class RecordConsentRequest(Oid4ApiModel):
     decision: str = Field(
@@ -181,6 +211,41 @@ class RecordConsentRequest(Oid4ApiModel):
     nonce: str | None = None
     purpose: str | None = None
 
+
+class WalletOid4vpConsentRequest(Oid4ApiModel):
+    decision: str = Field(
+        default="APPROVE",
+        validation_alias=AliasChoices("decision", "action"),
+    )
+    action: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("action", "decision"),
+    )
+    holder_did: str = Field(
+        ...,
+        validation_alias=AliasChoices("holder_did", "holderDid"),
+    )
+    approved_credentials: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("approved_credentials", "approvedCredentials"),
+    )
+    approved_claims: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("approved_claims", "approvedClaims"),
+    )
+    rejected_claims: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("rejected_claims", "rejectedClaims"),
+    )
+    rejection_reason: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rejection_reason", "rejectionReason"),
+    )
+    wallet_id: str = Field(
+        ...,
+        validation_alias=AliasChoices("wallet_id", "walletId"),
+    )
+
 class RecordConsentResponse(Oid4ApiModel):
     session_id: str
     status: str
@@ -211,7 +276,13 @@ class DirectPostRequest(Oid4ApiModel):
     session_id: str
     vp_token: dict[str, Any]
     disclosed_claims: dict[str, Any] | None = None
-    ai_risk_score: int | None = 15
+    ai_risk_score: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        deprecated=True,
+        description="Ignored for verification decisions; risk scoring is server-owned.",
+    )
     client_ip: str | None = None
     user_agent: str | None = None
     device_fingerprint: str | None = None
@@ -268,4 +339,22 @@ class CreateOid4vpPresentationRequest(Oid4ApiModel):
 class CreateOid4vpPresentationResponse(Oid4ApiModel):
     session_id: str
     vp_token: dict[str, Any]
+
+
+class CreateWalletOid4vpPresentationRequest(Oid4ApiModel):
+    session_id: str = Field(
+        validation_alias=AliasChoices("session_id", "sessionId"),
+    )
+    wallet_id: str = Field(
+        validation_alias=AliasChoices("wallet_id", "walletId"),
+    )
+    credential_ids: list[str] = Field(
+        min_length=1,
+        max_length=8,
+        validation_alias=AliasChoices("credential_ids", "credentialIds"),
+    )
+    disclosed_claims: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("disclosed_claims", "disclosedClaims"),
+    )
 

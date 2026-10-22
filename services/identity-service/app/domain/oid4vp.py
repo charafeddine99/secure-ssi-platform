@@ -155,6 +155,7 @@ class VerificationSession:
     approved_claims: Mapping[str, Any] | None = None
     rejected_claims: tuple[str, ...] = field(default_factory=tuple)
     version: int = 1
+    owner_user_id: str | None = None
 
     def __post_init__(self) -> None:
         if not _OBJECT_ID_PATTERN.fullmatch(self.id):
@@ -165,6 +166,11 @@ class VerificationSession:
             raise ValueError("Session expiration must be after creation time.")
         if self.version < 1:
             raise ValueError("Session version must be positive.")
+        if self.owner_user_id is not None and (
+            not isinstance(self.owner_user_id, str)
+            or not self.owner_user_id.strip()
+        ):
+            raise ValueError("Session owner user id must be a non-empty string.")
 
     def is_expired(self, now: datetime) -> bool:
         return now >= self.expires_at

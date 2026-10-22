@@ -109,14 +109,16 @@ def test_wp02_positive_valid_holder_binding_succeeds():
     assert result["finalPolicyResult"] == "ACCEPTED"
 
 
-def test_wp02_positive_presentation_endpoint_lifecycle():
-    """Holder uses POST /api/v1/oid4vp/presentation to generate signed VP and submits to verifier."""
+def test_wp02_legacy_presentation_signer_fails_closed():
+    """The retired signer route cannot mint a VP from caller-supplied identity data."""
     token = _get_verifier_token()
     session_id, nonce, client_id = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc()
 
-    # Record consent before presentation generation
-    client.post(
+    # The old endpoint accepted caller-supplied DID and credential data and
+    # invoked the server-side fixture signer. It is retired in favor of the
+    # authenticated wallet-bound consent/presentation routes.
+    consent = client.post(
         f"/api/v1/oid4vp/requests/{session_id}/consent",
         json={
             "decision": "APPROVE",
@@ -125,39 +127,27 @@ def test_wp02_positive_presentation_endpoint_lifecycle():
             "approvedClaims": {"degree": "MSc Computer Science"},
         },
     )
-
-    # Call presentation generator endpoint
-    res_pres = client.post(
+    presentation = client.post(
         "/api/v1/oid4vp/presentation",
         json={
             "sessionId": session_id,
             "verifiableCredentials": [vc],
             "disclosedClaims": {"degree": "MSc Computer Science"},
             "holderDid": SYNTHETIC_HOLDER_DID,
+            "allowUnconsentedTestMode": True,
         },
     )
-    assert res_pres.status_code == 200
-    vp_data = res_pres.json()["vpToken"]
-    assert vp_data["holder"] == SYNTHETIC_HOLDER_DID
-    assert vp_data["proof"]["type"] == "DataIntegrityProof"
-    assert vp_data["proof"]["cryptosuite"] == "eddsa-jcs-2022"
-    assert vp_data["proof"]["challenge"] == nonce
-
-    # Submit to verifier
-    res_post = client.post(
-        "/api/v1/oid4vp/response",
-        json={
-            "sessionId": session_id,
-            "vpToken": vp_data,
-            "disclosedClaims": {"degree": "MSc Computer Science"},
-            "aiRiskScore": 10,
-        },
+    assert consent.status_code == 410
+    assert presentation.status_code == 410
+    assert "wallet-bound" in consent.json()["error"]["message"].lower()
+    assert "wallet-presentation" in presentation.json()["error"]["message"].lower()
+    status_response = client.get(
+        f"/api/v1/oid4vp/requests/{session_id}",
+        headers={"Authorization": f"Bearer {token}"},
     )
-    assert res_post.status_code == 200
-    res = res_post.json()["result"]
-    assert res["holderBindingValid"] is True
-    assert res["details"]["holderBindingReason"] == "VALID"
-    assert res["finalPolicyResult"] == "ACCEPTED"
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "PENDING"
+    assert status_response.json()["consentStatus"] == "PENDING"
 
 
 def test_wp02_positive_ephemeral_keypair_holder():

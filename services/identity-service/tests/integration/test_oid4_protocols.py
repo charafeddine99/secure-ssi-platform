@@ -4,6 +4,15 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.application.services.oid4vp_service import fraud_client
+
+
+@pytest.fixture(autouse=True)
+def isolate_optional_fraud_dependency(monkeypatch: pytest.MonkeyPatch):
+    # Protocol lifecycle assertions must not depend on mutable host-level fraud
+    # state; dedicated fraud integration tests cover the external adapter.
+    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
+    monkeypatch.setattr(fraud_client, "report_event", lambda **kwargs: None)
 
 PASSWORDS = {
     "admin": "Admin-Prototype-2026!",
@@ -36,6 +45,10 @@ def test_oid4vci_issuer_metadata():
 def test_oid4vci_full_offer_lifecycle(auth_headers_fn):
     with TestClient(app) as client:
         issuer_hdrs = auth_headers_fn(client, "issuer")
+        holder_hdrs = auth_headers_fn(client, "holder")
+        wallet_res = client.post("/api/v1/wallets", json={}, headers=holder_hdrs)
+        assert wallet_res.status_code == 201, wallet_res.text
+        wallet = wallet_res.json()
 
         # 1. Issuer creates offer
         offer_payload = {
@@ -44,7 +57,8 @@ def test_oid4vci_full_offer_lifecycle(auth_headers_fn):
                 "affiliation": "student",
                 "programCode": "SYN-CS-001",
                 "degree": "Bachelor of Science",
-                "graduationYear": 2026
+                "graduationYear": 2026,
+                "holder_did": wallet["holderDid"],
             },
             "ttlSeconds": 1800
         }
@@ -61,25 +75,58 @@ def test_oid4vci_full_offer_lifecycle(auth_headers_fn):
         assert res_inspect.status_code == 200
         assert res_inspect.json()["offerId"] == offer_id
 
-        # 3. Holder claims offer
-        claim_payload = {
-            "preAuthorizedCode": pre_auth_code,
-            "holderDid": "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP",
-            "walletId": "wallet_holder_primary"
-        }
-        res_claim = client.post("/api/v1/oid4vci/credential", json=claim_payload)
-        assert res_claim.status_code == 201, f"Claim failed: {res_claim.text}"
+        # 3. Holder uses the canonical token, wallet proof, and credential flow.
+        token_res = client.post(
+            "/api/v1/oid4vci/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                "pre-authorized_code": pre_auth_code,
+            },
+        )
+        assert token_res.status_code == 200, token_res.text
+        token = token_res.json()
+        issuer_meta = client.get(
+            "/api/v1/oid4vci/.well-known/openid-credential-issuer"
+        ).json()
+        proof_res = client.post(
+            "/api/v1/oid4vci/holder-proof",
+            json={
+                "walletId": wallet["walletId"],
+                "audience": issuer_meta["credential_issuer"],
+                "nonce": token["c_nonce"],
+            },
+            headers=holder_hdrs,
+        )
+        assert proof_res.status_code == 200, proof_res.text
+        assert proof_res.json()["holderDid"] == wallet["holderDid"]
+        res_claim = client.post(
+            "/api/v1/oid4vci/credential",
+            json={
+                "credentialConfigurationId": "UniversityAffiliationCredential",
+                "walletId": wallet["walletId"],
+                "proof": {"proofType": "jwt", "jwt": proof_res.json()["jwt"]},
+            },
+            headers={"Authorization": f"Bearer {token['access_token']}"},
+        )
+        assert res_claim.status_code == 200, f"Claim failed: {res_claim.text}"
         claim_data = res_claim.json()
         assert claim_data["status"] == "ACTIVE"
         vc = claim_data["credential"]
         assert vc["issuer"] is not None
-        assert vc["credentialSubject"]["id"] == "did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+        assert vc["credentialSubject"]["id"] == wallet["holderDid"]
         assert vc["proof"]["type"] == "DataIntegrityProof"
         assert vc["proof"]["cryptosuite"] == "eddsa-jcs-2022"
 
-        # 4. Duplicate claim rejected
-        res_dup = client.post("/api/v1/oid4vci/credential", json=claim_payload)
-        assert res_dup.status_code == 409
+        # 4. The pre-authorized code is single use and cannot mint another token.
+        res_dup = client.post(
+            "/api/v1/oid4vci/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                "pre-authorized_code": pre_auth_code,
+            },
+        )
+        assert res_dup.status_code == 400
+        assert res_dup.json()["error"] == "invalid_grant"
 
 def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
     with TestClient(app) as client:
@@ -88,7 +135,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         # 1. Verifier creates session
         req_payload = {
             "purpose": "Verify holder qualification for security clearance",
-            "requestedCredentialTypes": ["QualifiedElectronicAttestationCredential"],
+            "requestedCredentialTypes": ["UniversityAffiliationCredential"],
             "requestedFields": ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"],
             "ttlSeconds": 600
         }
@@ -101,7 +148,9 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         assert session_data["deepLinkUri"].startswith("openid4vp://")
 
         # 2. Verifier checks initial pending status
-        res_poll = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        res_poll = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_poll.status_code == 200
         assert res_poll.json()["status"] == "PENDING"
 
@@ -161,11 +210,16 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         assert dp_res["revocationStatusClear"] is True
         assert dp_res["challengeValid"] is True
         assert dp_res["aiRiskLevel"] == "LOW"
-        assert dp_res["blockchainAnchored"] is True
+        # Anchoring is optional, and this local lifecycle has no verified
+        # receipt provider. An absent anchor must not invalidate VC policy or
+        # be reported as a successful anchor.
+        assert dp_res["blockchainAnchored"] is False
         assert dp_res["finalPolicyResult"] == "ACCEPTED"
 
         # 4. Verifier polls session and sees VERIFIED status + result
-        res_poll_after = client.get(f"/api/v1/oid4vp/requests/{session_id}")
+        res_poll_after = client.get(
+            f"/api/v1/oid4vp/requests/{session_id}", headers=verifier_hdrs
+        )
         assert res_poll_after.status_code == 200
         poll_data = res_poll_after.json()
         assert poll_data["status"] == "VERIFIED"
