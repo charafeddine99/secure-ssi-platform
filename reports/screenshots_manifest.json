@@ -5,7 +5,8 @@
     "persona": "PUBLIC",
     "desc": "Platform Landing & Golden Path Overview",
     "filename": "SCR-PUB-01.png",
-    "sizeBytes": 240744,
+    "sizeBytes": 231865,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -14,7 +15,8 @@
     "persona": "PUBLIC",
     "desc": "Accredited Ecosystem Trust Registry",
     "filename": "SCR-PUB-02.png",
-    "sizeBytes": 192506,
+    "sizeBytes": 183614,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -23,7 +25,8 @@
     "persona": "PUBLIC",
     "desc": "Technical Architecture & Standards Specification",
     "filename": "SCR-PUB-03.png",
-    "sizeBytes": 198683,
+    "sizeBytes": 181125,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -32,7 +35,8 @@
     "persona": "PUBLIC",
     "desc": "Unified Authentication & 1-Click Persona Chooser",
     "filename": "SCR-PUB-04.png",
-    "sizeBytes": 151063,
+    "sizeBytes": 84508,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -41,7 +45,8 @@
     "persona": "HOLDER",
     "desc": "Sovereign Credential Dashboard & Tactile Cards",
     "filename": "SCR-HLD-01.png",
-    "sizeBytes": 333927,
+    "sizeBytes": 75764,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -50,7 +55,18 @@
     "persona": "HOLDER",
     "desc": "Verifiable Credential Deep Inspection View",
     "filename": "SCR-HLD-02.png",
-    "sizeBytes": 124958,
+    "sizeBytes": 63988,
+    "visualQuality": "PASS",
+    "status": "CAPTURED"
+  },
+  {
+    "id": "SCR-HLD-02B",
+    "route": "/credentials/vc-academic-diploma-001",
+    "persona": "HOLDER",
+    "desc": "Canonical Direct Credential Detail Route",
+    "filename": "SCR-HLD-02B.png",
+    "sizeBytes": 63988,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -59,7 +75,8 @@
     "persona": "HOLDER",
     "desc": "OID4VCI Credential Offer QR Ingestion",
     "filename": "SCR-HLD-03.png",
-    "sizeBytes": 129656,
+    "sizeBytes": 99610,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -68,7 +85,18 @@
     "persona": "HOLDER",
     "desc": "Selective Disclosure & Privacy Consent Cockpit",
     "filename": "SCR-HLD-04.png",
-    "sizeBytes": 150480,
+    "sizeBytes": 133090,
+    "visualQuality": "PASS",
+    "status": "CAPTURED"
+  },
+  {
+    "id": "SCR-HLD-04B",
+    "route": "/consent/presentation",
+    "persona": "HOLDER",
+    "desc": "Canonical Direct Presentation Consent Route",
+    "filename": "SCR-HLD-04B.png",
+    "sizeBytes": 133102,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -77,7 +105,8 @@
     "persona": "HOLDER",
     "desc": "Holder Verification & Consent History Log",
     "filename": "SCR-HLD-05.png",
-    "sizeBytes": 108659,
+    "sizeBytes": 71424,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -86,7 +115,8 @@
     "persona": "HOLDER",
     "desc": "Key Custody & Guardian Assignment Console",
     "filename": "SCR-HLD-06.png",
-    "sizeBytes": 156443,
+    "sizeBytes": 126851,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -95,7 +125,8 @@
     "persona": "ISSUER",
     "desc": "Accredited Authority Dashboard & Metrics",
     "filename": "SCR-ISS-01.png",
-    "sizeBytes": 138594,
+    "sizeBytes": 125542,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -104,7 +135,8 @@
     "persona": "ISSUER",
     "desc": "Verifiable Credential Schema & Template Builder",
     "filename": "SCR-ISS-02.png",
-    "sizeBytes": 166396,
+    "sizeBytes": 154420,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -113,7 +145,8 @@
     "persona": "ISSUER",
     "desc": "3-Step Credential Issuance Wizard",
     "filename": "SCR-ISS-03.png",
-    "sizeBytes": 146707,
+    "sizeBytes": 137785,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -122,7 +155,8 @@
     "persona": "ISSUER",
     "desc": "W3C Bitstring Status List 1.0 Revocation Console",
     "filename": "SCR-ISS-04.png",
-    "sizeBytes": 133977,
+    "sizeBytes": 127342,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -131,7 +165,8 @@
     "persona": "VERIFIER",
     "desc": "Relying Party Dashboard & Request Overview",
     "filename": "SCR-VRF-01.png",
-    "sizeBytes": 182825,
+    "sizeBytes": 123705,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -140,7 +175,8 @@
     "persona": "VERIFIER",
     "desc": "OID4VP Presentation Request Builder",
     "filename": "SCR-VRF-02.png",
-    "sizeBytes": 142291,
+    "sizeBytes": 142181,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -149,7 +185,8 @@
     "persona": "VERIFIER",
     "desc": "Presentation Request QR Code & Deep Link",
     "filename": "SCR-VRF-03.png",
-    "sizeBytes": 333904,
+    "sizeBytes": 142193,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -158,7 +195,8 @@
     "persona": "VERIFIER",
     "desc": "Live 9-Point Trust Verification Result Card",
     "filename": "SCR-VRF-04.png",
-    "sizeBytes": 208607,
+    "sizeBytes": 166952,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -167,7 +205,8 @@
     "persona": "VERIFIER",
     "desc": "Verifier Presentation Audit & Replay Archive",
     "filename": "SCR-VRF-05.png",
-    "sizeBytes": 135267,
+    "sizeBytes": 126996,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -176,7 +215,8 @@
     "persona": "GUARDIAN",
     "desc": "Guardian Network Dashboard & Assigned Wallets",
     "filename": "SCR-GRD-01.png",
-    "sizeBytes": 166834,
+    "sizeBytes": 111658,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -185,7 +225,8 @@
     "persona": "GUARDIAN",
     "desc": "Active Recovery Petitions Queue",
     "filename": "SCR-GRD-02.png",
-    "sizeBytes": 103077,
+    "sizeBytes": 97259,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -194,7 +235,8 @@
     "persona": "GUARDIAN",
     "desc": "Quorum Share Submission & Time-Lock Visualizer",
     "filename": "SCR-GRD-03.png",
-    "sizeBytes": 139727,
+    "sizeBytes": 125249,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -203,7 +245,8 @@
     "persona": "ADMIN",
     "desc": "System Telemetry & Microservices Health Matrix",
     "filename": "SCR-ADM-01.png",
-    "sizeBytes": 253393,
+    "sizeBytes": 246671,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -212,7 +255,8 @@
     "persona": "ADMIN",
     "desc": "EVM Smart Contracts & On-Chain State Explorer",
     "filename": "SCR-ADM-02.png",
-    "sizeBytes": 207800,
+    "sizeBytes": 166193,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -221,7 +265,8 @@
     "persona": "ADMIN",
     "desc": "Tamper-Evident Outbox & Security Audit Trail",
     "filename": "SCR-ADM-03.png",
-    "sizeBytes": 162412,
+    "sizeBytes": 104209,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   },
   {
@@ -230,7 +275,8 @@
     "persona": "ADMIN",
     "desc": "Real-Time AI Fraud Threat Stream & Confusion Matrix",
     "filename": "SCR-ADM-04.png",
-    "sizeBytes": 197407,
+    "sizeBytes": 133196,
+    "visualQuality": "PASS",
     "status": "CAPTURED"
   }
 ]
