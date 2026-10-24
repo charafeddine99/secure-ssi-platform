@@ -15,7 +15,7 @@ This is a single-owner prototype authorization rule, not a multi-issuer role reg
 
 ## Standards context
 
-OpenZeppelin describes `onlyOwner` as restricting a function to the account that owns the contract, initially set by the deployer. The existing project contract implements a small custom equivalent; this report does not claim OpenZeppelin library use or formal conformance. OWASP lists SCSVS v0.0.1 as its latest stable release; the access-control regression is a project check informed by that security-verification approach, not an OWASP certification. [OpenZeppelin access control](https://docs.openzeppelin.com/contracts/5.x/access-control), [OWASP SCSVS](https://owasp.org/projects/smart-contract-security-verification-standard).
+Ethereum's security guidance explains that externally callable functions need controls for sensitive actions, describes the Ownable/only-owner pattern, and cautions that single-owner controls centralize authority. This matches the limited fix: apply the contract's existing owner check to the sensitive revocation operation, while documenting that the prototype has no multi-issuer role model. The same guidance calls for extensive testing because deployed code is difficult to patch. OWASP SCSVS informs the negative test but does not certify this contract. [Ethereum smart-contract security](https://ethereum.org/developers/docs/smart-contracts/security/), [OpenZeppelin access control](https://docs.openzeppelin.com/contracts/5.x/access-control), [OWASP SCSVS](https://owasp.org/projects/smart-contract-security-verification-standard).
 
 ## Executed evidence
 
