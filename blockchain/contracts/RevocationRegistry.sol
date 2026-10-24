@@ -57,7 +57,7 @@ contract RevocationRegistry {
     /**
      * @notice Tekil bir kimlik belgesini (credential) kalıcı olarak iptal eder.
      */
-    function revokeCredential(bytes32 credentialHash, bytes32 reasonHash) external {
+    function revokeCredential(bytes32 credentialHash, bytes32 reasonHash) external onlyOwner {
         require(credentialHash != bytes32(0), "RevocationRegistry: Gecersiz credential hash");
         require(!_revokedCredentials[credentialHash].isRevoked, "RevocationRegistry: Zaten iptal edilmis");
 

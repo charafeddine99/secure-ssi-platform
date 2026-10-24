@@ -1,5 +1,18 @@
 # Secure SSI Platform — Test Evidence Register
 
+## Current-source WP-10 / G10 authorization and receipt revalidation — 24 October 2026
+
+The current contract source had left `RevocationRegistry.revokeCredential` public even though the operation records a global, irreversible revocation and the contract already declared an unused `onlyOwner` modifier. It now requires the owner; unauthorized calls revert without changing state. The contract suite was re-run after compiling the current Solidity 0.8.28 source.
+
+| Exact command / observation | Result | Scope / limitation |
+|---|---|---|
+| `npm.cmd test --prefix blockchain` | **20 passing, 0 failing.** Hardhat compiled one Solidity file. | Includes the new non-owner revocation test, owner path and duplicate-revocation path. The required compiler was absent from cache and downloaded by the configured Hardhat command; no project package or lockfile was changed. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/unit/test_blockchain_anchor.py` | **8 passed, 0 failed; 1 existing SQLite deprecation warning.** | Unit behavior for canonical hashing/redaction, anchor state transitions, offline, pending and reverted receipt handling. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_blockchain_anchoring.py`, with process-local `BLOCKCHAIN_ENABLED=true` and the local Hardhat test signer key | **7 passed, 0 failed, 0 skipped; 1 existing SQLite deprecation warning.** | Ephemeral loopback chain 1337; current compiled contracts were deployed at the deterministic local test addresses. The bridge's authorized owner signer received receipts for all tested anchor operations. FakeDatabase only; no public chain or durable Mongo evidence. Node process stopped after the run; no deployment metadata was written. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_golden_path.py::test_golden_path_complete_lifecycle` | **BLOCKED / interrupted without a pytest summary.** | The test stalled in the Windows TestClient/asyncio Proactor path. It is not counted as pass or failure. Its source asserts unanchored-but-valid verification remains `ACCEPTED`; current-source execution remains unverified. |
+
+The three completed suites total **35 passed, 0 failed, 0 skipped** with two existing SQLite warnings. G10 is **PARTIAL for the current source** until the unaffected-credential Golden Path can be executed. See the [WP-10 report](../../reports/V2_1_WP10_BLOCKCHAIN_ANCHOR_SECURITY.md) for security scope, source changes, deployment caveat, and standards references.
+
 ## Current-source WP-08 Docker L3 verification — 24 October 2026
 
 This entry supersedes the 23 October current-source status below, which predates the successful rebuild. **Repository state:** branch `besna-dev`; HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`. The four tracked documentation changes and pre-existing untracked audit folder were preserved. No source code or Compose file was edited, no paths were staged, and no commit, push, merge, reset, clean, or volume deletion occurred. Local/remote tracking refs were not fetched during this task, so GitHub freshness is unknown.

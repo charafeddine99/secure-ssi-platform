@@ -80,6 +80,8 @@ The application-side quarantine lock remains process-local prototype state. Its 
 * **Address**: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`
 * **Purpose**: Anchors W3C Bitstring Status List root digests (`anchorStatusList`) and individual credential revocations (`revokeCredential`).
 * **Idempotency**: Prevents duplicate revocations with reverts (`"RevocationRegistry: Zaten iptal edilmis"`). Application bridge checks `isCredentialRevoked` before submitting to avoid redundant gas costs.
+* **Authorization**: Credential revocation is restricted to the contract owner. The deployer owns the contract initially; the Identity Service transaction signer must therefore match that owner for on-chain revocation writes. A non-owner call reverts and leaves the credential hash unchanged. This is a single-owner prototype policy, not a multi-issuer role registry.
+* **Deployment boundary**: This source change does not alter an already deployed, non-upgradeable contract. Redeploy the contract and configure its new address before relying on owner-only revocation on any existing network; do not treat old deployed bytecode as protected by this source change.
 
 ### 3. `EmergencyRecovery.sol`
 * **Address**: `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
