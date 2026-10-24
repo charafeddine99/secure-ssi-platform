@@ -1,5 +1,22 @@
 # Secure SSI Platform — Test Evidence Register
 
+## Resume verification inventory — 24 October 2026
+
+The task resumed from the existing `besna-dev` tree without source changes. The working tree had no tracked modifications or staged files; the only untracked path was the preserved audit folder `UsersbesnaAppDataLocalTempsecure-ssi-root-audit-0f9c514d1e954437805097268207189e/`. HEAD was `70ae42b522638b6e1174e6bf370c28b5d8ec7701`. `git rev-list --left-right --count origin/besna-dev...HEAD` returned `0 5`: local `HEAD` is five commits ahead of the cached tracking ref, which remains at `a026df83bcb6b43451cb96a7eaed41877b5e198a`; this is not a live remote comparison. `git ls-remote --heads origin` again failed with `Could not resolve host: github.com`. No fetch or push was performed, so GitHub publication of commits after `a026df8` remains **UNVERIFIED**.
+
+| Exact command / working directory | Observed result | Boundary |
+|---|---|---|
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/test_credential_validator.py tests/unit/test_oid4vci_credential_profiles.py` | **30 passed, 0 failed, 0 skipped; 1 SQLite deprecation warning; exit 0.** | Re-confirmed current-source profile/context validation and OID4VCI metadata mapping. |
+| Repo root: `.\.venv\Scripts\python.exe -m pytest -q tests/test_run_tests_runner.py` | **3 passed, 0 failed; exit 0.** | WP-11 runner behavior. A preceding invocation used the wrong relative path `..\.venv\Scripts\python.exe` from repo root and failed to launch (0 tests collected/executed); corrected command above passed. |
+| Repo root: `node apps/web/tests/fraudMonitorLabel.test.mjs` | **3 passed, 0 failed; exit 0.** | SSR markup preserves literal `[DEMO LAB / SYNTHETIC]`; not a browser session. |
+| Repo root: `npm.cmd test --prefix blockchain` | **20 passing, 0 failing; exit 0.** | Includes unauthorized `RevocationRegistry.revokeCredential` rejection. Local Hardhat network, not an independent audit or public deployment. |
+| Repo root: `npm.cmd test --prefix apps/web` | **8 test files passed, 0 failed, 0 skipped; exit 0.** | Node contract/SSR tests; no browser E2E. |
+| Repo root: `npm.cmd run lint --prefix apps/web` | Exit 0; no diagnostics. | Static lint. |
+| Repo root: `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript passed; Vite 6.4.3 transformed 1,831 modules. | Build only; no visual, responsive or accessibility verification. |
+| Repo root: `git diff --check` | Exit 0. | Re-run after these evidence updates; generated build output is ignored. |
+
+The WP-05 HTTP TestClient filter and full Python suite were not retried because prior attempts on this same source stalled in Windows `socketpair`/AnyIO startup without pytest summaries. Docker remains unavailable through its Linux Engine named pipe. WP-08 current-source L3, browser Golden Path, WP-12 visual/accessibility and L4 interoperability therefore remain unverified or blocked as recorded in the final acceptance report.
+
 ## Final-source WP-05 credential profile and OID4VCI metadata correction — 24 October 2026
 
 The cross-domain review found that issuer metadata advertised National ID and Driver License credential configurations that the validator did not implement, and issuance used the University context regardless of the credential type. The final-source fix shares a two-entry University/QEAA type-to-context map between validation and issuance, rejects unconfigured National ID/Driver License offers with HTTP 422, and emits OID4VCI `ldp_vc` `credential_definition` metadata with the matching VC v2 `@context` and `type`. The exact scope, standards basis and caveats are in the [WP-05 profile-alignment report](../../reports/V2_1_WP05_CREDENTIAL_PROFILE_ALIGNMENT.md).

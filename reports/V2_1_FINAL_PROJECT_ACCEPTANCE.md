@@ -189,6 +189,12 @@ No dependency, lockfile, compose, authentication API, or repository configuratio
 
 The full repository test runner was not completed in this final-source continuation. The earlier 820-passed/13-skipped result is historical, and the later Windows runner attempt was interrupted without a valid summary. Counts across test files/layers are not added into a synthetic total.
 
+### Resume verification at the recorded final-source HEAD
+
+The recovery pass began at `70ae42b522638b6e1174e6bf370c28b5d8ec7701` on `besna-dev`. It found no tracked modifications or staged paths; the preserved audit directory was the only untracked item. No application code changed during this recovery pass. Targeted reruns reconfirmed: WP-05 profile/validator tests **30 passed**, WP-11 runner tests **3 passed**, WP-09 label SSR **3 passed**, frontend contract suite **8 test files passed**, Hardhat contracts **20 passing**, web lint exit 0, and TypeScript/Vite build exit 0 (1,831 modules). Exact commands and working directories are recorded in the [test evidence register](../docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md). The full Python suite and known-hanging WP-05 TestClient integration were not retried; Docker was not available.
+
+The live read-only remote lookup again failed with `Could not resolve host: github.com`. At recovery time, the cached local `origin/besna-dev` ref pointed to `a026df83bcb6b43451cb96a7eaed41877b5e198a`; `git rev-list --left-right --count origin/besna-dev...HEAD` returned `0 5`. Cached ancestry includes `35b368a`, `23f23aa`, and `a026df8`, but this only proves those commits are present in the stale local tracking ref. It does **not** prove that they are currently published on GitHub. Commits `7ddd7c6`, `5c28379`, `7a1797e`, `6e34542`, and `70ae42b` are absent from that cached ref. Live publication status for every branch commit remains **UNVERIFIED**; no fetch or push was attempted.
+
 ## 9. Security, Golden Path, UI and accessibility conclusions
 
 - **Authorization and privacy:** OID4VP owner/user/session authorization has focused 52-test and HTTP 401/404 evidence on the earlier Docker-tested source. The current WP-05 edits do not alter OID4VP authorization. No final-source live cross-organization browser journey is claimed.
