@@ -31,8 +31,22 @@ from app.domain.persistence import (
 from app.domain.credential_status import CredentialStatus
 from app.infrastructure.persistence.repositories import MongoAuditEventRepository
 from app.infrastructure.persistence.mappers import new_object_id
+from app.services.credential_validator import (
+    CREDENTIAL_PROFILE_CONTEXTS,
+    VC_V2_CONTEXT,
+)
 
 DEFAULT_ISSUER_DID = "did:web:issuer.example"
+CREDENTIAL_PROFILE_METADATA = {
+    "QualifiedElectronicAttestationCredential": (
+        "qeaa",
+        "Qualified Electronic Attestation Credential (QEAA)",
+    ),
+    "UniversityAffiliationCredential": (
+        "university_affiliation",
+        "Higher Education Affiliation",
+    ),
+}
 
 class Oid4vciService:
     _SHARED_NONCES: dict[str, tuple[datetime, bool]] = {}
@@ -80,6 +94,26 @@ class Oid4vciService:
                 "proof_signing_alg_values_supported": ["Ed25519"]
             }
         }
+        credential_configurations = {
+            credential_type: {
+                "format": "ldp_vc",
+                "scope": CREDENTIAL_PROFILE_METADATA[credential_type][0],
+                "cryptographic_binding_methods_supported": ["did:key"],
+                "credential_signing_alg_values_supported": ["Ed25519"],
+                "proof_types_supported": proof_types,
+                "credential_definition": {
+                    "@context": [VC_V2_CONTEXT, context],
+                    "type": ["VerifiableCredential", credential_type],
+                },
+                "display": [
+                    {
+                        "name": CREDENTIAL_PROFILE_METADATA[credential_type][1],
+                        "locale": "en-US",
+                    }
+                ],
+            }
+            for credential_type, context in CREDENTIAL_PROFILE_CONTEXTS.items()
+        }
         return {
             "credential_issuer": self._base_issuer_url,
             "credential_endpoint": f"{self._base_issuer_url}/api/v1/oid4vci/credential",
@@ -97,40 +131,7 @@ class Oid4vciService:
                     }
                 }
             ],
-            "credential_configurations_supported": {
-                "QualifiedElectronicAttestationCredential": {
-                    "format": "ldp_vc",
-                    "scope": "qeaa",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Qualified Electronic Attestation Credential (QEAA)", "locale": "en-US"}]
-                },
-                "NationalIdCredential": {
-                    "format": "ldp_vc",
-                    "scope": "national_id",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "National Identity Card", "locale": "en-US"}]
-                },
-                "UniversityAffiliationCredential": {
-                    "format": "ldp_vc",
-                    "scope": "university_affiliation",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Higher Education Affiliation", "locale": "en-US"}]
-                },
-                "DriverLicenseCredential": {
-                    "format": "ldp_vc",
-                    "scope": "driver_license",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Mobile Driver License (mDL)", "locale": "en-US"}]
-                }
-            }
+            "credential_configurations_supported": credential_configurations
         }
 
     def supports_issuer(self, issuer_did: str) -> bool:
@@ -172,6 +173,15 @@ class Oid4vciService:
         credential_configuration_ids: tuple[str, ...],
         subject_data: Mapping[str, Any],
     ) -> None:
+        unsupported_configs = sorted(
+            set(credential_configuration_ids) - set(CREDENTIAL_PROFILE_CONTEXTS)
+        )
+        if unsupported_configs:
+            raise UnsupportedCredentialConfigurationError(
+                "Credential configuration is not supported by the active profile: "
+                + ", ".join(unsupported_configs)
+                + "."
+            )
         routing_keys = {
             "id", "holder_did", "holderDid", "recipient_did", "recipientDid",
             "userId", "user_id",
@@ -577,10 +587,16 @@ class Oid4vciService:
         if cred_type and cred_type != "VerifiableCredential":
             vc_types.append(cred_type)
 
+        credential_context = CREDENTIAL_PROFILE_CONTEXTS.get(cred_type)
+        if credential_context is None:
+            raise UnsupportedCredentialConfigurationError(
+                "Credential configuration is not supported by the active profile."
+            )
+
         unsigned_vc = {
             "@context": [
-                "https://www.w3.org/ns/credentials/v2",
-                "https://secure-ssi.example/contexts/university-affiliation/v1"
+                VC_V2_CONTEXT,
+                credential_context,
             ],
             "id": cred_uuid,
             "type": vc_types,

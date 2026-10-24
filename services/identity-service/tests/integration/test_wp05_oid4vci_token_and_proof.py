@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.infrastructure.crypto.multibase import encode_base58_btc
+from app.services.credential_validator import CredentialProfileValidator
 from app.services.did_resolver import DidKeyResolver
 from app.application.services.oid4vci_service import build_holder_jwt_proof
 
@@ -167,10 +168,41 @@ def test_wp05_metadata_advertises_token_and_nonce_endpoints():
     assert "nonce_endpoint" in meta
     assert meta["nonce_endpoint"].endswith("/api/v1/oid4vci/nonce")
     configs = meta.get("credential_configurations_supported", {})
+    assert set(configs) == {
+        "QualifiedElectronicAttestationCredential",
+        "UniversityAffiliationCredential",
+    }
     assert "UniversityAffiliationCredential" in configs
+    assert configs["UniversityAffiliationCredential"]["credential_definition"] == {
+        "@context": [
+            "https://www.w3.org/ns/credentials/v2",
+            "https://secure-ssi.example/contexts/university-affiliation/v1",
+        ],
+        "type": ["VerifiableCredential", "UniversityAffiliationCredential"],
+    }
     proof_types = configs["UniversityAffiliationCredential"].get("proof_types_supported", {})
     assert "jwt" in proof_types
     assert "EdDSA" in proof_types["jwt"]["proof_signing_alg_values_supported"]
+
+
+@pytest.mark.parametrize(
+    "credential_type",
+    ["NationalIdCredential", "DriverLicenseCredential"],
+)
+def test_wp05_offer_rejects_unconfigured_credential_profiles(
+    credential_type: str,
+) -> None:
+    response = client.post(
+        "/api/v1/oid4vci/offers",
+        json={
+            "credentialConfigurationIds": [credential_type],
+            "subjectData": {"sampleClaim": "synthetic"},
+        },
+        headers=_get_auth_headers("issuer"),
+    )
+
+    assert response.status_code == 422
+    assert "not supported by the active profile" in response.json()["detail"]
 
 
 def test_wp05_nonce_endpoint_generates_fresh_server_nonce():
@@ -349,6 +381,53 @@ def test_wp05_canonical_golden_path_issuance_with_bearer_and_proof():
     status_res = client.get(f"/api/v1/credentials/{vc['id']}/status")
     assert status_res.status_code == 200
     assert status_res.json()["status"].lower() == "active"
+
+
+def test_wp05_qeaa_issuance_uses_the_validator_pinned_context() -> None:
+    offer = _create_test_offer(
+        config_ids=["QualifiedElectronicAttestationCredential"]
+    )
+    token_response = client.post(
+        "/api/v1/oid4vci/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            "pre-authorized_code": offer["preAuthorizedCode"],
+        },
+    )
+    assert token_response.status_code == 200
+    token = token_response.json()["access_token"]
+
+    holder_headers, wallet_id, holder_did = _create_holder_wallet()
+    proof_holder_did, proof_jwt = _create_wallet_proof(
+        holder_headers=holder_headers,
+        wallet_id=wallet_id,
+        nonce=token_response.json()["c_nonce"],
+    )
+    assert proof_holder_did == holder_did
+
+    issued = client.post(
+        "/api/v1/oid4vci/credential",
+        json={
+            "credential_configuration_id": "QualifiedElectronicAttestationCredential",
+            "proof": {"proof_type": "jwt", "jwt": proof_jwt},
+            "wallet_id": wallet_id,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert issued.status_code == 200, issued.text
+    credential = issued.json()["credential"]
+    assert credential["@context"] == [
+        "https://www.w3.org/ns/credentials/v2",
+        "https://secure-ssi.example/contexts/qeaa/v1",
+    ]
+    assert credential["type"] == [
+        "VerifiableCredential",
+        "QualifiedElectronicAttestationCredential",
+    ]
+    assert CredentialProfileValidator().validate(
+        credential,
+        require_proof=True,
+    )["credentialSubject"]["id"] == holder_did
 
 
 def test_wp05_credential_endpoint_unauthorized_without_bearer():

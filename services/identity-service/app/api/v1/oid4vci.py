@@ -93,6 +93,11 @@ def create_credential_offer(
             ttl_seconds=payload.ttl_seconds,
             user_pin=payload.user_pin,
         )
+    except UnsupportedCredentialConfigurationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
     except InvalidCredentialSubjectError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
