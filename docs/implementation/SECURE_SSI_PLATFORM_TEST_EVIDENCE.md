@@ -1,5 +1,23 @@
 # Secure SSI Platform — Test Evidence Register
 
+## Current-source WP-11 / WP-12 checks — 24 October 2026
+
+Branch `besna-dev`, initial HEAD `a026df83bcb6b43451cb96a7eaed41877b5e198a`; WP-11 source changes were present in the working tree. No application API, SSI protocol, credential, or verifier implementation code changed in this checkpoint.
+
+| Exact command / observation | Result | Scope and limitation |
+|---|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/test_run_tests_runner.py -q` | Exit 0; **3 passed, 0 failed** | Runner path resolution, continuation, first non-zero exit propagation, and pytest exit labels. |
+| `npm.cmd test --prefix apps/web` | Exit 0; **8 test files passed, 0 failed, 0 skipped** | Existing Node built-in TypeScript/ESM contract tests; not React browser E2E. |
+| `npm.cmd run lint --prefix apps/web` | Exit 0; no diagnostics | Full Web ESLint. |
+| `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript passed; Vite 6.4.3 transformed **1,831 modules** | Production bundle compilation; not a rendered visual or accessibility check. |
+| `git diff --check` | Exit 0; line-ending conversion notices only | No whitespace errors. |
+| `Get-NetTCPConnection`/`Test-NetConnection` for 3000, 13000, 18000–18003, 4173, 5173 and 5178 before starting local Vite | No listener reachable | No existing web/Compose screen was available on those ports. |
+| `npm.cmd run dev --prefix apps/web -- --host 127.0.0.1 --port 4173 --strictPort` | Vite started and printed `http://127.0.0.1:4173/`; then stopped by Ctrl+C | Host `Invoke-WebRequest` was denied with a Windows socket permission error. Computer Use ended before visual inspection because it could not determine Chrome's current URL. No rendered-screen claim is made. |
+
+The full Python runner was not counted as passing here. Its current-source attempt and the faulthandler reproduction are recorded in [WP-11 report](../../reports/V2_1_WP11_WINDOWS_TEST_TOOLING.md): the run was interrupted without a pytest summary while Starlette/AnyIO waited in the Windows `socketpair` fallback. It remains **BLOCKED** for this host; no firewall, AppLocker, or execution-policy change was attempted.
+
+WP-12 source review was limited to existing visible disclosures in `TrustBadge.tsx`, `SelectiveDisclosureSheet.tsx`, `NinePointVerificationMatrix.tsx`, `VerifyPresentationPage.tsx`, and the embedded Holder/Issuer/Verifier/Guardian/Admin portals. The review found disclosures that the current profile transmits the full signed credential, embedded portals are simulations, risk is an untrained heuristic, anchoring is optional and receipt-dependent, and no conformance certification is claimed. This was not a browser, accessibility scanner, keyboard, responsive, contrast, or screen-reader test. See [WP-12 report](../../reports/V2_1_WP12_GOLDEN_PATH_UX_TRUTHFULNESS.md).
+
 ## Current-source WP-10 / G10 authorization and receipt revalidation — 24 October 2026
 
 The current contract source had left `RevocationRegistry.revokeCredential` public even though the operation records a global, irreversible revocation and the contract already declared an unused `onlyOwner` modifier. It now requires the owner; unauthorized calls revert without changing state. The contract suite was re-run after compiling the current Solidity 0.8.28 source.

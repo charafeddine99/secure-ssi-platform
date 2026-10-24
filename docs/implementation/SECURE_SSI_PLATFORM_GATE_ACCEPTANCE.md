@@ -1,5 +1,13 @@
 # Secure SSI Platform — G0–G16 Gate Acceptance
 
+## Current-source WP-11 / WP-12 continuation — 24 October 2026
+
+This checkpoint follows the WP-08, WP-09 and WP-10 evidence above. The working tree is on `besna-dev` at HEAD `a026df83bcb6b43451cb96a7eaed41877b5e198a`, with WP-11 test-tooling changes not yet committed at the time of these checks. The runner path/exit-code regression tests passed **3/3**; the Web contract runner passed **8/8 test files**; Web lint and the TypeScript/Vite production build passed (1,831 modules). The Python runner's full Windows run remains **BLOCKED**: the Identity TestClient stalls in CPython's Windows loopback `socketpair` fallback, so no whole-suite totals are available. CI YAML was corrected to retain Node 20 for Hardhat and use Node 24 only for the Web native TypeScript test script; CI has not been executed in this checkpoint.
+
+WP-12 static source review found explicit disclosures for complete signed-credential sharing, untrained/advisory risk, optional receipt-backed anchoring, unassessed certification, and embedded local-only demo portals. The verifier screen describes service-returned results and does not infer absent checks. This is source inspection, not rendered/browser evidence. Port 3000 and the existing Compose ports were not listening; the local Vite server started on 4173, but the host HTTP probe was denied by the Windows socket sandbox and Computer Use stopped before it could inspect Chrome. No authenticated Golden Path, responsive visual inspection, keyboard/assistive-technology review, contrast audit, or WCAG conformance result is claimed. **WP-12 / G11-G12 remains PARTIAL (L2); G11 and G12 remain PARTIAL.**
+
+The gate tally remains **4 PASS, 12 PARTIAL, 1 BLOCKED, 0 FAIL**. G14 remains BLOCKED pending an independent interoperability peer/vector run. WP-11 and WP-12 reports and exact commands are linked from the [test evidence register](SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
+
 **Checkpoint:** 18 October 2026 · **Branch:** `main` · **HEAD:** `59e8933f6e47922ba5a82cb7c9d76632e7edefe1`
 **Source state:** dirty working tree; this matrix describes the observed working tree, not a clean commit. See [completion audit](SECURE_SSI_PLATFORM_COMPLETION_AUDIT.md) and [test evidence](SECURE_SSI_PLATFORM_TEST_EVIDENCE.md).
 
