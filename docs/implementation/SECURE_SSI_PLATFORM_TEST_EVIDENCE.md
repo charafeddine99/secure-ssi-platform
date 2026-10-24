@@ -1,5 +1,19 @@
 # Secure SSI Platform — Test Evidence Register
 
+## Final-source WP-05 credential profile and OID4VCI metadata correction — 24 October 2026
+
+The cross-domain review found that issuer metadata advertised National ID and Driver License credential configurations that the validator did not implement, and issuance used the University context regardless of the credential type. The final-source fix shares a two-entry University/QEAA type-to-context map between validation and issuance, rejects unconfigured National ID/Driver License offers with HTTP 422, and emits OID4VCI `ldp_vc` `credential_definition` metadata with the matching VC v2 `@context` and `type`. The exact scope, standards basis and caveats are in the [WP-05 profile-alignment report](../../reports/V2_1_WP05_CREDENTIAL_PROFILE_ALIGNMENT.md).
+
+| Exact command / observation | Result | Scope and limitation |
+|---|---|---|
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/test_credential_validator.py tests/unit/test_oid4vci_credential_profiles.py` | **30 passed, 0 failed, 0 skipped; 1 SQLite deprecation warning; exit 0.** | Current-source unit/profile tests include metadata keys, exact `credential_definition` context/type pairs, University/QEAA validation shapes, and unsupported-type rejection. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py -k 'metadata_advertises_token_and_nonce_endpoints or offer_rejects_unconfigured_credential_profiles or qeaa_issuance_uses_the_validator_pinned_context'` | **Interrupted after 10 seconds; Ctrl+C; exit 1; no pytest summary.** | Windows TestClient/async loopback startup stalled. Counted as blocked, not as pass, fail, or skip. |
+| CWD `services/identity-service`: `python -m py_compile app\services\credential_validator.py app\application\services\oid4vci_service.py app\api\v1\oid4vci.py tests\test_credential_validator.py tests\unit\test_oid4vci_credential_profiles.py tests\integration\test_wp05_oid4vci_token_and_proof.py` | Exit 0 | Syntax check only; not runtime behavior. |
+| `docker version --format 'Client={{.Client.Version}} Server={{.Server.Version}}'` | Client 29.8.1; Server unavailable; Docker API named-pipe returned `permission denied`. | No final-source image rebuild or service smoke test. |
+| `git ls-remote --heads origin` | Exit 1; `Could not resolve host: github.com`. | Remote `besna-dev` freshness and SHA are unknown; no push was attempted. |
+
+**WP-05 remains PARTIAL** for the final source until the HTTP issuance regression, current full Identity suite and current-source Docker build/runtime can complete. The project's custom `.example` context was not shown to be externally resolvable, and QEAA is only a prototype profile; no external issuer interoperability, public context, government integration or accreditation is claimed.
+
 ## Current-source WP-11 / WP-12 checks — 24 October 2026
 
 Branch `besna-dev`, initial HEAD `a026df83bcb6b43451cb96a7eaed41877b5e198a`; WP-11 source changes were present in the working tree. No application API, SSI protocol, credential, or verifier implementation code changed in this checkpoint.
@@ -11,6 +25,7 @@ Branch `besna-dev`, initial HEAD `a026df83bcb6b43451cb96a7eaed41877b5e198a`; WP-
 | `npm.cmd run lint --prefix apps/web` | Exit 0; no diagnostics | Full Web ESLint. |
 | `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript passed; Vite 6.4.3 transformed **1,831 modules** | Production bundle compilation; not a rendered visual or accessibility check. |
 | `git diff --check` | Exit 0; line-ending conversion notices only | No whitespace errors. |
+| `npm.cmd audit --prefix apps/web --offline --json` | Exit 0; cached local audit data reported **0** vulnerabilities across 264 dependencies | Read-only/offline lockfile audit; no network request or dependency modification. Does not reconcile the earlier Docker image install report of 2 moderate + 1 high advisories because those package paths/details and cache freshness were unavailable. |
 | `Get-NetTCPConnection`/`Test-NetConnection` for 3000, 13000, 18000–18003, 4173, 5173 and 5178 before starting local Vite | No listener reachable | No existing web/Compose screen was available on those ports. |
 | `npm.cmd run dev --prefix apps/web -- --host 127.0.0.1 --port 4173 --strictPort` | Vite started and printed `http://127.0.0.1:4173/`; then stopped by Ctrl+C | Host `Invoke-WebRequest` was denied with a Windows socket permission error. Computer Use ended before visual inspection because it could not determine Chrome's current URL. No rendered-screen claim is made. |
 
