@@ -1,15 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Cpu, RefreshCw } from "lucide-react";
 import { fetchFraudStats, FraudModelStats } from "../../services/api";
-
-function readableStatus(value: string | undefined): string {
-  if (!value) return "Not reported";
-  return value
-    .replace(/^\[|\]$/g, "")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .replace(/(^|[\s/])[a-z]/g, (part) => part.toUpperCase());
-}
+import { RiskStatusValue } from "./RiskStatusValue";
 
 export const AiFraudMonitorPage: React.FC = () => {
   const [stats, setStats] = useState<FraudModelStats | null>(null);
@@ -50,14 +42,14 @@ export const AiFraudMonitorPage: React.FC = () => {
       ) : (
         <>
           <section className="workspace-grid workspace-grid--metrics" aria-label="Risk service details">
-            <article className="workspace-panel workspace-metric-card"><span>Engine</span><strong>{readableStatus(stats.model_type)}</strong><small>Version: {stats.model_version || "Not reported"}</small></article>
-            <article className="workspace-panel workspace-metric-card"><span>Model status</span><strong>{readableStatus(stats.model_status)}</strong><small>Evaluation: {readableStatus(stats.evaluation_status)}</small></article>
-            <article className="workspace-panel workspace-metric-card"><span>Data scope</span><strong>{readableStatus(stats.dataset_label)}</strong><small>Advisory only: {stats.advisory_only ? "Yes" : "Not confirmed"}</small></article>
+            <article className="workspace-panel workspace-metric-card"><span>Engine</span><RiskStatusValue as="strong" value={stats.model_type} /><small>Version: {stats.model_version || "Not reported"}</small></article>
+            <article className="workspace-panel workspace-metric-card"><span>Model status</span><RiskStatusValue as="strong" value={stats.model_status} /><small>Evaluation: <RiskStatusValue value={stats.evaluation_status} /></small></article>
+            <article className="workspace-panel workspace-metric-card"><span>Data scope</span><RiskStatusValue as="strong" value={stats.dataset_label} /><small>Advisory only: {stats.advisory_only ? "Yes" : "Not confirmed"}</small></article>
           </section>
           <section className="workspace-panel">
             <div className="workspace-section-heading"><div><p className="workspace-eyebrow"><Cpu size={14} /> Risk service</p><h2>Reported signals</h2></div></div>
             {stats.risk_signals.length ? (
-              <ul className="workspace-signal-list">{stats.risk_signals.map((signal) => <li key={signal}>{readableStatus(signal)}</li>)}</ul>
+              <ul className="workspace-signal-list">{stats.risk_signals.map((signal) => <li key={signal}><RiskStatusValue value={signal} /></li>)}</ul>
             ) : <p className="workspace-footnote">No signals were reported by the service.</p>}
             <p className="workspace-footnote">Risk output cannot establish issuer trust, credential validity, or active status-list state.</p>
           </section>
