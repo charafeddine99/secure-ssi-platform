@@ -84,8 +84,58 @@ def test_proxy_route_structure(monkeypatch):
     response = client.get("/api/v1/fraud/stats")
     assert response.status_code == 503
     assert requested == [
-        ("GET", "http://127.0.0.1:8002/api/v1/fraud/stats")
+        ("GET", f"{proxy_routes.FRAUD_SERVICE_URL}/api/v1/fraud/stats")
     ]
+
+def test_proxy_does_not_forward_client_identity_or_internal_service_headers(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"{}"
+        headers = {"content-type": "application/json"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, *, method, url, headers, **_kwargs):
+            captured.update({key.lower(): value for key, value in headers.items()})
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        proxy_routes.httpx,
+        "AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    response = client.get(
+        "/api/v1/fraud/stats",
+        headers={
+            "Authorization": "Bearer signed-user-token",
+            "X-User-DID": "did:key:attacker-selected",
+            "X-User-Role": "admin",
+            "X-Organization-ID": "other-organization",
+            "X-Org-ID": "other-organization-alias",
+            "X-Authenticated-User": "attacker-selected",
+            "X-Internal-Service-Token": "client-controlled-secret",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["authorization"] == "Bearer signed-user-token"
+    leaked = [
+        key
+        for key in captured
+        if key.startswith((
+            "x-user-", "x-role", "x-organization-", "x-org-",
+            "x-authenticated", "x-internal-",
+        ))
+    ]
+    assert not leaked, f"Untrusted context headers reached downstream: {leaked!r}"
 
 def test_correlation_id_middleware():
     # 1. Automatic generation

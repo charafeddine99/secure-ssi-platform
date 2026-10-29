@@ -41,3 +41,17 @@ No dependency, cryptographic suite, trust-registry rule, storage schema, or Open
 ## Acceptance boundary
 
 The code-level profile/metadata inconsistency is corrected and the new OID4VCI metadata fields are covered by service unit assertions. The complete WP-05 token/proof/credential HTTP regression set was not rerun to a valid summary after this change. WP-05 therefore remains **PARTIAL for final source** until the targeted HTTP issuance regression, current full Identity suite, and current-source Docker verification can run. Independent issuer interoperability, government integration, an externally hosted custom context, and certification are not claimed.
+
+## 25 October 2026 — current-source verification addendum
+
+This update supersedes the 24 October statement that WP-05 HTTP issuance and current Docker verification remained blocked. No application code or dependency version changed during this verification; the existing test changes align fixtures and assertions with current validation/error-envelope behavior.
+
+- Host targeted command from `services/identity-service`: `python -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py` — **22 passed, 0 failed, 0 skipped, 4 warnings**, exit 0.
+- Eight-file current Identity security/protocol regression — **125 passed, 0 failed, 0 skipped, 4 warnings**, exit 0. Full Identity suite — **719 passed, 0 failed, 12 environment-gated skips, 7 warnings**, exit 0.
+- In the rebuilt current-source Identity container, the focused WP-05/WP-08/OID4VP command passed **74 tests, 0 failed, 0 skipped, 2 warnings**, exit 0. The same container's unauthenticated protected OID4VP session request returned HTTP 401.
+- Five application images were rebuilt with `--no-cache` from the current working tree and only those five services were recreated. The seven-service Compose project reported all services healthy; MongoDB/Redis containers and volumes were preserved.
+- The complete authorized root Python runner also completed: **834 passed, 13 environment-gated skipped, 266 passing subtests, 0 failed**, exit 0. This is separate from and not added to the Identity/Docker test counts.
+
+WP-05's code-level profile and HTTP integration behavior has current-source test evidence, so the former Windows TestClient blocker is no longer applicable to this execution. The configured University and QEAA types remain prototype profiles; public context resolution, independent issuer/wallet interoperability, accredited QEAA semantics, external conformance and production use remain unverified. Accordingly WP-05 remains **PARTIAL** for the broader package/interoperability scope, rather than being represented as fully interoperable.
+
+The rebuilt Docker Web bundle and the host Node 24 production bundle have different filenames, sizes and SHA-256 values; byte-for-byte equivalence is **not established**. The Dockerfile uses Node 20 Alpine while the host used Node 24.19.0; that difference is a hypothesis, not a demonstrated cause. OCI revision/source labels are absent on all five images. No packages or lockfiles were changed. One authorized online npm audit found React Router 6.30.6 (through react-router-dom 6.30.6) with two moderate advisories and a major upgrade path to react-router-dom 7.18.4, plus Vite 6.4.3 with moderate/high advisories and a fix available but no exact fixed version in the audit output. Remediation remains separate and open.

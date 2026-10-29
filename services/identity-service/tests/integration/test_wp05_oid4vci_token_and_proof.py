@@ -202,7 +202,9 @@ def test_wp05_offer_rejects_unconfigured_credential_profiles(
     )
 
     assert response.status_code == 422
-    assert "not supported by the active profile" in response.json()["detail"]
+    error = response.json()["error"]
+    assert error["code"] == "HTTP_422"
+    assert "not supported by the active profile" in error["message"]
 
 
 def test_wp05_nonce_endpoint_generates_fresh_server_nonce():

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import secrets
+from app.services.credential_validator import PROGRAM_CODE_PATTERN
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Mapping
-from bson import ObjectId
 
 from app.application.ports.holder_wallet import HolderWalletRepository
 from app.application.ports.oid4vci_repository import CredentialOfferRepository
@@ -149,7 +149,9 @@ class Oid4vciService:
         self._validate_offer_subject(credential_configuration_ids, subject_data)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
-        offer_id = f"offer_{ObjectId()}"
+        # Offer references must not be guessable: ObjectIds are timestamp+counter
+        # based, so a neighbouring offer could be derived from one observed id.
+        offer_id = f"offer_{secrets.token_urlsafe(24)}"
         pre_authorized_code = secrets.token_urlsafe(32)
 
         offer = CredentialOffer(
@@ -222,8 +224,12 @@ class Oid4vciService:
         graduation_year = subject_data["graduationYear"]
         if not isinstance(affiliation, str) or affiliation not in {"student", "faculty", "alumni", "staff"}:
             raise InvalidCredentialSubjectError("University affiliation value is not supported.")
-        if not isinstance(program_code, str) or not program_code.strip():
-            raise InvalidCredentialSubjectError("University programCode must be a non-empty string.")
+        if not isinstance(program_code, str) or PROGRAM_CODE_PATTERN.fullmatch(program_code.strip()) is None:
+            # Same rule the credential validator applies at issuance, so an
+            # offer can never be created that the holder is unable to claim.
+            raise InvalidCredentialSubjectError(
+                "University programCode must match SYN- followed by 2-28 capital letters, digits or hyphens."
+            )
         if not isinstance(degree, str) or degree not in {
             "Bachelor of Science", "Master of Science", "Doctor of Philosophy"
         }:
@@ -238,6 +244,8 @@ class Oid4vciService:
             ) from error
         if isinstance(graduation_year, float) and graduation_year != parsed_year:
             raise InvalidCredentialSubjectError("University graduationYear must be an integer.")
+        if not 2000 <= parsed_year <= 2100:
+            raise InvalidCredentialSubjectError("University graduationYear must be between 2000 and 2100.")
 
         return {
             "affiliation": affiliation,
@@ -255,13 +263,41 @@ class Oid4vciService:
             raise OfferNotFoundError(f"Credential offer {offer_id} has expired.")
         return offer
 
-    def list_pending_offers(
+    def get_offer_for_principal(
         self,
+        offer_id: str,
         *,
+        issuer_did: str | None = None,
         holder_did: str | None = None,
         owner_user_id: str | None = None,
+    ) -> CredentialOffer:
+        """Return an offer only to its issuing authority or to the holder it is addressed to.
+
+        Any other caller gets OfferNotFoundError, so the route cannot be used to
+        probe whether an offer id exists (OWASP API1:2023).
+        """
+        offer = self.get_offer(offer_id)
+        if issuer_did is not None and offer.issuer_did == issuer_did:
+            return offer
+        subject = offer.subject_data
+        recipients = {
+            subject.get(key)
+            for key in ("holder_did", "holderDid", "recipient_did", "recipientDid")
+            if isinstance(subject.get(key), str)
+        }
+        users = {subject.get(key) for key in ("userId", "user_id") if isinstance(subject.get(key), str)}
+        if recipients & set(self._holder_dids_for(holder_did, owner_user_id)):
+            return offer
+        if owner_user_id is not None and owner_user_id in users:
+            return offer
+        raise OfferNotFoundError(f"Credential offer {offer_id} not found.")
+
+    def _holder_dids_for(
+        self,
+        holder_did: str | None,
+        owner_user_id: str | None,
         limit: int = 50,
-    ) -> tuple[CredentialOffer, ...]:
+    ) -> list[str]:
         holder_dids: list[str] = []
         if holder_did:
             holder_dids.append(holder_did)
@@ -273,6 +309,16 @@ class Oid4vciService:
                         holder_dids.append(w.holder_did)
             except Exception:
                 pass
+        return holder_dids
+
+    def list_pending_offers(
+        self,
+        *,
+        holder_did: str | None = None,
+        owner_user_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        holder_dids = self._holder_dids_for(holder_did, owner_user_id, limit)
         return self._offers.list_pending(
             holder_dids=holder_dids if holder_dids else None,
             owner_user_id=owner_user_id,

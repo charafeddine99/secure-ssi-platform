@@ -67,16 +67,32 @@ def test_rate_limit_exceeded_returns_429():
 
 
 def test_rate_limiter_bounds_client_state_and_ignores_forwarded_ip():
-    limiter_app = RateLimiterMiddleware(app, max_requests=20, max_clients=2)
+    class TestClientAddress:
+        """Set ASGI client metadata without relying on a Starlette-only kwarg."""
 
-    for client_ip in ("192.0.2.1", "192.0.2.2", "192.0.2.3"):
-        test_client = TestClient(
-            limiter_app,
-            client=(client_ip, 50000),
-            headers={"X-Forwarded-For": "198.51.100.99"},
-        )
-        response = test_client.get("/api/v1/unknown-rate-limit-probe")
-        assert response.status_code == 404
+        def __init__(self, inner_app):
+            self.inner_app = inner_app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                test_ip = dict(scope.get("headers", [])).get(b"x-test-client-ip")
+                if test_ip:
+                    scope = {**scope, "client": (test_ip.decode("ascii"), 50000)}
+            await self.inner_app(scope, receive, send)
+
+    limiter_app = RateLimiterMiddleware(app, max_requests=20, max_clients=2)
+    scoped_app = TestClientAddress(limiter_app)
+
+    with TestClient(scoped_app) as test_client:
+        for client_ip in ("192.0.2.1", "192.0.2.2", "192.0.2.3"):
+            response = test_client.get(
+                "/api/v1/unknown-rate-limit-probe",
+                headers={
+                    "X-Test-Client-IP": client_ip,
+                    "X-Forwarded-For": "198.51.100.99",
+                },
+            )
+            assert response.status_code == 404
 
     assert len(limiter_app.clients) == 2
     assert set(limiter_app.clients) == {

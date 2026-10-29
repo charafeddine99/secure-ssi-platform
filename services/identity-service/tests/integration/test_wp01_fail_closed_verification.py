@@ -47,7 +47,7 @@ def _create_oid4vp_session(token: str, *, ttl_seconds: int = 600) -> tuple[str, 
     req_payload = {
         "purpose": "WP-01 Fail-Closed Verification Test",
         "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-        "requestedFields": ["degree", "gpa"],
+        "requestedFields": ["degree", "programCode"],
         "ttlSeconds": ttl_seconds,
     }
     res = client.post("/api/v1/oid4vp/requests", json=req_payload, headers=headers)
@@ -77,12 +77,44 @@ def _build_valid_signed_vc(*, expired: bool = False) -> dict:
         "validUntil": valid_until,
         "credentialSubject": {
             "id": SYNTHETIC_HOLDER_DID,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
     proof_service = build_local_proof_service(clock=lambda: now)
     return proof_service.sign_credential(raw_vc)
+
+
+def _record_holder_consent(session_id: str, credential: dict) -> None:
+    """Record the consent prerequisite for tests of later protocol stages."""
+    from app.api.v1 import dependencies
+    from app.domain.oid4vp import ConsentAction, ConsentDecision
+    from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+
+    manager = dependencies.get_mongo_connection_manager()
+    repository = dependencies.get_verification_session_repository(manager=manager)
+    session = repository.get_by_session_id(session_id)
+    assert session is not None
+    subject = credential["credentialSubject"]
+    repository.record_consent(
+        session.session_id,
+        consent_decision=ConsentDecision(
+            session_id=session.session_id,
+            verifier_did=session.verifier_did,
+            client_id=session.client_id,
+            purpose=session.purpose,
+            nonce=session.nonce,
+            holder_did=SYNTHETIC_HOLDER_DID,
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=session.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=session.expires_at,
+        ),
+        expected_version=session.version,
+    )
 
 
 # ==============================================================================
@@ -218,6 +250,7 @@ def test_gap01_replayed_presentation_fails_closed():
         nonce=nonce,
         domain="http://testserver/verifier",
     )
+    _record_holder_consent(session_id, vc)
     # First submission: success
     res1 = client.post("/api/v1/oid4vp/response", json={"sessionId": session_id, "vpToken": vp_token, "aiRiskScore": 10})
     assert res1.status_code == 200
@@ -241,7 +274,7 @@ def test_gap03_tampered_payload_fails_signature_verification():
 
     # Attacker tampers with the subject claims
     tampered_vc = copy.deepcopy(vc)
-    tampered_vc["credentialSubject"]["gpa"] = "4.00"  # Modified claim
+    tampered_vc["credentialSubject"]["programCode"] = "SYN-CS-002"  # Modified claim
 
     vp_token = {
         "type": ["VerifiablePresentation"],
@@ -448,12 +481,13 @@ def test_positive_golden_path_verification_succeeds():
         nonce=nonce,
         domain="http://testserver/verifier",
     )
+    _record_holder_consent(session_id, vc)
     res = client.post(
         "/api/v1/oid4vp/response",
         json={
             "sessionId": session_id,
             "vpToken": vp_token,
-            "disclosedClaims": {"degree": "MSc Computer Science"},
+            "disclosedClaims": {"degree": "Bachelor of Science"},
             "aiRiskScore": 10,
         },
     )

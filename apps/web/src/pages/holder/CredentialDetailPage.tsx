@@ -1,206 +1,114 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { StatusChip } from "../../components/common/StatusChip";
-import { ArrowLeft, Building2, CalendarDays, Check, Copy, QrCode } from "lucide-react";
-import { fetchCredentials, type BackendCredential } from "../../services/api";
+import React from "react";
+import { useParams } from "react-router-dom";
+import { IconRefresh } from "@tabler/icons-react";
+import { fetchWalletCredentials } from "../../api/wallet.ts";
+import { fetchCredentialStatus, type CredentialStatusSnapshot } from "../../api/status.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, DataGrid, Table } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
+import { CredentialStatusBadge, Badge } from "../../components/ui/StatusBadge.tsx";
+import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { describeError } from "../../lib/http.ts";
+import { formatDateTime, humanize, isExpired, renderClaimValue } from "../../lib/format.ts";
+import { useHolderWallet } from "./useHolderWallet.ts";
 
 export const CredentialDetailPage: React.FC = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
-  const [credential, setCredential] = useState<BackendCredential | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [copyError, setCopyError] = useState<string | null>(null);
+  const { id = "" } = useParams();
+  const wallet = useHolderWallet();
+  const walletId = wallet.status === "success" ? wallet.data.walletId : null;
+  const credentials = useAsync(
+    () => (walletId ? fetchWalletCredentials(walletId) : new Promise<never>(() => undefined)),
+    [walletId],
+  );
+  const [live, setLive] = React.useState<CredentialStatusSnapshot | null>(null);
+  const [liveError, setLiveError] = React.useState<string | null>(null);
+  const [checking, setChecking] = React.useState(false);
+  const [showRaw, setShowRaw] = React.useState(false);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    setCredential(null);
-    fetchCredentials()
-      .then((credentials) => {
-        if (active) setCredential(credentials.find((item) => item.id === id) ?? null);
-      })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Could not load credential.");
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [id]);
+  const credential = credentials.status === "success" ? credentials.data.find((item) => item.id === id) ?? null : null;
 
-  const handleCopy = async () => {
-    if (!credential?.raw_credential) return;
+  const checkStatus = async () => {
+    if (!credential) return;
+    setChecking(true);
+    setLiveError(null);
     try {
-      await navigator.clipboard.writeText(JSON.stringify(credential.raw_credential, null, 2));
-      setCopyError(null);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopyError("The credential data could not be copied. Check clipboard permission in your browser.");
+      setLive(await fetchCredentialStatus(credential.id));
+    } catch (error) {
+      setLive(null);
+      setLiveError(describeError(error));
+    } finally {
+      setChecking(false);
     }
   };
 
-  if (loading || error || !credential) {
-    return (
-      <main className="holder-page holder-credential-page">
-        <header className="holder-page-header">
-          <div><p className="holder-page-eyebrow">PERSONAL WALLET</p><h1>Credential details</h1><p>Details are loaded only from your signed-in wallet.</p></div>
-        </header>
-        <button type="button" className="holder-back-link" onClick={() => navigate("/wallet")}>
-          <ArrowLeft size={16} /> Back to Wallet
-        </button>
-        <section className={`holder-state-panel${error ? " holder-state-panel--error" : ""}`} role={error ? "alert" : "status"}>
-          <h2>{loading ? "Loading credential" : error ? "Credential unavailable" : "Credential not found"}</h2>
-          <p>{loading ? "Loading credential from your wallet…" : error || "This credential is not available in your wallet."}</p>
-        </section>
-      </main>
-    );
+  const crumbs = [{ label: "Wallet", to: "/wallet" }, { label: "Credential" }];
+
+  if (wallet.status === "error") {
+    return <Page title="Credential details" breadcrumbs={crumbs}><div className="card"><ErrorState error={wallet.error} title="Your wallet could not be opened" onRetry={wallet.reload} /></div></Page>;
+  }
+  if (credentials.status === "error") {
+    return <Page title="Credential details" breadcrumbs={crumbs}><div className="card"><ErrorState error={credentials.error} title="Credentials could not be loaded" onRetry={credentials.reload} /></div></Page>;
+  }
+  if (credentials.status !== "success") {
+    return <Page title="Credential details" breadcrumbs={crumbs}><div className="card"><LoadingState label="Loading credential" /></div></Page>;
+  }
+  if (!credential) {
+    return <Page title="Credential details" breadcrumbs={crumbs}><div className="card"><EmptyState title="Credential not found" description="This credential is not stored in your wallet." /></div></Page>;
   }
 
+  const claims = Object.entries(credential.claims);
   return (
-    <main className="holder-page holder-credential-page">
-      <header className="holder-page-header">
-        <div>
-          <p className="holder-page-eyebrow">PERSONAL WALLET</p>
-          <h1>Credential details</h1>
-          <p>Review the issuer, status and claims held in your wallet.</p>
-        </div>
-      </header>
-      <button
-        type="button"
-        className="holder-back-link"
-        onClick={() => navigate("/wallet")}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          backgroundColor: "transparent",
-          border: "none",
-          color: "#94a3b8",
-          fontSize: "0.85rem",
-          cursor: "pointer",
-          padding: 0
-        }}
+    <Page
+      eyebrow="Credential"
+      title={humanize(credential.type)}
+      breadcrumbs={[{ label: "Wallet", to: "/wallet" }, { label: humanize(credential.type) }]}
+      actions={<CredentialStatusBadge status={credential.status} />}
+    >
+      <Grid cols={2}>
+        <Card title="Issuance">
+          <DataGrid items={[
+            { label: "Issuer", value: <IdentifierText value={credential.issuer} label="issuer DID" /> },
+            { label: "Holder", value: <IdentifierText value={credential.holderDid} label="holder DID" /> },
+            { label: "Credential ID", value: <IdentifierText value={credential.id} label="credential ID" /> },
+            { label: "Valid from", value: formatDateTime(credential.validFrom) },
+            { label: "Valid until", value: <>{credential.validUntil ? formatDateTime(credential.validUntil) : "No expiry stated"}{isExpired(credential.validUntil) && <> <Badge tone="warning">Past validUntil</Badge></>}</> },
+            { label: "Proof", value: `${credential.proofType || "None"}${credential.cryptosuite ? ` · ${credential.cryptosuite}` : ""}` },
+          ]} />
+        </Card>
+
+        <Card
+          title="Status"
+          actions={<Button size="sm" variant="secondary" onClick={checkStatus} loading={checking} icon={<IconRefresh aria-hidden="true" />}>Check current status</Button>}
+        >
+          <DataGrid items={[
+            { label: "Stored status", value: <CredentialStatusBadge status={credential.status} /> },
+            credential.statusListId ? { label: "Status list", value: <><IdentifierText value={credential.statusListId} label="status list" /> · index {credential.statusListIndex ?? "?"}</> } : null,
+            live ? { label: "Current status", value: <><CredentialStatusBadge status={live.status} /> <span className="small text-secondary">(checked just now)</span></> } : null,
+            live?.revoked ? { label: "Revoked", value: `${formatDateTime(live.revokedAt)}${live.revocationReason ? ` · ${live.revocationReason}` : ""}` } : null,
+          ]} />
+          {liveError && <Alert tone="danger" live="assertive" title="Current status could not be checked" className="mt-3">{liveError}</Alert>}
+        </Card>
+      </Grid>
+
+      <Card title="Attributes" flush>
+        {claims.length === 0 ? <div className="card-body text-secondary">No attributes besides the holder DID.</div> : (
+          <Table caption="Credential attributes">
+            <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th></tr></thead>
+            <tbody>{claims.map(([key, value]) => <tr key={key}><th scope="row" className="fw-medium">{humanize(key)}</th><td data-label="Value">{renderClaimValue(value)}</td></tr>)}</tbody>
+          </Table>
+        )}
+      </Card>
+
+      <Card
+        title="Signed credential (JSON)"
+        actions={<Button size="sm" variant="ghost" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw} aria-controls="raw-credential">{showRaw ? "Hide" : "Show"}</Button>}
+        flush
       >
-        <ArrowLeft size={16} />
-        Back to Wallet
-      </button>
-
-      <article
-        className="holder-credential-detail-card"
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid #1f2937",
-          padding: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div className="holder-credential-detail-title">
-            <span style={{ fontSize: "0.7rem", color: "#60a5fa", fontWeight: 700, textTransform: "uppercase" }}>
-              {credential.category} CREDENTIAL
-            </span>
-            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#ffffff", margin: "2px 0 0 0" }}>
-              {credential.title}
-            </h2>
-          </div>
-          <StatusChip status={credential.status} />
-        </div>
-
-        <p className="holder-verification-note" style={{ margin: 0, color: "#fbbf24", fontSize: "0.78rem" }}>
-          Stored status is shown here. Use the verifier to evaluate the credential proof.
-        </p>
-
-        <dl className="holder-credential-facts">
-          <div>
-            <dt><Building2 size={15} aria-hidden="true" /> Issued by</dt>
-            <dd>{credential.issuer_name || credential.issuer || "Issuer not supplied"}</dd>
-            {credential.issuer_name && credential.issuer && <code>{credential.issuer}</code>}
-          </div>
-          <div><dt><CalendarDays size={15} aria-hidden="true" /> Issued</dt><dd>{credential.issued_date || "Not supplied"}</dd></div>
-          <div><dt><CalendarDays size={15} aria-hidden="true" /> Expires</dt><dd>{credential.expiry_date || "Not supplied"}</dd></div>
-        </dl>
-
-        {/* Claims Table */}
-        <section className="holder-credential-claims" aria-labelledby="holder-claims-title">
-          <h2 id="holder-claims-title">Credential claims</h2>
-          <div className="holder-credential-claims-grid">
-            {Object.entries(credential.claims || {}).length > 0 ? Object.entries(credential.claims || {}).map(([k, v]) => (
-              <dl
-                key={k}
-                className="holder-credential-claim-row"
-              >
-                <dt>{k}</dt>
-                <dd>{typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}</dd>
-              </dl>
-            )) : <p className="holder-detail-empty">No claim fields were returned for this credential.</p>}
-          </div>
-        </section>
-
-        <details className="holder-technical-details">
-          <summary>Technical proof data (not verified on this page)</summary>
-          <p>Stored proof data is not evidence that this credential's signature or status has been verified.</p>
-          <code>{credential.proof_value || "No proof value was returned by the wallet service."}</code>
-        </details>
-
-        {copyError && <p className="holder-inline-error" role="alert">{copyError}</p>}
-
-        <div className="holder-credential-detail-actions">
-          <button
-            type="button"
-            className="holder-secondary-action"
-            onClick={handleCopy}
-            disabled={!credential.raw_credential}
-            title={credential.raw_credential ? "Copy the original credential returned by the wallet" : "Original serialized credential was not returned by the wallet"}
-            style={{
-              flex: 1,
-              padding: "10px",
-              borderRadius: "8px",
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              color: "#e2e8f0",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              cursor: credential.raw_credential ? "pointer" : "not-allowed",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px"
-            }}
-          >
-            {copied ? <Check size={16} color="#34d399" /> : <Copy size={16} />}
-            {copied ? "Credential copied" : "Copy credential data"}
-          </button>
-
-          <button
-            type="button"
-            className="holder-primary-action"
-            onClick={() => navigate("/wallet/scan")}
-            style={{
-              flex: 1,
-              padding: "10px",
-              borderRadius: "8px",
-              backgroundColor: "#2563eb",
-              border: "none",
-              color: "#ffffff",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px"
-            }}
-          >
-            <QrCode size={16} />
-            Use verifier request
-          </button>
-        </div>
-      </article>
-    </main>
+        {showRaw && <div className="card-body"><pre id="raw-credential" className="code-pane" tabIndex={0}>{JSON.stringify(credential.raw, null, 2)}</pre></div>}
+      </Card>
+    </Page>
   );
 };

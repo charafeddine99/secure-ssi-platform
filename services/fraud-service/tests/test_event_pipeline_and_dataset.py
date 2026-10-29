@@ -17,12 +17,18 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.application.hybrid_detector import detector
 from app.ml.feature_store import feature_store
+from app.core import security
+from app.core.security import FraudPrincipal
 
 client = TestClient(app)
+SERVICE_TOKEN = "fraud-test-internal-service-token-32bytes"
+SERVICE_HEADERS = {"X-Internal-Service-Token": SERVICE_TOKEN}
+ADMIN_HEADERS = {"Authorization": "Bearer test-admin-token"}
 
 
 @pytest.fixture(autouse=True)
-def reset_state():
+def reset_state(monkeypatch):
+    monkeypatch.setattr(security, "FRAUD_INTERNAL_SERVICE_TOKEN", SERVICE_TOKEN)
     detector._quarantined_dids.clear()
     with feature_store._lock:
         feature_store._did_events.clear()
@@ -45,7 +51,7 @@ def test_single_event_ingestion_and_sliding_window():
         "metadata": {"action": "initial_login"},
     }
 
-    res = client.post("/api/v1/fraud/events", json=payload)
+    res = client.post("/api/v1/fraud/events", json=payload, headers=SERVICE_HEADERS)
     assert res.status_code == 201
     data = res.json()
     assert data["status"] == "INGESTED"
@@ -71,7 +77,7 @@ def test_failed_login_velocity_is_advisory_and_does_not_auto_quarantine():
             "timestamp": base_ts + i * 2,
             "metadata": {"failure_reason": "bad_password"},
         }
-        res = client.post("/api/v1/fraud/events", json=payload)
+        res = client.post("/api/v1/fraud/events", json=payload, headers=SERVICE_HEADERS)
         assert res.status_code == 201
 
     # Event ingestion records telemetry but never changes account quarantine.
@@ -90,14 +96,22 @@ def test_failed_login_velocity_is_advisory_and_does_not_auto_quarantine():
         "device_fingerprint": "attacker-headless",
         "device_fingerprint_match": False,
         "is_tor_or_proxy": True,
-    })
+    }, headers=SERVICE_HEADERS)
     assert eval_res.status_code == 200
     assert eval_res.json()["risk_level"] == "CRITICAL"
     assert eval_res.json()["recommended_action"] == "QUARANTINE_ACCOUNT"
     assert detector.is_quarantined(did) is False
 
 
-def test_batch_event_ingestion():
+def test_batch_event_ingestion(monkeypatch):
+    async def admin_identity(_token):
+        return FraudPrincipal(
+            subject="admin-test",
+            roles=frozenset({"admin"}),
+            permissions=frozenset({"admin:operations:read"}),
+        )
+
+    monkeypatch.setattr(security, "_introspect_bearer_token", admin_identity)
     did = "did:key:z6MkuBatchTest003"
     now = time.time()
     events = [
@@ -114,12 +128,16 @@ def test_batch_event_ingestion():
         for i in range(4)
     ]
 
-    res = client.post("/api/v1/fraud/events/batch", json={"events": events})
+    res = client.post(
+        "/api/v1/fraud/events/batch",
+        json={"events": events},
+        headers=SERVICE_HEADERS,
+    )
     assert res.status_code == 201
     assert res.json()["status"] == "BATCH_INGESTED"
     assert res.json()["ingested_count"] == 4
 
-    hist = client.get(f"/api/v1/fraud/history/{did}")
+    hist = client.get(f"/api/v1/fraud/history/{did}", headers=ADMIN_HEADERS)
     assert hist.status_code == 200
     assert hist.json()["features"]["total_events_in_window"] == 4
     assert hist.json()["is_quarantined"] is False
@@ -153,9 +171,17 @@ def test_impossible_travel_haversine_calculation():
     assert summary["geo_distance_km"] > 9000.0
 
 
-def test_synthetic_dataset_metrics_are_labeled_as_diagnostic_only():
+def test_synthetic_dataset_metrics_are_labeled_as_diagnostic_only(monkeypatch):
     """Metrics are diagnostic for a fixed generated replay, not model claims."""
-    res = client.get("/api/v1/fraud/dataset/metrics")
+    async def admin_identity(_token):
+        return FraudPrincipal(
+            subject="admin-test",
+            roles=frozenset({"admin"}),
+            permissions=frozenset({"admin:operations:read"}),
+        )
+
+    monkeypatch.setattr(security, "_introspect_bearer_token", admin_identity)
+    res = client.get("/api/v1/fraud/dataset/metrics", headers=ADMIN_HEADERS)
     assert res.status_code == 200
     metrics = res.json()
 

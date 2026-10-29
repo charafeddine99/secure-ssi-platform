@@ -18,10 +18,12 @@ from app.infrastructure.crypto.local_holder_key_provider import (
     LocalHolderKeyProvider,
 )
 from app.domain.trust_registry import TrustRole, TrustStatus
+from app.domain.oid4vp import ConsentAction, ConsentDecision
 from app.api.v1.dependencies import (
     get_trust_registry_service,
     get_mongo_connection_manager,
     get_trust_registry_repository,
+    get_verification_session_repository,
 )
 
 client = TestClient(app)
@@ -48,13 +50,39 @@ def _create_oid4vp_session(token: str) -> tuple[str, str, str]:
     req_payload = {
         "purpose": "WP-03 Trust Registry Verification Test",
         "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-        "requestedFields": ["degree", "gpa"],
+        "requestedFields": ["degree", "programCode"],
         "ttlSeconds": 600,
     }
     res = client.post("/api/v1/oid4vp/requests", json=req_payload, headers=headers)
     assert res.status_code == 201, f"Create session failed: {res.text}"
     data = res.json()
     return data["sessionId"], data["nonce"], data.get("clientId", "http://testserver/verifier")
+
+
+def _record_holder_consent(session_id: str, credential: dict[str, Any]) -> None:
+    """Seed the server-side consent state required by a direct-post fixture."""
+    manager = get_mongo_connection_manager()
+    repository = get_verification_session_repository(manager=manager)
+    session = repository.get_by_session_id(session_id)
+    assert session is not None
+    subject = credential["credentialSubject"]
+    repository.record_consent(
+        session.session_id,
+        consent_decision=ConsentDecision(
+            session_id=session.session_id,
+            verifier_did=session.verifier_did,
+            client_id=session.client_id,
+            purpose=session.purpose,
+            nonce=session.nonce,
+            holder_did=SYNTHETIC_HOLDER_DID,
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=session.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=session.expires_at,
+        ),
+        expected_version=session.version,
+    )
 
 
 def _build_signed_vc_with_issuer(issuer_did: str, *, cred_type: str = "UniversityAffiliationCredential") -> dict[str, Any]:
@@ -71,8 +99,10 @@ def _build_signed_vc_with_issuer(issuer_did: str, *, cred_type: str = "Universit
         "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
         "credentialSubject": {
             "id": SYNTHETIC_HOLDER_DID,
-            "degree": "Computer Science",
-            "gpa": "3.85",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
     if issuer_did == "did:web:issuer.example":
@@ -422,6 +452,7 @@ def test_verifier_accepts_registered_trusted_issuer_presentation() -> None:
     # Build signed VC from pre-seeded issuer
     trusted_did = "did:web:issuer.example"
     vc = _build_signed_vc_with_issuer(trusted_did)
+    _record_holder_consent(session_id, vc)
 
     vp = build_signed_presentation(
         vc,
@@ -462,6 +493,7 @@ def test_suspending_issuer_causes_subsequent_verification_rejection() -> None:
         # 1. Verification while ACTIVE -> ACCEPTED
         s1_id, s1_nonce, s1_client = _create_oid4vp_session(verifier_token)
         vc1 = _build_signed_vc_with_issuer(trusted_did)
+        _record_holder_consent(s1_id, vc1)
         vp1 = build_signed_presentation(vc1, nonce=s1_nonce, domain=s1_client, holder_did=SYNTHETIC_HOLDER_DID)
 
         res1 = client.post("/api/v1/oid4vp/response", json={"sessionId": s1_id, "vpToken": vp1})
@@ -481,6 +513,7 @@ def test_suspending_issuer_causes_subsequent_verification_rejection() -> None:
         # 3. Verification after SUSPENSION -> REJECTED (fail-closed on trust despite valid signature)
         s2_id, s2_nonce, s2_client = _create_oid4vp_session(verifier_token)
         vc2 = _build_signed_vc_with_issuer(trusted_did)
+        _record_holder_consent(s2_id, vc2)
         vp2 = build_signed_presentation(vc2, nonce=s2_nonce, domain=s2_client, holder_did=SYNTHETIC_HOLDER_DID)
 
         res2 = client.post("/api/v1/oid4vp/response", json={"sessionId": s2_id, "vpToken": vp2})

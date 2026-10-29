@@ -181,6 +181,7 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
         presentation_id: str,
         verification_result: NinePointVerificationResult,
         disclosed_claims: Mapping[str, Any] | None,
+        consent_status: str,
         expected_version: int,
     ) -> VerificationSession:
         try:
@@ -196,7 +197,7 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
                         "presentationId": presentation_id,
                         "verificationResult": verification_result.to_dict(),
                         "disclosedClaims": deepcopy(dict(disclosed_claims)) if disclosed_claims else None,
-                        "consentStatus": "GRANTED",
+                        "consentStatus": consent_status,
                     },
                     "$inc": {"version": 1},
                 },

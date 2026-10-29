@@ -74,3 +74,19 @@ The Python runner covers six independent pytest roots: Identity, Recovery, Fraud
 ## Acceptance and limitations
 
 WP-11 remains **PARTIAL (L2)**. The path-resolution defect in the runner is fixed and regression-tested; current installed `ckzg`, pandas and NumPy imports work; PowerShell-specific npm commands are documented; and the selected checks above passed. The V2.1 WP-11 completion requirement—`python run_tests.py` completing with all Windows service suites passing—remains **BLOCKED** by the reproduced TestClient/AnyIO socketpair hang. No full-suite totals are available for this current run. A supported Windows Python runtime or administrator-approved resolution for the loopback socket-pair restriction is needed before claiming full Windows-suite reproducibility. No AppLocker policy, firewall, execution policy, or package version was changed.
+
+## 25 October 2026 — completed root test runner addendum
+
+This addendum supersedes the checkpoint statement above that the full Windows Python suite was blocked before a summary. The repository runner was executed in this environment on branch `besna-dev`, source HEAD `e26da1e49c80c6b157e5f6d5697c43a455bf7542`:
+
+| Command | Result | Interpretation |
+|---|---|---|
+| `& '.\.venv\Scripts\python.exe' '.\run_tests.py'` from repository root | **Exit 0; 834 passed, 13 skipped, 266 passing subtests, 0 failed, 12 warnings.** | The full configured root runner completed. Per-tree results: Identity 719 passed/12 skipped; Recovery 47/1 skipped; Fraud 23; API Gateway 17; shared 7 plus 19 subtests; root 21 plus 247 subtests. Skips are environment-gated and remain skips, not passes. |
+| `npm.cmd test --prefix apps/web` | **8 test files passed, 0 failed, 0 skipped; exit 0** | Existing frontend tests. |
+| `npm.cmd run lint --prefix apps/web` | **Passed; exit 0** | ESLint. |
+| `npm.cmd run build --prefix apps/web` | **Passed; exit 0** | TypeScript and Vite production build (1,831 modules). |
+| `npm.cmd audit --prefix apps/web --json` | **Exit 1; 3 vulnerable packages reported among 264 dependencies (2 moderate, 1 high).** | Online audit result; no fix was applied. See the 25 October acceptance addendum for package paths and advisories. |
+
+One online npm audit was explicitly authorized. It identified `react-router` 6.30.6 (transitive through `react-router-dom` 6.30.6) with two moderate advisories and a suggested major upgrade to `react-router-dom` 7.18.4; Vite 6.4.3 has a reported fix available but the output did not provide the exact fixed version. No dependency or lockfile changes were made. The prior `.venv\Scripts\python.exe -m pip check` limitation remains: this virtual environment does not include pip, so dependency consistency was not verified by pip.
+
+The successful root runner demonstrates that this configured run completed; it does not imply Windows CI ran, that all optional environment-gated tests executed, or that browser/accessibility and independent protocol interoperability were verified. The WP-11 package remains **PARTIAL** for reproducibility across supported environments and unresolved skipped/runtime coverage, while the root runner completion criterion is now **PASS for this observed run**.

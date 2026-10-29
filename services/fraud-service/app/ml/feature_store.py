@@ -10,6 +10,9 @@ from __future__ import annotations
 import math
 from collections import defaultdict, deque
 from datetime import datetime, timezone
+import hashlib
+import hmac
+import secrets
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,17 +20,45 @@ from typing import Any, Dict, List, Optional, Tuple
 class SlidingWindowFeatureStore:
     """Thread-safe in-memory sliding-window feature store for fraud detection."""
 
-    def __init__(self, window_retention_sec: float = 3600.0) -> None:
+    def __init__(
+        self,
+        window_retention_sec: float = 3600.0,
+        *,
+        max_tracked_dids: int = 10000,
+        max_events_per_did: int = 500,
+        max_devices_per_did: int = 50,
+    ) -> None:
         self.retention_sec = window_retention_sec
+        self.max_tracked_dids = max_tracked_dids
+        self.max_events_per_did = max_events_per_did
+        self.max_devices_per_did = max_devices_per_did
+        # The process-local HMAC key lets the heuristic compare devices without
+        # retaining raw device fingerprints. It intentionally cannot correlate
+        # a fingerprint across service restarts.
+        self._fingerprint_key = secrets.token_bytes(32)
         self._lock = Lock()
-        # did -> deque of (timestamp, event_type, ip, device, metadata)
+        # did -> bounded deque of (timestamp, event_type); raw event payloads
+        # are not retained after the derived signals have been calculated.
         self._did_events: Dict[str, deque] = defaultdict(deque)
-        # did -> set of known device fingerprints
+        # did -> set of process-local HMAC fingerprints
         self._known_devices: Dict[str, set] = defaultdict(set)
         # did -> last action timestamp
         self._last_action_time: Dict[str, float] = {}
-        # did -> last known (lat, lon, ip)
-        self._last_known_geo: Dict[str, Tuple[float, float, str]] = {}
+        # did -> last known coordinates; source IP is not retained.
+        self._last_known_geo: Dict[str, Tuple[float, float]] = {}
+
+    def _fingerprint_digest(self, fingerprint: str) -> str:
+        return hmac.new(
+            self._fingerprint_key,
+            fingerprint.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _forget_did(self, did: str) -> None:
+        self._did_events.pop(did, None)
+        self._known_devices.pop(did, None)
+        self._last_action_time.pop(did, None)
+        self._last_known_geo.pop(did, None)
 
     def ingest_event(
         self,
@@ -49,21 +80,21 @@ class SlidingWindowFeatureStore:
             # Purge expired events
             self._purge_expired(ts)
 
-            # Record event
-            event_record = {
-                "event_id": event_id,
-                "event_type": event_type,
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "device_fingerprint": device_fingerprint,
-                "timestamp": ts,
-                "metadata": meta,
-            }
-            self._did_events[did].append(event_record)
+            if did not in self._did_events:
+                while len(self._did_events) >= self.max_tracked_dids:
+                    oldest_did = next(iter(self._did_events))
+                    self._forget_did(oldest_did)
+                self._did_events[did] = deque(maxlen=self.max_events_per_did)
+
+            # Only the fields needed for window counts survive ingestion.
+            self._did_events[did].append({"event_type": event_type, "timestamp": ts})
+            fingerprint_digest = self._fingerprint_digest(device_fingerprint)
 
             # Update device baseline
             if event_type in {"LOGIN", "WALLET_CREATED"} and not meta.get("suspicious", False):
-                self._known_devices[did].add(device_fingerprint)
+                devices = self._known_devices[did]
+                if fingerprint_digest in devices or len(devices) < self.max_devices_per_did:
+                    devices.add(fingerprint_digest)
 
             # Calculate metrics
             summary = self._compute_summary_locked(did, ts, client_ip, device_fingerprint, meta)
@@ -73,7 +104,12 @@ class SlidingWindowFeatureStore:
             lat = meta.get("latitude")
             lon = meta.get("longitude")
             if lat is not None and lon is not None:
-                self._last_known_geo[did] = (float(lat), float(lon), client_ip)
+                # Retain a coarse ~10 km cell only; precise coordinates are
+                # used for the current distance calculation but not persisted.
+                self._last_known_geo[did] = (
+                    round(float(lat), 1),
+                    round(float(lon), 1),
+                )
 
             return summary
 
@@ -102,7 +138,7 @@ class SlidingWindowFeatureStore:
         device_fingerprint: str,
         metadata: Dict[str, Any],
     ) -> Dict[str, Any]:
-        events = self._did_events[did]
+        events = self._did_events.get(did, ())
         cutoff_10m = current_ts - 600.0
 
         # 1. Failed attempts in last 10m
@@ -123,14 +159,14 @@ class SlidingWindowFeatureStore:
 
         # 4. Device match
         known = self._known_devices.get(did, set())
-        device_match = (device_fingerprint in known) if known else True
+        device_match = (self._fingerprint_digest(device_fingerprint) in known) if known else True
 
         # 5. Impossible Travel Geo distance
         geo_distance_km = 0.0
         cur_lat = metadata.get("latitude")
         cur_lon = metadata.get("longitude")
         if cur_lat is not None and cur_lon is not None and did in self._last_known_geo:
-            prev_lat, prev_lon, _ = self._last_known_geo[did]
+            prev_lat, prev_lon = self._last_known_geo[did]
             geo_distance_km = self._haversine_distance(prev_lat, prev_lon, float(cur_lat), float(cur_lon))
         elif metadata.get("geo_distance_km") is not None:
             geo_distance_km = float(metadata["geo_distance_km"])
@@ -157,7 +193,7 @@ class SlidingWindowFeatureStore:
             while q and q[0]["timestamp"] < cutoff:
                 q.popleft()
             if not q:
-                del self._did_events[did]
+                self._forget_did(did)
 
     @staticmethod
     def _is_tor_or_proxy(ip: str) -> bool:

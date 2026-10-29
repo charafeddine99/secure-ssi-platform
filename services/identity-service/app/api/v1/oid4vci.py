@@ -46,7 +46,7 @@ from app.schemas.oid4_api import (
     HolderProofRequest,
     HolderProofResponse,
 )
-from app.api.v1.issuer_scope import require_issuer_did
+from app.api.v1.issuer_scope import issuer_did_for_authorization, require_issuer_did
 
 router = APIRouter(prefix="/oid4vci", tags=["oid4vci"])
 
@@ -165,15 +165,29 @@ def list_credential_offers(
     "/offers/{offer_id}",
     response_model=CredentialOfferResponse,
     summary="Query Credential Offer by ID",
-    description="Endpoint invoked by holder wallet to inspect offer before accepting."
+    description=(
+        "Returns an offer, including its pre-authorized code and subject data, only to "
+        "the issuing authority that created it or to the holder it is addressed to. "
+        "Wallets claim offers through the credential offer link; other callers get 404."
+    ),
 )
 def get_credential_offer(
     offer_id: str,
     request: Request,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
     service: Oid4vciService = Depends(get_oid4vci_service),
 ) -> CredentialOfferResponse:
     try:
-        offer = service.get_offer(offer_id)
+        issuer_did = issuer_did_for_authorization(principal)
+    except PermissionDeniedError:
+        issuer_did = None
+    try:
+        offer = service.get_offer_for_principal(
+            offer_id,
+            issuer_did=issuer_did,
+            holder_did=principal.id if principal.id.startswith("did:") else None,
+            owner_user_id=principal.id,
+        )
     except OfferNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     

@@ -690,3 +690,28 @@ services:
 ### Decision
 
 **WP-08 / G6: PASS at L3 for the scoped R1–R3, policy/UI, current Identity regression, real-Mongo, and isolated Compose runtime evidence above.** The five Hardhat skips are outside WP-08 and are not counted as passes. L4 interoperability, suspension restoration, public-chain receipt behavior, production readiness, and a browser Golden Path are not claimed. G9 is no longer blocked by WP-08; continue in the controlling Master Plan order, with G8 next.
+
+## 25 October 2026 — current-source L3 evidence addendum
+
+This addendum supersedes the 15 October “current-source build and health” block for the present source revision. It preserves earlier evidence as historical. Branch `besna-dev`, source HEAD `e26da1e49c80c6b157e5f6d5697c43a455bf7542`; the working tree includes eight modified Identity integration test files and a pre-existing untracked audit directory. No application code was modified in this verification.
+
+| Acceptance item | Observed result | Boundary |
+|---|---|---|
+| R1 — fail-closed status and persistence | **PASS in tested scope** | Current focused remediation/policy tests passed as part of the 74-test in-container set and the 125-test host set. |
+| R2 — revocation, suspension purpose, status purpose | **PASS in tested scope** | Focused tests passed. Suspension restoration lifecycle is not established. |
+| R3 — status-list authenticity/signature verification | **PASS in tested scope** | Focused security tests passed; no independent external verifier is claimed. |
+| OID4VP session authorization | **PASS in tested scope** | Targeted authorization tests are included in the 74-test in-container run; unauthenticated retrieval through Gateway and Identity returned HTTP 401. Authenticated cross-organization browser journey remains unverified. |
+| Focused running-container suite | **PASS: 74 passed, 0 failed, 0 skipped, 2 warnings** | Python 3.12 inside the freshly rebuilt Identity service; includes WP-05, WP-08, issuance interoperability test module, and OID4VP session authorization. This test-module result alone does not prove independent L4 interoperability. |
+| Host Identity regression | **PASS: 719 passed, 0 failed, 12 skipped, 7 warnings** | Python 3.11.16 venv. Skips are environment-gated and not counted as passing. |
+| Current-source Compose runtime | **PASS: 7/7 healthy** | Five app images built `--no-cache`; only five app services recreated. Existing MongoDB/Redis containers and volumes remained. Web and four service health endpoints returned 200. |
+| Unauthorized request smoke | **PASS: HTTP 401** | Fake OID4VP session retrieval tested through Gateway and directly through Identity; this is a negative unauthenticated probe, not an authenticated owner/tenant journey. |
+
+Exact focused running-container command:
+
+```powershell
+docker compose --project-name wp08-l3-20261013 --file docker-compose.yml exec -T identity-service python -m pytest -q -rs tests/integration/test_wp05_oid4vci_token_and_proof.py tests/integration/test_wp08_remediation_status_security.py tests/integration/test_wp08_policy_evaluation.py tests/integration/test_issuance_interoperability.py tests/integration/test_oid4vp_session_authorization.py
+```
+
+All five images lack OCI `org.opencontainers.image.revision` and `.source` labels. The build was invoked with `--no-cache` from this current working tree; container creation times and image IDs are recorded in the execution evidence, but the OCI metadata does not independently attest the revision. The Docker-served frontend bundle (`index-7Lu304ao.js`, SHA-256 `A372A08253EEA13E0B7DC2D5DD1406773B0A49CA90ECAB9583E0A65457054152`) differs from the host Node 24.19.0 build (`index-37arp1TW.js`, SHA-256 `8148FB8F061EA8B4185790388805CB551B4A2BC34273C1BB05231CD6557106D1`). Exact bundle equivalence is therefore **unverified**; Docker build uses Node 20 Alpine, but no controlled same-runtime comparison was performed.
+
+**Decision:** WP-08 / G6 is **PASS at L3 for the scoped R1–R3, policy, targeted authorization, full Identity suite, and current-source Compose health/negative HTTP evidence above**. Overall project acceptance remains **PARTIAL**. L4 interoperability, suspension restoration, authenticated cross-organization browser flow, rendered Golden Path/accessibility, public-chain receipt behavior and production readiness are not claimed. Do not infer that passing a test module alone constitutes external interoperability.

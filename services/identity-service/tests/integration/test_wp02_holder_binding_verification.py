@@ -40,7 +40,7 @@ def _create_oid4vp_session(token: str, *, client_id: str | None = None) -> tuple
     req_payload = {
         "purpose": "WP-02 Holder Binding Verification Test",
         "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-        "requestedFields": ["degree", "gpa"],
+        "requestedFields": ["degree", "programCode"],
         "ttlSeconds": 600,
     }
     if client_id:
@@ -65,12 +65,48 @@ def _build_valid_signed_vc(*, holder_did: str = SYNTHETIC_HOLDER_DID) -> dict[st
         "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
         "credentialSubject": {
             "id": holder_did,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
     proof_service = build_local_proof_service(clock=lambda: now)
     return proof_service.sign_credential(raw_vc)
+
+
+def _record_holder_consent(
+    session_id: str,
+    credential: dict[str, Any],
+    *,
+    holder_did: str = SYNTHETIC_HOLDER_DID,
+) -> None:
+    """Seed consent so a positive proof test isolates Holder Binding behavior."""
+    from app.api.v1 import dependencies
+    from app.domain.oid4vp import ConsentAction, ConsentDecision
+
+    manager = dependencies.get_mongo_connection_manager()
+    repository = dependencies.get_verification_session_repository(manager=manager)
+    session = repository.get_by_session_id(session_id)
+    assert session is not None
+    subject = credential["credentialSubject"]
+    repository.record_consent(
+        session.session_id,
+        consent_decision=ConsentDecision(
+            session_id=session.session_id,
+            verifier_did=session.verifier_did,
+            client_id=session.client_id,
+            purpose=session.purpose,
+            nonce=session.nonce,
+            holder_did=holder_did,
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=session.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=session.expires_at,
+        ),
+        expected_version=session.version,
+    )
 
 
 # ==============================================================================
@@ -83,6 +119,7 @@ def test_wp02_positive_valid_holder_binding_succeeds():
     token = _get_verifier_token()
     session_id, nonce, client_id = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc()
+    _record_holder_consent(session_id, vc)
 
     vp = build_signed_presentation(
         vc,
@@ -96,7 +133,7 @@ def test_wp02_positive_valid_holder_binding_succeeds():
         json={
             "sessionId": session_id,
             "vpToken": vp,
-            "disclosedClaims": {"degree": "MSc Computer Science"},
+            "disclosedClaims": {"degree": "Bachelor of Science"},
             "aiRiskScore": 10,
         },
     )
@@ -124,7 +161,7 @@ def test_wp02_legacy_presentation_signer_fails_closed():
             "decision": "APPROVE",
             "holderDid": SYNTHETIC_HOLDER_DID,
             "approvedCredentials": [vc["id"]],
-            "approvedClaims": {"degree": "MSc Computer Science"},
+            "approvedClaims": {"degree": "Bachelor of Science"},
         },
     )
     presentation = client.post(
@@ -132,7 +169,7 @@ def test_wp02_legacy_presentation_signer_fails_closed():
         json={
             "sessionId": session_id,
             "verifiableCredentials": [vc],
-            "disclosedClaims": {"degree": "MSc Computer Science"},
+            "disclosedClaims": {"degree": "Bachelor of Science"},
             "holderDid": SYNTHETIC_HOLDER_DID,
             "allowUnconsentedTestMode": True,
         },
@@ -163,6 +200,7 @@ def test_wp02_positive_ephemeral_keypair_holder():
     token = _get_verifier_token()
     session_id, nonce, client_id = _create_oid4vp_session(token)
     vc = _build_valid_signed_vc(holder_did=holder_did)
+    _record_holder_consent(session_id, vc, holder_did=holder_did)
 
     vp = build_signed_presentation(
         vc,
@@ -177,7 +215,7 @@ def test_wp02_positive_ephemeral_keypair_holder():
         json={
             "sessionId": session_id,
             "vpToken": vp,
-            "disclosedClaims": {"degree": "MSc Computer Science"},
+            "disclosedClaims": {"degree": "Bachelor of Science"},
             "aiRiskScore": 10,
         },
     )
@@ -343,7 +381,9 @@ def test_wp02_negative_holder_did_mismatch_fails():
     assert res.status_code == 200
     result = res.json()["result"]
     assert result["holderBindingValid"] is False
-    assert result["details"]["holderBindingReason"] == "HOLDER_BINDING_HOLDER_MISMATCH"
+    assert result["details"]["holderBindingReason"] == (
+        "Every presented credential must be bound to the authenticated VP holder"
+    )
     assert result["finalPolicyResult"] == "REJECTED"
 
 

@@ -230,3 +230,31 @@ Local commits made on `besna-dev` in this task:
 No files were committed to `main`; no push, merge, force operation, fetch, reset, clean, stash, or volume cleanup was performed. The local `origin/besna-dev` tracking ref was already stale at entry. The live read-only `git ls-remote --heads origin` attempt failed DNS, so the remote branch's current SHA and whether it advanced are **unknown**. Per the no-overwrite rule, publication is blocked until that remote state can be verified; no push was attempted. The pre-existing untracked audit directory remains preserved and is not included in any commit.
 
 **Final acceptance:** `PARTIAL`. Mandatory current-source HTTP issuance, full Identity/WP-08 regression, current Docker L3, integrated Golden Path and independent L4 interoperability remain incomplete or blocked. The next technical milestone is to run the filtered WP-05 HTTP tests and full Identity regression in an authorized runtime that supports the project's TestClient loopback behavior, then rebuild and verify Docker images from that exact source. Afterward, re-evaluate G4/G6/G11 and the project decision. Do not claim the whole project is complete before those gates and the independent interoperability requirement are evidenced.
+
+## 25 October 2026 — current-source verification addendum
+
+This addendum supersedes earlier statements in this report that the full Python runner, final-source WP-05 HTTP tests, and current-source Docker L3 checks were blocked. It does not erase the dated historical evidence above. All results below were observed on branch `besna-dev`, local HEAD `e26da1e49c80c6b157e5f6d5697c43a455bf7542`; eight Identity integration test files were locally modified to align stale fixtures/assertions with the current contract. No application source or dependency version was changed.
+
+### Current verification
+
+- WP-05 targeted Identity integration: `python -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py` — **22 passed, 0 failed, 0 skipped, 4 warnings**. The Windows virtual-environment invocation completed with exit 0.
+- Focused current Identity files (OID4 protocol, AI policy matrix, WP-01, WP-02, WP-03, WP-05, WP-08 policy, WP-08 remediation): **125 passed, 0 failed, 0 skipped, 4 warnings**, exit 0.
+- Full Identity service: `pytest -q` — **719 passed, 0 failed, 12 skipped, 7 warnings**, exit 0. Skips are environment-gated; they are not counted as passes.
+- Repository root `run_tests.py` — **834 passed, 0 failed, 13 skipped, 266 passing subtests, 12 warnings**, exit 0. Service subtotals: Identity 719/12 skipped, Recovery 47/1 skipped, Fraud 23, API Gateway 17, shared 7 plus 19 subtests, root 21 plus 247 subtests. This replaces the prior “full runner not completed” status for this execution.
+- Web: `npm.cmd test --prefix apps/web` passed (8 test files); `npm.cmd run lint --prefix apps/web` passed; `npm.cmd run build --prefix apps/web` passed (TypeScript and Vite, 1,831 modules).
+- Docker Compose project `wp08-l3-20261013`: all five application images (`web`, `api-gateway`, `identity-service`, `fraud-service`, `recovery-service`) were rebuilt with `--no-cache` from the current working tree. Only those five application services were recreated; existing MongoDB and Redis containers/volumes were preserved. All 7 services reported healthy. Web `/` and the four service `/health` endpoints returned HTTP 200; unauthenticated OID4VP session retrieval through Gateway and Identity returned HTTP 401.
+- In the rebuilt Identity container (Python 3.12), focused WP-05/WP-08/OID4VP tests completed: **74 passed, 0 failed, 0 skipped, 2 warnings**, exit 0. This is a combined targeted set; it is not added to the host totals above.
+
+### Runtime evidence boundaries
+
+The rebuilt web container served `index-7Lu304ao.js` (310,386 bytes; SHA-256 `A372A08253EEA13E0B7DC2D5DD1406773B0A49CA90ECAB9583E0A65457054152`). A host production build under Node 24 served a different bundle, `index-37arp1TW.js` (310,371 bytes; SHA-256 `8148FB8F061EA8B4185790388805CB551B4A2BC34273C1BB05231CD6557106D1`). Therefore byte-for-byte bundle equivalence is **not established**; the host used Node 24.19.0 and the Dockerfile uses Node 20 Alpine, which is a plausible explanation but has not been isolated as the cause. All five images lack OCI `org.opencontainers.image.revision` and `.source` labels, so the image metadata itself does not attest a Git SHA. The observed no-cache build command, working-tree source, image/container creation evidence and tests support the run, but explicit revision labels remain absent.
+
+No authenticated browser end-to-end journey, responsive visual sweep, keyboard/screen-reader/contrast audit, independent OID4VCI/OID4VP peer interoperability, or L4 conformance result was performed. HTTP health and 401 probes do not establish those properties. Suspension restoration and production readiness are not claimed.
+
+### npm advisory review
+
+One authorized online read-only audit was run: `npm.cmd audit --prefix apps/web --json` (exit 1 because advisories were found). It reported 3 vulnerable packages among 264 dependencies: 2 moderate and 1 high. `react-router` 6.30.6 is transitive through `react-router-dom` 6.30.6 and is affected by GHSA-wrjc-x8rr-h8h6 and GHSA-337j-9hxr-rhxg; the reported fix is `react-router-dom` 7.18.4 and is a major-version change. Direct devDependency `vite` 6.4.3 has a reported fix available; advisories include launch-editor Windows argument handling/existence-check issues and Vite middleware/filesystem issues. The audit output did not supply the exact Vite fixed version. No package, lockfile, source, or dependency version was changed. These advisories require a separate compatibility/remediation decision and have not been declared mitigated.
+
+### Revised project decision
+
+The previously recorded G0–G16 count is a historical tally and is not recomputed by adding these runs. The project remains **PARTIAL**: WP-08 scoped L3 evidence is now current-source verified; WP-05 HTTP integration and the Python runner have current passing evidence, but external interoperability, authenticated browser journey, accessibility, source-revision image labels, and dependency-advisory remediation remain open. WP-12 remains PARTIAL. No production-readiness, certification, or whole-project-complete claim is made.

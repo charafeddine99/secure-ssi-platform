@@ -470,3 +470,18 @@ docker run --rm --network none --mount type=bind,source=C:\Users\besna\OneDrive\
 | Web container health check | Initial rebuilt container failed because `localhost` resolved to IPv6 while Nginx listened on IPv4. Changed the Docker health-check target to `127.0.0.1` and rebuilt Web. | This correction addresses the observed local container configuration only. |
 
 The admin directory is available only when `IDENTITY_AUTH_USER_PROVIDER=mongodb`; the Compose default remains synthetic, so this local fixture configuration returns `503` for account management instead of presenting mutable demo identities. No account-creation/initial-admin workflow, authenticated Admin browser screenshot, responsive/accessibility review of the new screen, or live Mongo scope-change trace was executed. G12 and G13 remain **PARTIAL**; this evidence does not change their gate status.
+
+## 25 October 2026 — current verification evidence
+
+Observed on `besna-dev` at `e26da1e49c80c6b157e5f6d5697c43a455bf7542`:
+
+- Root runner command: `& '.\.venv\Scripts\python.exe' '.\run_tests.py'` — exit 0; **834 passed, 13 skipped, 266 passing subtests, 0 failed, 12 warnings**. Skips are environment-gated. Identity 719 passed/12 skipped; Recovery 47/1 skipped; Fraud 23; API Gateway 17; shared 7 + 19 subtests; root 21 + 247 subtests.
+- Targeted current-source WP-05 integration command, from `services/identity-service`: `python -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py` — **22 passed, 0 failed, 0 skipped, 4 warnings**, exit 0.
+- Eight Identity protocol/security files — **125 passed, 0 failed, 0 skipped, 4 warnings**, exit 0. Full Identity suite — **719 passed, 0 failed, 12 skipped, 7 warnings**, exit 0.
+- Inside rebuilt Identity container: targeted WP-05/WP-08/OID4VP authorization set — **74 passed, 0 failed, 0 skipped, 2 warnings**, exit 0.
+- Web: `npm.cmd test --prefix apps/web` (8 test files passed); `npm.cmd run lint --prefix apps/web` (exit 0); `npm.cmd run build --prefix apps/web` (exit 0; TypeScript + Vite, 1,831 modules).
+- One authorized `npm.cmd audit --prefix apps/web --json` completed with exit 1 and reported 3 vulnerable packages (2 moderate, 1 high). It does not mean the test suite failed; dependency remediation is still pending.
+
+The Docker Compose project rebuilt five app images with `--no-cache` from the current working tree, recreated only those app services, preserved MongoDB/Redis and volumes, and observed 7/7 healthy. Web `/` and Gateway, Identity, Fraud, Recovery health endpoints returned HTTP 200; unauthenticated OID4VP retrieval through Gateway and Identity returned HTTP 401.
+
+The host Node 24.19.0 production bundle and the bundle served by the Node 20 Alpine Docker build have different asset names, sizes and SHA-256 digests; byte-identical bundle equivalence is **not established**. The Docker images have no OCI source/revision labels. No rendered browser journey, responsive/keyboard/accessibility sweep or independent L4 interoperability run was performed.

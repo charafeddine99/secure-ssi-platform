@@ -1,8 +1,16 @@
 import pytest
 from fastapi.testclient import TestClient
 from standalone_fraud_api import app, FeatureNormalizationPipeline, HybridFraudDetectionEngine
+from app.core import security
 
 client = TestClient(app)
+SERVICE_TOKEN = "fraud-test-internal-service-token-32bytes"
+SERVICE_HEADERS = {"X-Internal-Service-Token": SERVICE_TOKEN}
+
+
+@pytest.fixture(autouse=True)
+def configure_internal_token(monkeypatch):
+    monkeypatch.setattr(security, "FRAUD_INTERNAL_SERVICE_TOKEN", SERVICE_TOKEN)
 
 
 def test_health_endpoint():
@@ -24,7 +32,7 @@ def test_legitimate_authentication_low_risk():
         "device_fingerprint": "device_trusted_macbook_pro_m2",
         "recent_failed_attempts": 0
     }
-    response = client.post("/api/fraud_detection", json=payload)
+    response = client.post("/api/fraud_detection", json=payload, headers=SERVICE_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert "risk_score" in data
@@ -47,7 +55,7 @@ def test_high_risk_brute_force_attack():
         "device_fingerprint": "unseen_linux_curl_headless_fp",
         "recent_failed_attempts": 9
     }
-    response = client.post("/api/fraud_detection", json=payload)
+    response = client.post("/api/fraud_detection", json=payload, headers=SERVICE_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert data["risk_score"] >= 70
@@ -66,7 +74,7 @@ def test_validation_error_on_empty_did():
         "device_fingerprint": "fp12345678",
         "recent_failed_attempts": 0
     }
-    response = client.post("/api/fraud_detection", json=payload)
+    response = client.post("/api/fraud_detection", json=payload, headers=SERVICE_HEADERS)
     assert response.status_code == 400
     assert "cannot be empty" in response.json()["detail"]
 
@@ -82,7 +90,7 @@ def test_validation_error_on_negative_attempts():
         "device_fingerprint": "fp12345678",
         "recent_failed_attempts": -3
     }
-    response = client.post("/api/fraud_detection", json=payload)
+    response = client.post("/api/fraud_detection", json=payload, headers=SERVICE_HEADERS)
     assert response.status_code in [400, 422]
 
 

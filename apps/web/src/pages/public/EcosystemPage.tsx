@@ -1,152 +1,70 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Building2, FileCheck2, RefreshCw, TriangleAlert } from "lucide-react";
-import { StatusChip } from "../../components/common/StatusChip";
-import {
-  fetchOid4vciIssuerMetadata,
-  fetchPublicTrustedIssuers,
-  Oid4vciIssuerMetadata,
-  PublicTrustRecord,
-} from "../../services/api";
+import React from "react";
+import { fetchOid4vciIssuerMetadata } from "../../api/issuance.ts";
+import { fetchPublicTrustedIssuers } from "../../api/admin.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, DataGrid, Table } from "../../components/ui/Card.tsx";
+import { AsyncView } from "../../components/ui/AsyncView.tsx";
+import { EmptyState } from "../../components/ui/States.tsx";
+import { Badge } from "../../components/ui/StatusBadge.tsx";
+import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { formatDate, humanize } from "../../lib/format.ts";
 
 export const EcosystemPage: React.FC = () => {
-  const [metadata, setMetadata] = useState<Oid4vciIssuerMetadata | null>(null);
-  const [issuers, setIssuers] = useState<PublicTrustRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [metadataError, setMetadataError] = useState<string | null>(null);
-  const [issuersError, setIssuersError] = useState<string | null>(null);
-  const activeRequest = useRef<AbortController | null>(null);
-
-  const loadDirectory = useCallback(async () => {
-    activeRequest.current?.abort();
-    const controller = new AbortController();
-    activeRequest.current = controller;
-    setLoading(true);
-    const [metadataResult, issuersResult] = await Promise.allSettled([
-      fetchOid4vciIssuerMetadata(controller.signal),
-      fetchPublicTrustedIssuers(controller.signal),
-    ]);
-
-    if (controller.signal.aborted || activeRequest.current !== controller) return;
-
-    if (metadataResult.status === "fulfilled") {
-      setMetadata(metadataResult.value);
-      setMetadataError(null);
-    } else {
-      setMetadata(null);
-      setMetadataError(
-        metadataResult.reason instanceof Error
-          ? metadataResult.reason.name === "TimeoutError"
-            ? "The credential metadata service did not respond within 10 seconds."
-            : metadataResult.reason.message
-          : "Credential metadata is unavailable.",
-      );
-    }
-
-    if (issuersResult.status === "fulfilled") {
-      setIssuers(issuersResult.value.filter((issuer) => {
-        const source = issuer.trustSource?.toUpperCase() || "";
-        const seededFixture = issuer.auditMetadata?.seeded === true || issuer.auditMetadata?.environment === "DEMO_LAB";
-        return !seededFixture && !source.startsWith("DEMO_") && !source.startsWith("LOCAL_TEST_");
-      }));
-      setIssuersError(null);
-    } else {
-      setIssuers([]);
-      setIssuersError(
-        issuersResult.reason instanceof Error
-          ? issuersResult.reason.name === "TimeoutError"
-            ? "The issuer registry did not respond within 10 seconds."
-            : issuersResult.reason.message
-          : "The issuer registry is unavailable.",
-      );
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    void loadDirectory();
-    return () => activeRequest.current?.abort();
-  }, [loadDirectory]);
-
-  const configurations = Object.entries(metadata?.credential_configurations_supported || {});
-  const formatDate = (value?: string | null) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.valueOf()) ? null : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
-  };
-
-  const issuerError = (message: string) => (
-    <div className="public-directory-error" role="alert">
-      <strong><TriangleAlert size={16} aria-hidden="true" /> Data could not be loaded</strong>
-      <p>{message}</p>
-      <button type="button" onClick={() => void loadDirectory()}>Try again</button>
-    </div>
-  );
-
+  const issuers = useAsync((signal) => fetchPublicTrustedIssuers(signal), []);
+  const metadata = useAsync((signal) => fetchOid4vciIssuerMetadata(signal), []);
   return (
-    <main className="public-directory-page">
-      <header className="workspace-page-header">
-        <div>
-          <p className="workspace-eyebrow">Public directory</p>
-          <h1>Issuers and credentials</h1>
-          <p>View issuer registrations and credential formats published by this platform.</p>
-        </div>
-        <button type="button" className="workspace-secondary-action" onClick={() => void loadDirectory()} disabled={loading}>
-          <RefreshCw size={16} className={loading ? "spin" : ""} aria-hidden="true" />
-          {loading ? "Refreshing" : "Refresh"}
-        </button>
-      </header>
-
-      <section className="public-directory-section">
-        <div className="workspace-section-heading">
-          <div><p className="workspace-eyebrow">Trust registry</p><h2>Registered issuers</h2></div>
-          <span className="workspace-count" aria-live="polite">{loading ? "Loading" : issuers.length}</span>
-        </div>
-        {loading ? <div className="workspace-empty-panel" role="status">Loading issuer records…</div> : issuersError ? issuerError(issuersError) : issuers.length === 0 ? (
-          <div className="workspace-empty-panel public-directory-empty"><Building2 size={22} /><p>No issuer registrations are published.</p></div>
-        ) : (
-          <div className="public-directory-list">
-            {issuers.map((issuer) => (
-              <article className="workspace-panel public-issuer-card" key={issuer.id}>
-                <div className="workspace-icon-tile"><Building2 size={19} /></div>
-                <div className="public-issuer-card__content">
-                  <div className="public-issuer-card__title"><h3>{issuer.organizationName.trim() || "Issuer name not provided"}</h3><StatusChip status={issuer.trustStatus} size="sm" /></div>
-                  <code>{issuer.issuerDid.trim() || "Issuer DID not published"}</code>
-                  <p>Credential types: {issuer.permittedCredentialTypes.join(", ") || "Not specified"}</p>
-                  <small>
-                    {formatDate(issuer.validFrom) ? `Valid from ${formatDate(issuer.validFrom)}` : "Start date not reported"}
-                    {issuer.validUntil ? ` · Valid through ${formatDate(issuer.validUntil) || "date unavailable"}` : " · No end date reported"}
-                  </small>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+    <Page
+      eyebrow="Public directory"
+      title="Trusted issuers and credential types"
+      description="Trusted by this platform's policy; not a legal accreditation."
+    >
+      <Card title="Trust Registry" flush>
+        <AsyncView state={issuers} onRetry={issuers.reload} loadingLabel="Loading trusted issuers">
+          {(records) => records.length === 0 ? (
+            <EmptyState title="No issuers are registered" />
+          ) : (
+            <Table caption="Trusted issuers" stackBelow="md">
+              <thead><tr><th scope="col">Organisation</th><th scope="col">Issuer DID</th><th scope="col">Status</th><th scope="col">Credential types</th><th scope="col">Valid until</th></tr></thead>
+              <tbody>
+                {records.map((record) => (
+                  <tr key={record.id}>
+                    <td data-label="Organisation" className="fw-medium">{record.organizationName}</td>
+                    <td data-label="Issuer DID"><IdentifierText value={record.issuerDid} label="issuer DID" /></td>
+                    <td data-label="Status"><Badge tone={record.trustStatus.toLowerCase() === "active" ? "success" : "danger"}>{humanize(record.trustStatus.toUpperCase())}</Badge></td>
+                    <td data-label="Credential types">{record.permittedCredentialTypes.map(humanize).join(", ")}</td>
+                    <td data-label="Valid until">{record.validUntil ? formatDate(record.validUntil) : "No end date"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </AsyncView>
+      </Card>
+      <section aria-labelledby="types-title">
+        <h2 id="types-title" className="h3 mb-1">Supported credential types</h2>
+        <p className="text-secondary mb-3">From <code>/.well-known/openid-credential-issuer</code>.</p>
+        <AsyncView state={metadata} onRetry={metadata.reload} loadingLabel="Loading issuer metadata">
+          {(value) => {
+            const entries = Object.entries(value.credential_configurations_supported);
+            return entries.length === 0 ? (
+              <div className="card"><EmptyState title="No credential types are configured" /></div>
+            ) : (
+              <Grid cols={2}>
+                {entries.map(([id, config]) => (
+                  <Card key={id} as="article" headingLevel={3} title={config.display?.[0]?.name ?? humanize(id)} subtitle={<code>{id}</code>}>
+                    <DataGrid items={[
+                      { label: "Format", value: config.format ?? "Not stated" },
+                      { label: "Holder binding", value: config.cryptographic_binding_methods_supported?.join(", ") ?? "Not stated" },
+                      { label: "Proof types", value: Object.keys(config.proof_types_supported ?? {}).join(", ") || "Not stated" },
+                    ]} />
+                  </Card>
+                ))}
+              </Grid>
+            );
+          }}
+        </AsyncView>
       </section>
-
-      <section className="public-directory-section">
-        <div className="workspace-section-heading">
-          <div><p className="workspace-eyebrow">Issuer metadata</p><h2>Credential formats</h2></div>
-          <span className="workspace-count" aria-live="polite">{loading ? "Loading" : configurations.length}</span>
-        </div>
-        {loading ? <div className="workspace-empty-panel" role="status">Loading credential formats…</div> : metadataError ? issuerError(metadataError) : configurations.length === 0 ? (
-          <div className="workspace-empty-panel public-directory-empty"><FileCheck2 size={22} /><p>No credential formats are published.</p></div>
-        ) : (
-          <div className="workspace-grid">
-            {configurations.map(([id, configuration]) => (
-              <article className="workspace-panel workspace-config-card" key={id}>
-                <div className="workspace-config-card__heading">
-                  <div className="workspace-icon-tile"><FileCheck2 size={19} /></div>
-                  <div><h3>{configuration.display?.find((item) => item.name)?.name || id}</h3><code>{id}</code></div>
-                </div>
-                <dl className="workspace-config-details">
-                  <div><dt>Format</dt><dd>{configuration.format || "Not specified"}</dd></div>
-                  <div><dt>Key binding</dt><dd>{configuration.cryptographic_binding_methods_supported?.join(", ") || "Not specified"}</dd></div>
-                </dl>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-    </main>
+    </Page>
   );
 };

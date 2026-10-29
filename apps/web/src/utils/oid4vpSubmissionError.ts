@@ -1,6 +1,9 @@
 export type Oid4vpSubmissionStage = "consent" | "presentation" | "direct-post";
 
+import { isApiError } from "../lib/http.ts";
+
 export function isFetchNetworkFailure(error: unknown): boolean {
+  if (isApiError(error)) return error.kind === "network" || error.kind === "timeout";
   return error instanceof TypeError && /failed to fetch|networkerror|load failed|fetch failed/i.test(error.message);
 }
 

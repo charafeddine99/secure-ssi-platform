@@ -19,6 +19,7 @@ class VerificationSessionRepository(Protocol):
         presentation_id: str,
         verification_result: NinePointVerificationResult,
         disclosed_claims: Mapping[str, Any] | None,
+        consent_status: str,
         expected_version: int,
     ) -> VerificationSession:
         ...

@@ -7,7 +7,9 @@ from hashlib import sha256
 
 SERVICE_NAME = "recovery-service"
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
-_PRODUCTION_ENVIRONMENTS = {"production", "prod", "staging"}
+# Fail closed: only these explicitly named environments may use development
+# fallbacks. Any other value (including typos such as "prd") is production-like.
+_NON_PRODUCTION_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
 _DEVELOPMENT_JWT_SECRET = (
     "local-academic-prototype-jwt-secret-not-for-production-2026-only"
 )
@@ -103,13 +105,17 @@ class RecoverySettings:
 def load_settings(environ: Mapping[str, str] | None = None) -> RecoverySettings:
     values = os.environ if environ is None else environ
     environment = values.get("RECOVERY_ENVIRONMENT", "development").casefold()
-    production = environment in _PRODUCTION_ENVIRONMENTS
+    production = environment.strip() not in _NON_PRODUCTION_ENVIRONMENTS
     jwt_secret = values.get("RECOVERY_AUTH_JWT_SECRET")
     grant_secret = values.get("RECOVERY_IDENTITY_GRANT_SECRET")
     envelope_text = values.get("RECOVERY_SHARE_ENVELOPE_KEY_BASE64")
     if production and not all((jwt_secret, grant_secret, envelope_text)):
         raise RecoveryConfigurationError(
             "Production recovery secrets must be explicitly configured."
+        )
+    if production and (jwt_secret == _DEVELOPMENT_JWT_SECRET or grant_secret == _DEVELOPMENT_GRANT_SECRET):
+        raise RecoveryConfigurationError(
+            "Published development secrets cannot be used in production."
         )
     envelope_key = _DEVELOPMENT_ENVELOPE_KEY
     if envelope_text:

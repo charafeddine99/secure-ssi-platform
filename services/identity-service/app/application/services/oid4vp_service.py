@@ -867,6 +867,202 @@ class Oid4vpService:
         )
         return vp_token
 
+    def _evaluate_credential_status(
+        self,
+        credential: Mapping[str, Any],
+        *,
+        verified_at: datetime,
+    ) -> tuple[bool, str | None, bool]:
+        """Evaluate authoritative and Bitstring status for one embedded VC."""
+        credential_id = str(credential.get("id") or "")
+        status_clear = True
+        status_reason: str | None = None
+        status_evaluated = False
+
+        persisted = None
+        if self._credentials and credential_id:
+            try:
+                persisted = self._credentials.get_by_credential_id(credential_id)
+            except Exception as error:
+                logger.warning(
+                    "Credential status persistence lookup failed (%s)",
+                    type(error).__name__,
+                )
+                status_clear = False
+                status_reason = (
+                    "Credential status persistence unavailable: "
+                    f"{type(error).__name__}"
+                )
+        if persisted:
+            status_evaluated = True
+            persisted_status = (
+                persisted.status.value
+                if hasattr(persisted.status, "value")
+                else getattr(persisted.status, "name", str(persisted.status))
+            )
+            if persisted_status == "REVOKED":
+                status_clear = False
+                status_reason = "Credential revoked in persistence"
+            elif persisted_status == "SUSPENDED":
+                status_clear = False
+                status_reason = "Credential suspended in persistence"
+            elif persisted_status != "ACTIVE":
+                status_clear = False
+                status_reason = (
+                    f"Credential status not active: {persisted_status}"
+                )
+
+        credential_status = credential.get("credentialStatus")
+        if credential_status is None:
+            return status_clear, status_reason, status_evaluated
+
+        status_evaluated = True
+        if isinstance(credential_status, dict):
+            entries = [credential_status]
+        elif isinstance(credential_status, list):
+            entries = credential_status
+            if not entries:
+                status_clear = False
+                status_reason = (
+                    "credentialStatus must contain at least one status entry"
+                )
+        else:
+            status_clear = False
+            status_reason = "credentialStatus is invalid format"
+            entries = []
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                status_clear = False
+                status_reason = "credentialStatus entry is not an object"
+                break
+            if entry.get("type") != "BitstringStatusListEntry":
+                status_clear = False
+                status_reason = (
+                    "credentialStatus entry type is unsupported or missing"
+                )
+                break
+
+            purpose = entry.get("statusPurpose")
+            if purpose not in ("revocation", "suspension"):
+                status_clear = False
+                status_reason = (
+                    f"Unsupported or malformed statusPurpose: {purpose}"
+                )
+                break
+
+            list_url = str(entry.get("statusListCredential", ""))
+            list_id = list_url.rstrip("/").split("/")[-1] if list_url else ""
+            index_raw = entry.get("statusListIndex")
+            if not list_id or index_raw is None:
+                status_clear = False
+                status_reason = (
+                    "credentialStatus missing required statusListCredential or statusListIndex"
+                )
+                break
+            if (
+                not isinstance(index_raw, str)
+                or not index_raw.isascii()
+                or not index_raw.isdecimal()
+                or len(index_raw) > 8
+                or (len(index_raw) > 1 and index_raw.startswith("0"))
+            ):
+                status_clear = False
+                status_reason = "statusListIndex is invalid"
+                break
+            index = int(index_raw)
+            if self._status_lists is None:
+                status_clear = False
+                status_reason = "Status list service unavailable"
+                break
+            try:
+                publication = self._status_lists.get_publication(list_id)
+            except Exception as error:
+                logger.warning(
+                    "Status-list resolution failed (%s)", type(error).__name__
+                )
+                status_clear = False
+                status_reason = (
+                    f"Status service resolution failed: {type(error).__name__}"
+                )
+                break
+
+            status_doc = getattr(publication, "document", None)
+            if not status_doc:
+                status_clear = False
+                status_reason = (
+                    "Status list credential document missing from publication"
+                )
+                break
+            publication_id = getattr(publication, "status_list_id", None)
+            publication_issuer = getattr(publication, "issuer_did", None)
+            publication_purpose = getattr(
+                getattr(publication, "status_purpose", None),
+                "value",
+                getattr(publication, "status_purpose", None),
+            )
+            list_length = getattr(publication, "list_length", None)
+            if publication_id != list_id:
+                status_clear = False
+                status_reason = "Status list publication identifier mismatch"
+                break
+            if publication_purpose != purpose:
+                status_clear = False
+                status_reason = "Status list publication purpose mismatch"
+                break
+            if not isinstance(publication_issuer, str) or not publication_issuer:
+                status_clear = False
+                status_reason = "Status list publication issuer is invalid"
+                break
+            if not isinstance(list_length, int) or index >= list_length:
+                status_clear = False
+                status_reason = "statusListIndex is outside the published list"
+                break
+
+            valid_list, list_error, encoded_list = (
+                self._verify_status_list_credential(
+                    status_doc=status_doc,
+                    expected_status_list_url=list_url,
+                    expected_issuer=publication_issuer,
+                    expected_purpose=purpose,
+                    expected_list_length=list_length,
+                    verified_at=verified_at,
+                )
+            )
+            if not valid_list or not encoded_list:
+                status_clear = False
+                if list_error and "PROOF" in list_error:
+                    status_reason = (
+                        f"Status list proof validation failed: {list_error}"
+                    )
+                else:
+                    status_reason = (
+                        f"Status list credential validation failed: {list_error}"
+                    )
+                break
+            try:
+                from app.infrastructure.status_list_document_generator import (
+                    decode_status_list_bit,
+                )
+
+                is_set = decode_status_list_bit(encoded_list, index)
+            except Exception as error:
+                status_clear = False
+                status_reason = (
+                    f"Failed to decode status bit: {type(error).__name__}"
+                )
+                break
+            if is_set:
+                status_clear = False
+                status_reason = (
+                    "Credential revoked (status bit set)"
+                    if purpose == "revocation"
+                    else "Credential suspended (status bit set)"
+                )
+                break
+
+        return status_clear, status_reason, status_evaluated
+
     def process_direct_post(
         self,
         *,
@@ -900,7 +1096,11 @@ class Oid4vpService:
             vcs = [vcs]
 
         # 9-point verification logic
-        cred_valid = len(vcs) > 0 and isinstance(vcs[0], dict)
+        cred_valid = (
+            isinstance(vcs, list)
+            and bool(vcs)
+            and all(isinstance(credential, dict) for credential in vcs)
+        )
         target_vc: dict[str, Any] = dict(vcs[0]) if cred_valid else {}
         issuer_did = str(target_vc.get("issuer") or "")
 
@@ -1011,6 +1211,62 @@ class Oid4vpService:
             trust_reason_val = "TRUST_REGISTRY_NOT_CONFIGURED"
             trust_source_val = "NONE"
             trust_record_id_val = None
+
+        # A DCQL result may contain multiple credentials. Trust every issuer;
+        # trusting only the first credential would leave the rest unchecked.
+        if isinstance(vcs, list):
+            for additional_vc in vcs[1:]:
+                if not isinstance(additional_vc, dict):
+                    issuer_trusted = False
+                    trust_reason_val = "PRESENTED_CREDENTIAL_FORMAT_INVALID"
+                    break
+                additional_issuer = str(additional_vc.get("issuer") or "")
+                additional_types = additional_vc.get("type", [])
+                if isinstance(additional_types, str):
+                    additional_types = [additional_types]
+                elif isinstance(additional_types, (list, tuple)):
+                    additional_types = [str(value) for value in additional_types]
+                else:
+                    additional_types = []
+                if self._trust_registry is None or not additional_issuer:
+                    issuer_trusted = False
+                    trust_reason_val = (
+                        "TRUST_REGISTRY_NOT_CONFIGURED"
+                        if self._trust_registry is None
+                        else "PRESENTED_CREDENTIAL_ISSUER_MISSING"
+                    )
+                    break
+                try:
+                    additional_trust = self._trust_registry.evaluate_issuer_trust(
+                        issuer_did=additional_issuer,
+                        credential_types=additional_types,
+                        at_time=now,
+                    )
+                    additional_trusted = getattr(
+                        additional_trust, "is_trusted", None
+                    )
+                    additional_reason = getattr(
+                        additional_trust, "reason", None
+                    )
+                    additional_trusted = (
+                        type(additional_trusted) is bool and additional_trusted
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "Issuer Trust Registry lookup failed (%s)",
+                        type(error).__name__,
+                    )
+                    additional_trusted = False
+                    additional_reason = (
+                        f"TRUST_REGISTRY_UNAVAILABLE:{type(error).__name__}"
+                    )
+                if not additional_trusted:
+                    issuer_trusted = False
+                    trust_reason_val = (
+                        additional_reason
+                        if isinstance(additional_reason, str)
+                        else "ADDITIONAL_PRESENTED_ISSUER_UNTRUSTED"
+                    )
         
         # Proof & Signature (Fail-Closed: verify DataIntegrityProof on every embedded VC)
         all_vcs_sig_valid = True
@@ -1052,6 +1308,17 @@ class Oid4vpService:
             session=session,
             now=now,
         )
+        vp_holder = str(vp_token.get("holder") or "")
+        if not isinstance(vcs, list) or not vp_holder or any(
+            not isinstance(embedded_vc, dict)
+            or not isinstance(embedded_vc.get("credentialSubject"), dict)
+            or str(embedded_vc["credentialSubject"].get("id") or "") != vp_holder
+            for embedded_vc in vcs
+        ):
+            holder_binding_valid = False
+            holder_binding_reason = (
+                "Every presented credential must be bound to the authenticated VP holder"
+            )
 
         # Expiration Check (Fail-closed: malformed timestamps must not pass)
         valid_until = target_vc.get("validUntil") or target_vc.get("expirationDate")
@@ -1062,198 +1329,45 @@ class Oid4vpService:
                 expiry_valid = exp_dt > now
             except Exception:
                 expiry_valid = False
-
-        # Status / Revocation / Suspension Check (authoritative persistence + Bitstring Status List resolution)
-        cred_id = target_vc.get("id", "")
-        revocation_status_clear = True
-        status_eval_reason: str | None = None
-        status_evaluated = False
-
-        # 1. Authoritative persistence check (DB)
-        persisted = None
-        if self._credentials and cred_id:
-            try:
-                persisted = self._credentials.get_by_credential_id(cred_id)
-            except Exception as error:
-                # Persistence is authoritative when configured. An unavailable
-                # lookup cannot be treated as an active credential.
-                logger.warning(
-                    "Credential status persistence lookup failed (%s)",
-                    type(error).__name__,
+        if isinstance(vcs, list):
+            for additional_vc in vcs[1:]:
+                if not isinstance(additional_vc, dict):
+                    expiry_valid = False
+                    break
+                additional_expiry = (
+                    additional_vc.get("validUntil")
+                    or additional_vc.get("expirationDate")
                 )
-                revocation_status_clear = False
-                status_eval_reason = (
-                    "Credential status persistence unavailable: "
-                    f"{type(error).__name__}"
-                )
-        if persisted:
-            status_evaluated = True
-            status_val = (
-                persisted.status.value
-                if hasattr(persisted.status, "value")
-                else getattr(persisted.status, "name", str(persisted.status))
-            )
-            if status_val == "REVOKED":
-                revocation_status_clear = False
-                status_eval_reason = "Credential revoked in persistence"
-            elif status_val == "SUSPENDED":
-                revocation_status_clear = False
-                status_eval_reason = "Credential suspended in persistence"
-            elif status_val != "ACTIVE":
-                revocation_status_clear = False
-                status_eval_reason = f"Credential status not active: {status_val}"
-
-        # 2. Bitstring Status List inspection (W3C Bitstring Status List 1.0)
-        cred_status = target_vc.get("credentialStatus")
-        if cred_status is not None:
-            status_evaluated = True
-            if isinstance(cred_status, dict):
-                status_entries = [cred_status]
-            elif isinstance(cred_status, list):
-                status_entries = cred_status
-                if not status_entries:
-                    logger.warning(
-                        "Credential status is malformed: empty entry set"
-                    )
-                    revocation_status_clear = False
-                    status_eval_reason = (
-                        "credentialStatus must contain at least one status entry"
-                    )
-            else:
-                logger.warning("Credential status has an invalid structure")
-                revocation_status_clear = False
-                status_eval_reason = "credentialStatus is invalid format"
-                status_entries = []
-
-            for entry in status_entries:
-                if not isinstance(entry, dict):
-                    revocation_status_clear = False
-                    status_eval_reason = "credentialStatus entry is not an object"
-                    break
-
-                if entry.get("type") != "BitstringStatusListEntry":
-                    revocation_status_clear = False
-                    status_eval_reason = (
-                        "credentialStatus entry type is unsupported or missing"
-                    )
-                    break
-
-                status_purpose = entry.get("statusPurpose")
-                # R2: Enforce statusPurpose - only "revocation" and "suspension" are supported
-                if status_purpose not in ("revocation", "suspension"):
-                    revocation_status_clear = False
-                    status_eval_reason = f"Unsupported or malformed statusPurpose: {status_purpose}"
-                    break
-
-                status_list_index_raw = entry.get("statusListIndex")
-                status_list_url = str(entry.get("statusListCredential", ""))
-                status_list_id = status_list_url.rstrip("/").split("/")[-1] if status_list_url else ""
-
-                if not status_list_id or status_list_index_raw is None:
-                    revocation_status_clear = False
-                    status_eval_reason = "credentialStatus missing required statusListCredential or statusListIndex"
-                    break
-
-                if (
-                    not isinstance(status_list_index_raw, str)
-                    or not status_list_index_raw.isascii()
-                    or not status_list_index_raw.isdecimal()
-                    or len(status_list_index_raw) > 8
-                    or (
-                        len(status_list_index_raw) > 1
-                        and status_list_index_raw.startswith("0")
-                    )
-                ):
-                    revocation_status_clear = False
-                    status_eval_reason = "statusListIndex is invalid"
-                    break
-                idx = int(status_list_index_raw)
-
-                # R1: Status service check must be fail-closed
-                if self._status_lists is None:
-                    revocation_status_clear = False
-                    status_eval_reason = "Status list service unavailable"
-                    break
-
-                try:
-                    publication = self._status_lists.get_publication(status_list_id)
-                except Exception as err:
-                    # R1: Any resolution exception MUST cause status check to fail closed
-                    logger.warning(
-                        "Status-list resolution failed (%s)",
-                        type(err).__name__,
-                    )
-                    revocation_status_clear = False
-                    status_eval_reason = f"Status service resolution failed: {type(err).__name__}"
-                    break
-
-                # R3: Validate status list credential proof & integrity before trusting encodedList
-                status_doc = getattr(publication, "document", None)
-                if not status_doc:
-                    revocation_status_clear = False
-                    status_eval_reason = "Status list credential document missing from publication"
-                    break
-
-                publication_id = getattr(publication, "status_list_id", None)
-                publication_issuer = getattr(publication, "issuer_did", None)
-                publication_purpose = getattr(
-                    getattr(publication, "status_purpose", None),
-                    "value",
-                    getattr(publication, "status_purpose", None),
-                )
-                publication_length = getattr(publication, "list_length", None)
-                if publication_id != status_list_id:
-                    revocation_status_clear = False
-                    status_eval_reason = "Status list publication identifier mismatch"
-                    break
-                if publication_purpose != status_purpose:
-                    revocation_status_clear = False
-                    status_eval_reason = "Status list publication purpose mismatch"
-                    break
-                if not isinstance(publication_issuer, str) or not publication_issuer:
-                    revocation_status_clear = False
-                    status_eval_reason = "Status list publication issuer is invalid"
-                    break
-                if not isinstance(publication_length, int) or idx >= publication_length:
-                    revocation_status_clear = False
-                    status_eval_reason = "statusListIndex is outside the published list"
-                    break
-
-                sl_valid, sl_err, verified_encoded_list = self._verify_status_list_credential(
-                    status_doc=status_doc,
-                    expected_status_list_url=status_list_url,
-                    expected_issuer=publication_issuer,
-                    expected_purpose=status_purpose,
-                    expected_list_length=publication_length,
-                    verified_at=now,
-                )
-                if not sl_valid or not verified_encoded_list:
-                    revocation_status_clear = False
-                    if sl_err and "PROOF" in sl_err:
-                        status_eval_reason = (
-                            f"Status list proof validation failed: {sl_err}"
+                if additional_expiry:
+                    try:
+                        additional_expiry_dt = datetime.fromisoformat(
+                            additional_expiry.replace("Z", "+00:00")
                         )
-                    else:
-                        status_eval_reason = (
-                            f"Status list credential validation failed: {sl_err}"
-                        )
-                    break
-
-                # Read status bit from verified encoded list
-                try:
-                    from app.infrastructure.status_list_document_generator import decode_status_list_bit
-                    bit_is_active = decode_status_list_bit(verified_encoded_list, idx)
-                    if bit_is_active:
-                        revocation_status_clear = False
-                        if status_purpose == "revocation":
-                            status_eval_reason = "Credential revoked (status bit set)"
-                        else:
-                            status_eval_reason = "Credential suspended (status bit set)"
+                    except Exception:
+                        expiry_valid = False
                         break
-                except Exception as err:
-                    revocation_status_clear = False
-                    status_eval_reason = f"Failed to decode status bit: {type(err).__name__}"
-                    break
+                    if additional_expiry_dt <= now:
+                        expiry_valid = False
+                        break
+
+        # Evaluate authoritative persistence and Bitstring status for every embedded VC.
+        cred_id = str(target_vc.get("id") or "")
+        status_results = [
+            self._evaluate_credential_status(embedded_vc, verified_at=now)
+            for embedded_vc in vcs
+            if isinstance(embedded_vc, dict)
+        ] if isinstance(vcs, list) else []
+        status_evaluated = any(item[2] for item in status_results)
+        revocation_status_clear = (
+            isinstance(vcs, list)
+            and bool(vcs)
+            and len(status_results) == len(vcs)
+            and all(item[0] for item in status_results)
+        )
+        status_eval_reason = next(
+            (reason for clear, reason, _ in status_results if not clear and reason),
+            None,
+        )
 
         # Challenge / Nonce check (Fail-Closed: strictly bound to session.nonce; zero fallback)
         vp_proof = vp_token.get("proof")
@@ -1346,24 +1460,96 @@ class Oid4vpService:
         # Consent compliance check
         consent_violation = False
         consent_violation_reason = None
-        if session.consent_decision is not None:
-            # Check credential-level consent
-            presented_vc_id = target_vc.get("id")
-            if presented_vc_id and session.consent_decision.approved_credentials:
-                if presented_vc_id not in session.consent_decision.approved_credentials:
+        consent = session.consent_decision
+        if consent is None:
+            consent_violation = True
+            consent_violation_reason = (
+                "Holder consent is required before accepting a presentation"
+            )
+        elif not consent.user_approved:
+            consent_violation = True
+            consent_violation_reason = "Holder did not approve this presentation"
+        elif (
+            consent.session_id != session.session_id
+            or consent.verifier_did != session.verifier_did
+            or consent.client_id != session.client_id
+            or consent.nonce != session.nonce
+        ):
+            consent_violation = True
+            consent_violation_reason = (
+                "Holder consent is not bound to this verification session"
+            )
+        else:
+            presented_ids: list[str] = []
+            approved_ids = set(consent.approved_credentials)
+            for embedded_vc in vcs if isinstance(vcs, list) else []:
+                presented_vc_id = (
+                    str(embedded_vc.get("id") or "").strip()
+                    if isinstance(embedded_vc, dict)
+                    else ""
+                )
+                if not presented_vc_id:
                     consent_violation = True
-                    consent_violation_reason = f"Presented credential '{presented_vc_id}' was not approved by holder consent."
-            # Check claim minimization intent authorization record (disclosed_claims)
+                    consent_violation_reason = (
+                        "Presented credential is missing an identifier required by holder consent"
+                    )
+                    break
+                if presented_vc_id in presented_ids:
+                    consent_violation = True
+                    consent_violation_reason = (
+                        "Presentation contains a duplicate credential identifier"
+                    )
+                    break
+                presented_ids.append(presented_vc_id)
+                if presented_vc_id not in approved_ids:
+                    consent_violation = True
+                    consent_violation_reason = (
+                        f"Presented credential '{presented_vc_id}' was not approved by holder consent."
+                    )
+                    break
+
+            if not consent_violation and not presented_ids:
+                consent_violation = True
+                consent_violation_reason = (
+                    "Presentation contains no credential covered by holder consent"
+                )
+
+            # The complete VP payload is evaluated here; every embedded credential
+            # must belong to the same Holder who made the session-bound decision.
+            if not consent_violation:
+                consent_subjects = [
+                    vc.get("credentialSubject") if isinstance(vc, dict) else None
+                    for vc in vcs
+                ] if isinstance(vcs, list) else []
+                consent_holder_dids = {
+                    str(subject.get("id") or "")
+                    for subject in consent_subjects
+                    if isinstance(subject, dict)
+                }
+                if (
+                    len(consent_subjects) != len(presented_ids)
+                    or any(not isinstance(subject, dict) for subject in consent_subjects)
+                    or consent_holder_dids != {consent.holder_did}
+                ):
+                    consent_violation = True
+                    consent_violation_reason = (
+                        "Presented credentials do not all belong to the consenting holder"
+                    )
+
+            # Check claim minimization intent authorization record
+            # (disclosed_claims). The payload is client supplied, so it is only
+            # compared with the server-recorded consent and never trusted alone.
             if not consent_violation and disclosed_claims:
-                for k in disclosed_claims:
-                    if k in session.consent_decision.rejected_claims:
+                for k, value in disclosed_claims.items():
+                    if k in consent.rejected_claims:
                         consent_violation = True
-                        consent_violation_reason = f"Disclosed claim '{k}' was rejected by holder consent."
+                        consent_violation_reason = (
+                            f"Disclosed claim '{k}' was rejected by holder consent."
+                        )
                         break
                     if (
-                        k not in session.consent_decision.approved_claims
-                        or session.consent_decision.approved_claims[k]
-                        != disclosed_claims[k]
+                        k not in consent.approved_claims
+                        or consent.approved_claims[k] != value
                     ):
                         consent_violation = True
                         consent_violation_reason = (
@@ -1605,6 +1791,11 @@ class Oid4vpService:
             presentation_id=presentation_id,
             verification_result=result,
             disclosed_claims=claims_to_store,
+            consent_status=(
+                "GRANTED"
+                if consent is not None and consent.user_approved
+                else session.consent_status
+            ),
             expected_version=session.version
         )
 

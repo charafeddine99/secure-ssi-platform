@@ -238,6 +238,7 @@ def test_revoke_records_permanent_metadata_and_audit_event() -> None:
         reason="  Affiliation ended  ",
         revoked_by="usr_local_issuer",
         correlation_id="request-1",
+        caller_issuer_did="did:web:issuer.example.test",
     )
 
     assert snapshot.status is CredentialStatus.REVOKED
@@ -261,8 +262,9 @@ def test_revoke_is_rejected_after_first_success() -> None:
         application.revoke(
             "urn:uuid:credential-1",
             reason="Second attempt",
-            revoked_by="usr_local_admin",
+            revoked_by="usr_local_issuer",
             correlation_id="request-2",
+            caller_issuer_did="did:web:issuer.example.test",
         )
 
     assert len(audit.events) == 1
@@ -278,6 +280,7 @@ def test_status_lookup_retries_durable_audit_after_transient_failure() -> None:
         reason="Affiliation ended",
         revoked_by="usr_local_issuer",
         correlation_id="request-failed-audit",
+        caller_issuer_did="did:web:issuer.example.test",
     )
 
     assert snapshot.status is CredentialStatus.REVOKED
@@ -321,4 +324,38 @@ def test_missing_credential_does_not_create_an_audit_event() -> None:
             correlation_id="request-4",
         )
 
+    assert audit.events == []
+
+
+@pytest.mark.parametrize(
+    ("revoked_by", "caller_roles", "caller_issuer_did"),
+    [
+        ("usr_local_admin", ("admin",), None),
+        ("admin", None, None),
+        ("usr_local_issuer", ("issuer",), None),
+        ("usr_other_issuer", ("issuer",), "did:web:other.example"),
+        ("did:web:issuer.example.test", None, None),
+    ],
+)
+def test_only_the_issuing_authority_can_revoke(
+    revoked_by: str,
+    caller_roles: tuple[str, ...] | None,
+    caller_issuer_did: str | None,
+) -> None:
+    from app.domain.exceptions import PermissionDeniedError
+
+    application, repository, audit = service(credential())
+
+    with pytest.raises(PermissionDeniedError):
+        application.revoke(
+            "urn:uuid:credential-1",
+            reason="Not allowed",
+            revoked_by=revoked_by,
+            correlation_id="request-denied",
+            caller_roles=caller_roles,
+            caller_issuer_did=caller_issuer_did,
+        )
+
+    assert repository.stored is not None
+    assert repository.stored.status is CredentialStatus.ACTIVE
     assert audit.events == []

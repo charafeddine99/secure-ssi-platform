@@ -46,7 +46,9 @@ class Permission(StrEnum):
 
 _ROLE_PERMISSIONS = MappingProxyType(
     {
-        Role.ADMIN: frozenset(Permission),
+        # Only the issuing authority may revoke its credentials (least
+        # privilege); administrators operate the platform, not credential status.
+        Role.ADMIN: frozenset(Permission) - {Permission.CREDENTIALS_REVOKE},
         Role.ISSUER: frozenset(
             permission
             for permission in Permission

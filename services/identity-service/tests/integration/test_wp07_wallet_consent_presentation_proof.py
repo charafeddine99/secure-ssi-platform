@@ -486,6 +486,101 @@ def test_presentation_without_consent_is_rejected(
     assert response.status_code == 409
 
 
+def test_direct_post_without_recorded_holder_consent_is_rejected(
+    client: TestClient,
+) -> None:
+    """The public OID4VP response endpoint must not bypass wallet consent."""
+    flow = _flow(client)
+    from app.api.v1 import dependencies
+
+    manager = dependencies.get_mongo_connection_manager()
+    wallet = dependencies.get_holder_wallet_repository(manager=manager).get(
+        flow["wallet"]["walletId"]
+    )
+    assert wallet is not None
+    holder_private_key = dependencies._KEY_PROVIDERS["development"]._private_key(
+        wallet.key_reference
+    )
+    vp_token = build_signed_presentation(
+        flow["credential"],
+        nonce=flow["session"]["nonce"],
+        domain="testserver",
+        holder_did=wallet.holder_did,
+        private_key=holder_private_key,
+        audience=flow["session"]["clientId"],
+    )
+
+    response = client.post(
+        "/api/v1/oid4vp/response",
+        json={
+            "sessionId": flow["session"]["sessionId"],
+            "vpToken": vp_token,
+            "disclosedClaims": flow["claims"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["finalPolicyResult"] == "REJECTED"
+    assert result["details"]["evaluations"]["consent"] == (
+        "Holder consent is required before accepting a presentation"
+    )
+    stored = client.get(
+        f"/api/v1/oid4vp/requests/{flow['session']['sessionId']}",
+        headers=flow["verifier_headers"],
+    )
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["consentStatus"] == "PENDING"
+
+
+def test_direct_post_rejects_credential_not_approved_by_holder(
+    client: TestClient,
+) -> None:
+    """Every embedded VC must be covered by the recorded holder decision."""
+    flow = _flow(client)
+    consent = _consent(client, flow)
+    assert consent.status_code == 200, consent.text
+    extra_credential = _issue_credential(
+        client,
+        wallet=flow["wallet"],
+        issuer_headers=flow["issuer_headers"],
+        holder_headers=flow["holder_headers"],
+    )
+
+    from app.api.v1 import dependencies
+
+    manager = dependencies.get_mongo_connection_manager()
+    wallet = dependencies.get_holder_wallet_repository(manager=manager).get(
+        flow["wallet"]["walletId"]
+    )
+    assert wallet is not None
+    holder_private_key = dependencies._KEY_PROVIDERS["development"]._private_key(
+        wallet.key_reference
+    )
+    vp_token = build_signed_presentation(
+        [flow["credential"], extra_credential],
+        nonce=flow["session"]["nonce"],
+        domain="testserver",
+        holder_did=wallet.holder_did,
+        private_key=holder_private_key,
+        audience=flow["session"]["clientId"],
+    )
+
+    response = client.post(
+        "/api/v1/oid4vp/response",
+        json={
+            "sessionId": flow["session"]["sessionId"],
+            "vpToken": vp_token,
+            "disclosedClaims": flow["claims"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["finalPolicyResult"] == "REJECTED"
+    assert "not approved by holder consent" in result["details"]["evaluations"]["consent"]
+
+
 def test_dcql_mismatch_cannot_be_approved(
     client: TestClient,
 ) -> None:

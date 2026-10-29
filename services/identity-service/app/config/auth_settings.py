@@ -8,7 +8,13 @@ from app.domain.exceptions import AuthConfigurationError
 _DEVELOPMENT_ONLY_JWT_SECRET = (
     "local-academic-prototype-jwt-secret-not-for-production-2026-only"
 )
-_PRODUCTION_LIKE_ENVIRONMENTS = {"production", "prod", "staging"}
+# Fail closed: only these explicitly named environments may use development
+# fallbacks. Any other value (including typos such as "prd") is production-like.
+_NON_PRODUCTION_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
+
+
+def is_production_like(environment: str) -> bool:
+    return environment.strip().lower() not in _NON_PRODUCTION_ENVIRONMENTS
 
 
 @dataclass(frozen=True)
@@ -49,8 +55,12 @@ class AuthSettings:
             raise AuthConfigurationError(
                 "Authentication user provider must be synthetic or mongodb."
             )
+        if is_production_like(self.environment) and self.jwt_secret == _DEVELOPMENT_ONLY_JWT_SECRET:
+            raise AuthConfigurationError(
+                "The published development JWT secret cannot be used in production-like mode."
+            )
         if (
-            self.environment in _PRODUCTION_LIKE_ENVIRONMENTS
+            is_production_like(self.environment)
             and self.local_fixture_users_enabled
         ):
             raise AuthConfigurationError(
@@ -65,7 +75,7 @@ def load_auth_settings(
     environment = values.get("IDENTITY_ENVIRONMENT", "development").lower()
     secret = values.get("IDENTITY_AUTH_JWT_SECRET")
     if not secret:
-        if environment in _PRODUCTION_LIKE_ENVIRONMENTS:
+        if is_production_like(environment):
             raise AuthConfigurationError(
                 "A JWT secret is required in production-like mode."
             )

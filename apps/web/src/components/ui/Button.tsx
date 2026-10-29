@@ -1,58 +1,57 @@
 import React from "react";
 import { Link, type LinkProps } from "react-router-dom";
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
-export type ButtonSize = "default" | "small" | "large";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-interface SharedButtonProps {
+interface SharedProps {
   variant?: ButtonVariant;
-  size?: ButtonSize;
-  className?: string;
-  children: React.ReactNode;
+  size?: "md" | "sm";
+  block?: boolean;
 }
 
-type ButtonProps = SharedButtonProps & React.ButtonHTMLAttributes<HTMLButtonElement>;
-type ButtonLinkProps = SharedButtonProps & Omit<LinkProps, "className" | "children">;
+/** Tabler button conventions: plain `.btn` is the neutral surface button. */
+const VARIANT_CLASS: Record<ButtonVariant, string> = {
+  primary: "btn-primary",
+  secondary: "",
+  ghost: "btn-ghost-secondary",
+  danger: "btn-danger",
+};
 
-const buttonClasses = (
-  variant: ButtonVariant,
-  size: ButtonSize,
-  className?: string
-) => [
-  "ui-button",
-  `ui-button--${variant}`,
-  size === "default" ? undefined : `ui-button--${size}`,
-  className
-].filter(Boolean).join(" ");
+function classes({ variant = "primary", size = "md", block = false }: SharedProps, extra?: string): string {
+  return ["btn", VARIANT_CLASS[variant], size === "sm" ? "btn-sm" : "", block ? "w-100" : "", extra ?? ""].filter(Boolean).join(" ");
+}
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "primary", size = "default", className, type = "button", children, ...props }, ref) => (
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, SharedProps {
+  loading?: boolean;
+  icon?: React.ReactNode;
+}
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant, size, block, loading = false, icon, className, children, disabled, type = "button", ...rest },
+  ref,
+) {
+  return (
     <button
-      {...props}
       ref={ref}
       type={type}
-      className={buttonClasses(variant, size, className)}
-      data-ui="button"
+      className={classes({ variant, size, block }, className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
     >
+      {loading ? <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" /> : icon && <span className="btn-icon-lead">{icon}</span>}
       {children}
     </button>
-  )
-);
+  );
+});
 
-Button.displayName = "Button";
+export interface ButtonLinkProps extends LinkProps, SharedProps {
+  icon?: React.ReactNode;
+}
 
-export const ButtonLink: React.FC<ButtonLinkProps> = ({
-  variant = "primary",
-  size = "default",
-  className,
-  children,
-  ...props
-}) => (
-  <Link
-    {...props}
-    className={buttonClasses(variant, size, className)}
-    data-ui="button"
-  >
+export const ButtonLink: React.FC<ButtonLinkProps> = ({ variant, size, block, icon, className, children, ...rest }) => (
+  <Link className={classes({ variant, size, block }, className)} {...rest}>
+    {icon && <span className="btn-icon-lead">{icon}</span>}
     {children}
   </Link>
 );

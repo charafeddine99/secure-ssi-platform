@@ -2,13 +2,13 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from app.config.auth_settings import is_production_like
 from app.domain.exceptions import AuthConfigurationError
 
 
 _DEVELOPMENT_SECRET = (
     "local-recovery-to-identity-grant-secret-not-for-production-2026"
 )
-_PRODUCTION = {"production", "prod", "staging"}
 
 
 @dataclass(frozen=True)
@@ -34,9 +34,13 @@ def load_recovery_grant_settings(
     values = os.environ if environ is None else environ
     environment = values.get("IDENTITY_ENVIRONMENT", "development").casefold()
     secret = values.get("IDENTITY_RECOVERY_GRANT_SECRET")
-    if environment in _PRODUCTION and not secret:
+    if is_production_like(environment) and not secret:
         raise AuthConfigurationError(
             "Identity recovery grant secret is required in production."
+        )
+    if is_production_like(environment) and secret == _DEVELOPMENT_SECRET:
+        raise AuthConfigurationError(
+            "The published development grant secret cannot be used in production."
         )
     return RecoveryGrantSettings(
         issuer=values.get(

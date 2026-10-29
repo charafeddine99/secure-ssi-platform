@@ -5,6 +5,7 @@ from app.api.routes.proxy import router as proxy_router
 from app.core.config import APP_VERSION, SERVICE_NAME, CORS_ORIGINS
 from app.core.middleware import (
     CorrelationIdMiddleware,
+    PathSafetyMiddleware,
     SecurityHeadersMiddleware,
     RateLimiterMiddleware
 )
@@ -24,14 +25,16 @@ app.add_middleware(CorrelationIdMiddleware)
 # 3. Sliding-window DoS Rate Limiting
 app.add_middleware(RateLimiterMiddleware, max_requests=180, window_seconds=60)
 
+# 3.5 Reject dot-segment / backslash paths before any proxy route builds an upstream URL
+app.add_middleware(PathSafetyMiddleware)
+
 # 4. CORS Middleware for Web3 Client Portals
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-SSI-Client"],
     expose_headers=["X-Correlation-ID", "Retry-After"]
 )
 

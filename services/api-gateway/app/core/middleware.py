@@ -20,6 +20,25 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class PathSafetyMiddleware(BaseHTTPMiddleware):
+    """
+    Rejects dot-segment and backslash paths before routing (OWASP API8/API9:2023).
+
+    Proxy routes build upstream URLs from the path; an un-normalised '..' (raw or
+    %2e/%2f-encoded, which Starlette decodes) would otherwise escape the
+    /api/v1/<service>/ prefix and reach internal service routes.
+    """
+    async def dispatch(self, request: Request, call_next):
+        path = request.scope.get("path", "")
+        segments = path.split("/")
+        if "\\" in path or any(segment in (".", "..") for segment in segments):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": {"code": "PATH_REJECTED", "message": "The request path is not allowed."}},
+            )
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Injects enterprise defensive HTTP security headers according to OWASP guidelines.
@@ -64,6 +83,9 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         sensitive_prefixes = (
             "/api/v1/auth/login",
             "/api/v1/identity/auth/login",
+            "/api/v1/identity/auth/token",
+            "/api/v1/oid4vci/token",
+            "/api/v1/oid4vci/credential",
             "/api/v1/identity/credentials/sign",
             "/api/v1/recovery/request",
             "/api/v1/fraud/quarantine",

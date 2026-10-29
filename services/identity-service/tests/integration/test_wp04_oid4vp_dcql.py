@@ -522,6 +522,9 @@ def test_wp04_direct_post_satisfying_dcql_accepted():
         domain=client_id,
         holder_did=SYNTHETIC_HOLDER_DID,
     )
+    from tests.support.consent import record_holder_approval
+
+    record_holder_approval(session_id, vc, SYNTHETIC_HOLDER_DID)
 
     post_res = client.post(
         "/api/v1/oid4vp/response",

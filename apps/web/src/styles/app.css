@@ -1,0 +1,1841 @@
+/*
+ * Secure SSI layer on top of the Tabler theme (@tabler/core + tabler-themes).
+ * Tabler provides tokens, components and layout; the viewer chooses mode,
+ * accent (data-bs-theme-primary), base palette and backdrop in the Appearance
+ * panel. This file adds the brand font, the cinematic backdrops, glass
+ * surfaces, the header band and motion. Every accent derives from
+ * var(--tblr-primary), so all effects follow the chosen theme.
+ */
+
+:root {
+  --ssi-navy-950: #070b16;
+  --ssi-navy-900: #0b1222;
+  --ssi-navy-800: #111b33;
+  --ssi-accent-soft: color-mix(in oklab, var(--tblr-primary) 22%, transparent);
+  --ssi-accent-glow: color-mix(in oklab, var(--tblr-primary) 55%, transparent);
+  --ssi-teal-glow: rgba(45, 212, 191, 0.18);
+  --ssi-band-text: rgba(255, 255, 255, 0.72);
+  --ssi-art: url("../assets/ssi-trust-network.svg");
+  --tblr-font-sans-serif: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --tblr-body-font-family: var(--tblr-font-sans-serif);
+}
+
+html[data-ssi-radius="sharp"] {
+  --tblr-border-radius: 2px;
+  --tblr-border-radius-sm: 2px;
+  --tblr-border-radius-lg: 3px;
+}
+
+html[data-ssi-radius="round"] {
+  --tblr-border-radius: 12px;
+  --tblr-border-radius-sm: 8px;
+  --tblr-border-radius-lg: 16px;
+}
+
+html[data-bs-theme="dark"] {
+  --tblr-body-bg: var(--ssi-navy-950);
+  --tblr-bg-surface: #0f172a;
+  --tblr-bg-surface-secondary: #131d33;
+  --tblr-border-color: rgba(148, 163, 184, 0.14);
+  --tblr-border-color-translucent: rgba(148, 163, 184, 0.12);
+}
+
+body {
+  font-feature-settings: "cv03", "cv04", "cv11";
+  min-height: 100vh;
+}
+
+html {
+  scroll-padding-top: 4.5rem;
+}
+
+main:focus {
+  outline: none;
+}
+
+/* ---------- Cinematic backdrops (fixed, behind all content) ---------- */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: -1;
+}
+
+html[data-ssi-backdrop="aurora"] body::before {
+  inset: -25%;
+  background:
+    radial-gradient(38% 32% at 18% 12%, var(--ssi-accent-glow), transparent 70%),
+    radial-gradient(30% 28% at 82% 18%, var(--ssi-teal-glow), transparent 70%),
+    radial-gradient(42% 36% at 70% 88%, var(--ssi-accent-soft), transparent 72%),
+    radial-gradient(26% 24% at 10% 85%, rgba(168, 85, 247, 0.14), transparent 70%);
+  filter: blur(30px);
+  animation: ssi-aurora 28s ease-in-out infinite alternate;
+}
+
+html[data-bs-theme="light"][data-ssi-backdrop="aurora"] body::before {
+  opacity: 0.55;
+}
+
+html[data-ssi-backdrop="network"] body::before {
+  inset: 0;
+  background:
+    radial-gradient(60% 50% at 80% 70%, var(--ssi-accent-soft), transparent 70%),
+    radial-gradient(40% 40% at 15% 20%, var(--ssi-teal-glow), transparent 70%);
+}
+
+html[data-ssi-backdrop="grid"] body::before {
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--tblr-primary) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--tblr-primary) 14%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(70% 60% at 50% 0%, #000 0%, transparent 85%);
+}
+
+html[data-ssi-backdrop="grid"] body::after {
+  inset: -10% -10% auto -10%;
+  height: 60vh;
+  background: radial-gradient(50% 60% at 50% 0%, var(--ssi-accent-glow), transparent 70%);
+  filter: blur(40px);
+  opacity: 0.6;
+}
+
+@keyframes ssi-aurora {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50% { transform: translate3d(4%, 3%, 0) rotate(6deg) scale(1.06); }
+  100% { transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1.02); }
+}
+
+/* ---------- Glass surfaces ---------- */
+.card {
+  background-color: color-mix(in oklab, var(--tblr-bg-surface) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+html[data-bs-theme="dark"] .card {
+  background-color: color-mix(in oklab, var(--tblr-bg-surface) 72%, transparent);
+  border-color: rgba(148, 163, 184, 0.12);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+}
+
+.row-cards > [class*="col"] > .card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in oklab, var(--tblr-primary) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--tblr-primary) 25%, transparent), 0 22px 44px -18px var(--ssi-accent-glow);
+}
+
+.card-header,
+.card-footer {
+  background: transparent;
+}
+
+.btn-primary {
+  box-shadow: 0 8px 22px -10px var(--ssi-accent-glow);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 10px 28px -8px var(--ssi-accent-glow);
+}
+
+/* ---------- Sidebar and public top bar ---------- */
+.navbar.navbar-vertical[data-bs-theme="dark"],
+.navbar.ssi-topbar[data-bs-theme="dark"] {
+  --tblr-navbar-bg: transparent;
+  --tblr-navbar-border-color: rgba(255, 255, 255, 0.06);
+  background: color-mix(in oklab, var(--ssi-navy-950) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.navbar.ssi-topbar[data-bs-theme="dark"] {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.navbar-vertical .navbar-nav .nav-link {
+  border-radius: var(--tblr-border-radius);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.navbar-vertical .navbar-nav .nav-link.active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tblr-primary) 35%, transparent), transparent);
+  color: #fff;
+  box-shadow: inset 2px 0 0 var(--tblr-primary);
+}
+
+.navbar-vertical .navbar-nav {
+  gap: 0.125rem;
+}
+
+.ssi-sidebar-label {
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.08em;
+}
+
+.ssi-sidebar-user {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (min-width: 992px) {
+  .navbar-vertical.navbar-expand-lg > .container-fluid {
+    height: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .navbar-vertical.navbar-expand-lg .navbar-collapse {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .navbar-vertical.navbar-expand-lg .navbar-collapse > .ssi-sidebar-user {
+    flex: 0 0 auto !important;
+    margin-top: auto !important;
+  }
+}
+
+/* Account menu in the sidebar floats above the trigger (Tabler renders sidebar dropdowns inline by default). */
+.ssi-sidebar-user .nav-item {
+  position: relative;
+}
+
+.navbar-vertical .ssi-sidebar-user .dropdown-menu {
+  position: absolute !important;
+  inset: auto auto 100% 0 !important;
+  margin-bottom: 0.5rem !important;
+  background: var(--tblr-bg-surface) !important;
+  border: var(--tblr-border-width) solid var(--tblr-border-color) !important;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28) !important;
+  padding: 0.25rem 0 !important;
+}
+
+.navbar-vertical .ssi-sidebar-user .dropdown-menu:not(.show) {
+  display: none !important;
+}
+
+.navbar-vertical .ssi-sidebar-user .dropdown-item,
+.navbar-vertical .ssi-sidebar-user .dropdown-item-text {
+  color: var(--tblr-body-color) !important;
+}
+
+.navbar-vertical .ssi-sidebar-user .dropdown-item:hover,
+.navbar-vertical .ssi-sidebar-user .dropdown-item:focus-visible {
+  background: var(--tblr-bg-surface-secondary) !important;
+}
+
+/* ---------- Header band (Tabler navbar-overlap pattern) ---------- */
+.ssi-band {
+  position: relative;
+  color: #fff;
+  padding: 2.25rem 0 6.5rem;
+  background:
+    var(--ssi-art) right -8rem center / auto 170% no-repeat,
+    radial-gradient(70% 120% at 85% 0%, var(--ssi-accent-glow), transparent 70%),
+    linear-gradient(135deg, var(--ssi-navy-950) 0%, var(--ssi-navy-800) 100%);
+  overflow: hidden;
+}
+
+html[data-bs-theme="dark"] .ssi-band {
+  background:
+    var(--ssi-art) right -8rem center / auto 170% no-repeat,
+    radial-gradient(60% 120% at 85% 0%, var(--ssi-accent-soft), transparent 70%);
+  mask-image: linear-gradient(#000 60%, transparent);
+}
+
+/* Shade the artwork behind the text column so titles stay readable at every width. */
+.ssi-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(7, 11, 22, 0.88) 0%, rgba(7, 11, 22, 0.55) 45%, rgba(7, 11, 22, 0) 75%);
+  pointer-events: none;
+}
+
+.ssi-band > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 991.98px) {
+  .ssi-band::before {
+    background: linear-gradient(90deg, rgba(7, 11, 22, 0.88) 0%, rgba(7, 11, 22, 0.5) 60%, rgba(7, 11, 22, 0.2) 100%);
+  }
+}
+
+.ssi-band .page-header {
+  margin: 0;
+}
+
+.ssi-band .page-title {
+  color: #fff;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ssi-band .page-pretitle,
+.ssi-band .page-description,
+.ssi-band .breadcrumb-item,
+.ssi-band .breadcrumb-item a,
+.ssi-band .breadcrumb-item::before {
+  color: var(--ssi-band-text);
+}
+
+.ssi-band .breadcrumb-item.active span {
+  color: #fff;
+}
+
+.ssi-band-body {
+  position: relative;
+  margin-top: -4.75rem;
+}
+
+/* Landing hero. */
+.ssi-hero {
+  padding: 5rem 0 9rem;
+}
+
+.ssi-hero .display-5 {
+  color: #fff;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.ssi-hero .lead {
+  color: var(--ssi-band-text);
+}
+
+.ssi-gradient-text {
+  background: linear-gradient(90deg, #fff 0%, color-mix(in oklab, var(--tblr-primary) 55%, #fff) 60%, #5eead4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- Sign-in cover ---------- */
+.ssi-auth-cover {
+  position: relative;
+  color: #fff;
+  overflow: hidden;
+  background:
+    var(--ssi-art) center / cover no-repeat,
+    radial-gradient(60% 60% at 70% 30%, var(--ssi-accent-glow), transparent 70%),
+    linear-gradient(160deg, var(--ssi-navy-950), var(--ssi-navy-800));
+}
+
+.ssi-auth-cover .text-secondary-light {
+  color: var(--ssi-band-text);
+}
+
+.ssi-auth-form {
+  max-width: 26rem;
+}
+
+html[data-bs-theme="dark"] .ssi-auth-panel {
+  background: color-mix(in oklab, var(--ssi-navy-950) 70%, transparent) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ---------- Appearance panel ---------- */
+.ssi-appearance {
+  visibility: visible;
+  width: 22rem;
+}
+
+.ssi-backdrop-preview {
+  display: block;
+  height: 3.25rem;
+  border-radius: calc(var(--tblr-border-radius) * 0.75);
+  background-color: var(--ssi-navy-950);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ssi-backdrop-preview-aurora {
+  background:
+    radial-gradient(60% 70% at 20% 20%, var(--ssi-accent-glow), transparent 70%),
+    radial-gradient(50% 60% at 85% 30%, rgba(45, 212, 191, 0.35), transparent 70%),
+    var(--ssi-navy-950);
+}
+
+.ssi-backdrop-preview-network {
+  background: var(--ssi-art) right -1rem center / auto 160% no-repeat, var(--ssi-navy-950);
+}
+
+.ssi-backdrop-preview-grid {
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--tblr-primary) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--tblr-primary) 40%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+.ssi-backdrop-preview-plain {
+  background: var(--tblr-body-bg);
+}
+
+/* ---------- Motion ---------- */
+.ssi-page-enter {
+  animation: ssi-enter 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.ssi-page-enter .row-cards > [class*="col"] {
+  animation: ssi-enter 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.ssi-page-enter .row-cards > [class*="col"]:nth-child(2) { animation-delay: 0.06s; }
+.ssi-page-enter .row-cards > [class*="col"]:nth-child(3) { animation-delay: 0.12s; }
+.ssi-page-enter .row-cards > [class*="col"]:nth-child(4) { animation-delay: 0.18s; }
+.ssi-page-enter .row-cards > [class*="col"]:nth-child(n + 5) { animation-delay: 0.22s; }
+
+@keyframes ssi-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ssi-backdrop="aurora"] body::before,
+  .ssi-page-enter,
+  .ssi-page-enter .row-cards > [class*="col"] {
+    animation: none;
+  }
+
+  .card,
+  .row-cards > [class*="col"] > .card:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ---------- Content helpers ---------- */
+.page-narrow {
+  max-width: 60rem;
+}
+
+.page-description {
+  max-width: 48rem;
+}
+
+.code-pane {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+.navbar-brand svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.btn-icon-lead {
+  display: inline-flex;
+  margin-inline-end: 0.5rem;
+  margin-inline-start: -0.25rem;
+}
+
+.btn-icon-lead svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* Tables scroll horizontally only; the 1px visually-hidden caption must not add a vertical scrollbar. */
+.table-responsive {
+  overflow-y: hidden;
+}
+
+.footer-transparent {
+  background: transparent;
+}
+
+@media (max-width: 767.98px) {
+  .ssi-band {
+    padding: 1.5rem 0 5.25rem;
+    background-position: right -3rem center, center, center;
+    background-size: auto 150%, auto, auto;
+  }
+
+  .ssi-hero {
+    padding: 3rem 0 7rem;
+  }
+}
+
+/* Comfortable 16px side gutter on every page container. */
+.page .container-xl,
+.page .container {
+  --tblr-gutter-x: 2rem;
+}
+
+
+/* ---------- Project illustrations per workspace ---------- */
+html[data-ssi-area="wallet"] { --ssi-art: url("../assets/art/wallet.svg"); }
+html[data-ssi-area="issuer"] { --ssi-art: url("../assets/art/issuer.svg"); }
+html[data-ssi-area="verifier"] { --ssi-art: url("../assets/art/verifier.svg"); }
+html[data-ssi-area="guardian"] { --ssi-art: url("../assets/art/guardian.svg"); }
+html[data-ssi-area="admin"] { --ssi-art: url("../assets/art/admin.svg"); }
+
+/* Full-page scene: the workspace illustration floats behind every page. */
+.ssi-scene {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--ssi-art) right -4rem bottom -3rem / min(1150px, 85vw) auto no-repeat;
+  opacity: 0.32;
+  mask-image: radial-gradient(85% 85% at 85% 80%, #000 35%, transparent 80%);
+  animation: ssi-float 18s ease-in-out infinite alternate;
+}
+
+html[data-ssi-backdrop="network"] .ssi-scene {
+  opacity: 0.6;
+  background-size: min(1350px, 100vw) auto;
+}
+
+html[data-bs-theme="light"] .ssi-scene {
+  opacity: 0.16;
+}
+
+html[data-bs-theme="light"][data-ssi-backdrop="network"] .ssi-scene {
+  opacity: 0.28;
+}
+
+html[data-ssi-backdrop="plain"] .ssi-scene {
+  display: none;
+}
+
+@keyframes ssi-float {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-1.5%, -2%, 0); }
+}
+
+/* ---------- Decorative detail ---------- */
+/* Glass edge highlight along the top of every card, tinted by the accent. */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0 12% auto 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--tblr-primary) 70%, #fff), transparent);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+html[data-bs-theme="light"] .card::after {
+  opacity: 0.3;
+}
+
+/* Empty and error states: icon sits in a soft glowing ring. */
+.empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ssi-accent-soft) 0%, transparent 70%);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--tblr-primary) 25%, transparent) inset;
+}
+
+/* Stat tiles: large value with a subtle accent wash in the corner. */
+.card-sm {
+  overflow: hidden;
+}
+
+.card-sm::before {
+  content: "";
+  position: absolute;
+  inset: -40% -30% auto auto;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ssi-accent-soft), transparent 70%);
+  pointer-events: none;
+}
+
+.ssi-page-enter .ssi-scene,
+.ssi-scene {
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssi-scene {
+    animation: none;
+  }
+}
+
+/* Light mode: solid white cards read cleaner than glass over the navy band. */
+html[data-bs-theme="light"] .card {
+  background-color: var(--tblr-bg-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Large screens: a taller band gives the workspace illustration room to read. */
+@media (min-width: 992px) {
+  .ssi-band:not(.ssi-hero) {
+    min-height: 16rem;
+    padding-top: 3rem;
+    padding-bottom: 7.5rem;
+    background-size: auto 210%, auto, auto;
+    background-position: right -6rem center, center, center;
+  }
+
+  .ssi-band:not(.ssi-hero) + .ssi-band-body {
+    margin-top: -6rem;
+  }
+}
+
+/* Account menu: always a solid floating panel, whatever navbar it sits in. */
+.navbar .ssi-account-menu {
+  --tblr-dropdown-bg: #ffffff;
+  --tblr-dropdown-color: #1f2937;
+  --tblr-dropdown-link-color: #1f2937;
+  --tblr-dropdown-link-hover-bg: #f1f5f9;
+  position: absolute !important;
+  z-index: 1060;
+  min-width: 15rem;
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35) !important;
+  padding: 0.375rem 0 !important;
+}
+
+html[data-bs-theme="dark"] .navbar .ssi-account-menu {
+  --tblr-dropdown-link-hover-bg: #1e293b;
+  background: #111a2e !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.navbar .ssi-account-menu .dropdown-item,
+.navbar .ssi-account-menu .dropdown-item-text,
+.navbar .ssi-account-menu .dropdown-item-text .text-body {
+  color: inherit !important;
+}
+
+.navbar .ssi-account-menu .dropdown-item-text .text-secondary {
+  color: color-mix(in oklab, currentColor 62%, transparent) !important;
+}
+
+.navbar .ssi-account-menu .dropdown-item:hover,
+.navbar .ssi-account-menu .dropdown-item:focus-visible {
+  background: var(--tblr-dropdown-link-hover-bg) !important;
+}
+
+.navbar:not(.navbar-vertical) .ssi-account-menu,
+.navbar-vertical .navbar-nav.flex-row .ssi-account-menu {
+  inset: 100% 0 auto auto !important;
+  margin-top: 0.5rem !important;
+}
+
+.navbar-vertical .navbar-nav.flex-row .ssi-account-menu::before,
+.navbar-vertical .navbar-nav.flex-row .ssi-account-menu::after {
+  display: none;
+}
+
+/* The top bars (and their menus) must stack above the header band. */
+.navbar.navbar-vertical,
+.navbar.ssi-topbar {
+  z-index: 1030;
+}
+
+@media (max-width: 991.98px) {
+  .navbar.navbar-vertical {
+    position: sticky;
+    top: 0;
+  }
+}
+
+/* Phones: the header band already carries the illustration. */
+@media (max-width: 767.98px) {
+  .ssi-scene {
+    display: none;
+  }
+}
+
+/* WCAG 2.5.8: breadcrumb links get a 24px minimum target. */
+.breadcrumb-item a {
+  display: inline-block;
+  padding-block: 0.25rem;
+}
+
+/* =====================================================================
+ * Cinematic dark, round 5: command bar, palette, neon accents.
+ * ===================================================================== */
+
+/* ---------- Command bar ---------- */
+.ssi-commandbar {
+  position: sticky;
+  top: 0;
+  z-index: 1025;
+  padding: 0.75rem 0;
+  background: color-mix(in oklab, var(--ssi-navy-950) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ssi-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: min(30rem, 100%);
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(226, 232, 240, 0.7);
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ssi-search-trigger:hover,
+.ssi-search-trigger:focus-visible {
+  border-color: color-mix(in oklab, var(--tblr-primary) 60%, transparent);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tblr-primary) 18%, transparent), 0 0 24px -6px var(--ssi-accent-glow);
+  color: #fff;
+}
+
+.ssi-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  padding: 0.0625rem 0.375rem;
+  margin-inline-start: 0.125rem;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: 600 0.6875rem/1.4 var(--tblr-font-sans-serif);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+}
+
+.ssi-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--tblr-primary) 35%, transparent);
+  background: color-mix(in oklab, var(--tblr-primary) 12%, transparent);
+  color: #e2e8f0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.ssi-pulse {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  animation: ssi-pulse 2.4s ease-out infinite;
+}
+
+@keyframes ssi-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  80%, 100% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+}
+
+/* The band now starts under the command bar on desktop. */
+@media (min-width: 992px) {
+  .ssi-commandbar + main .ssi-band:not(.ssi-hero) {
+    padding-top: 2.25rem;
+  }
+}
+
+/* ---------- Command palette ---------- */
+.ssi-palette .modal-content {
+  overflow: hidden;
+  background: color-mix(in oklab, #0b1222 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--tblr-primary) 35%, rgba(148, 163, 184, 0.2));
+  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.7), 0 0 60px -20px var(--ssi-accent-glow);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  color: #e2e8f0;
+}
+
+html[data-bs-theme="light"] .ssi-palette .modal-content {
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+}
+
+.ssi-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.ssi-palette-search .form-control {
+  font-size: 1.0625rem;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.ssi-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.ssi-palette-group {
+  padding: 0.75rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.ssi-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.ssi-palette-item.active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tblr-primary) 30%, transparent), color-mix(in oklab, var(--tblr-primary) 6%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tblr-primary) 40%, transparent);
+}
+
+.ssi-palette-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.ssi-palette-empty {
+  padding: 1.5rem;
+  text-align: center;
+  opacity: 0.6;
+}
+
+.ssi-palette-footer {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0.625rem 1.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+/* ---------- Band: living aurora + neon title accent ---------- */
+.ssi-band::after {
+  content: "";
+  position: absolute;
+  inset: -40% -10% auto 30%;
+  height: 160%;
+  background:
+    radial-gradient(30% 40% at 30% 50%, var(--ssi-accent-glow), transparent 70%),
+    radial-gradient(25% 35% at 70% 40%, rgba(94, 234, 212, 0.25), transparent 70%);
+  filter: blur(40px);
+  opacity: 0.55;
+  animation: ssi-aurora 22s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.ssi-band .page-title {
+  position: relative;
+  padding-bottom: 0.625rem;
+}
+
+.ssi-band .page-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3.5rem;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--tblr-primary), #5eead4);
+  box-shadow: 0 0 14px var(--ssi-accent-glow);
+}
+
+@media (min-width: 992px) {
+  .ssi-band .page-title {
+    font-size: 2.125rem;
+  }
+}
+
+/* ---------- Big glowing numbers on stat tiles ---------- */
+.ssi-stat-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+/* Text and badge values (engine names, states, labels) are not KPIs: keep them readable, not huge. */
+.ssi-stat-value:has(*) {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.ssi-stat-value .badge {
+  font-size: 0.8125rem;
+  padding: 0.35em 0.65em;
+}
+
+html[data-bs-theme="dark"] .ssi-stat-value:not(:has(*)) {
+  background: linear-gradient(180deg, #fff 30%, color-mix(in oklab, var(--tblr-primary) 45%, #fff));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 24px color-mix(in oklab, var(--tblr-primary) 35%, transparent);
+}
+
+/* ---------- Neon edge on interactive cards ---------- */
+html[data-bs-theme="dark"] .row-cards > [class*="col"] > .card:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--tblr-primary) 55%, transparent),
+    0 0 28px -6px var(--ssi-accent-glow),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+}
+
+/* ---------- Illustrated empty states ---------- */
+.empty {
+  position: relative;
+  isolation: isolate;
+}
+
+.empty::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ssi-art) center / min(32rem, 90%) auto no-repeat;
+  opacity: 0.14;
+  mask-image: radial-gradient(60% 70% at 50% 50%, #000 30%, transparent 80%);
+  pointer-events: none;
+}
+
+html[data-bs-theme="light"] .empty::before {
+  opacity: 0.08;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssi-band::after,
+  .ssi-pulse {
+    animation: none;
+  }
+}
+
+/* Readability first: glass cards stay mostly opaque over the illustrations. */
+html[data-bs-theme="dark"] .card {
+  background-color: color-mix(in oklab, var(--tblr-bg-surface) 90%, transparent);
+}
+
+.ssi-scene {
+  opacity: 0.2;
+}
+
+html[data-ssi-backdrop="network"] .ssi-scene {
+  opacity: 0.4;
+}
+
+/* =====================================================================
+ * Round 6: designed below desktop width too (the in-app pane is ~690px).
+ * ===================================================================== */
+
+/* Sign-in below lg: the brand artwork fills the screen, the form floats in a glass card. */
+@media (max-width: 991.98px) {
+  html[data-bs-theme] .ssi-auth-panel {
+    background:
+      var(--ssi-art) center bottom -2rem / min(56rem, 140%) auto no-repeat,
+      radial-gradient(70% 50% at 50% 0%, var(--ssi-accent-glow), transparent 70%),
+      radial-gradient(60% 40% at 80% 90%, var(--ssi-teal-glow), transparent 70%),
+      linear-gradient(180deg, var(--ssi-navy-950), var(--ssi-navy-800)) !important;
+    min-height: 100vh;
+    border-top: 0 !important;
+  }
+
+  .ssi-auth-form {
+    margin-inline: auto !important;
+    padding: 2rem 1.75rem !important;
+    border-radius: 18px;
+    background: color-mix(in oklab, #0b1222 78%, transparent);
+    border: 1px solid color-mix(in oklab, var(--tblr-primary) 30%, rgba(148, 163, 184, 0.2));
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 0 50px -20px var(--ssi-accent-glow);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    color: #e2e8f0;
+  }
+
+  .ssi-auth-form h1 {
+    color: #fff;
+  }
+
+  .ssi-auth-form .text-secondary {
+    color: rgba(226, 232, 240, 0.68) !important;
+  }
+
+  .ssi-auth-form .form-label {
+    color: #e2e8f0;
+  }
+
+  .ssi-auth-form .form-control {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(148, 163, 184, 0.25);
+    color: #fff;
+  }
+}
+
+/* Small-tablet widths keep the floating workspace illustration. */
+@media (min-width: 576px) and (max-width: 767.98px) {
+  .ssi-scene {
+    display: block;
+    opacity: 0.16;
+    background-size: min(42rem, 95vw) auto;
+  }
+}
+
+/* Tablet/phone header band: taller, with the illustration clearly visible. */
+@media (max-width: 991.98px) {
+  .ssi-band:not(.ssi-hero) {
+    min-height: 12.5rem;
+    padding-top: 1.75rem;
+    padding-bottom: 6rem;
+    background-size: auto 140%, auto, auto;
+    background-position: right -2rem center, center, center;
+  }
+
+  .ssi-band .page-title {
+    font-size: 1.625rem;
+  }
+}
+
+/* Snappier entrance so pages never linger half-transparent. */
+.ssi-page-enter {
+  animation-duration: 0.3s;
+}
+
+.ssi-page-enter .row-cards > [class*="col"] {
+  animation-duration: 0.35s;
+}
+
+/* =====================================================================
+ * Round 7: true light and dark mode on every page.
+ * The band artwork is its own element so light mode can recolour it.
+ * ===================================================================== */
+
+html .ssi-band {
+  background:
+    radial-gradient(60% 120% at 85% 0%, var(--ssi-accent-glow), transparent 70%),
+    linear-gradient(135deg, var(--ssi-navy-950) 0%, var(--ssi-navy-800) 100%) !important;
+}
+
+html[data-bs-theme="dark"] .ssi-band {
+  background: radial-gradient(60% 120% at 85% 0%, var(--ssi-accent-soft), transparent 70%) !important;
+}
+
+.ssi-band > .ssi-band-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--ssi-art) right -6rem center / auto 210% no-repeat;
+  pointer-events: none;
+}
+
+.ssi-hero > .ssi-band-art {
+  background-size: auto 118%;
+  background-position: right -3rem center;
+}
+
+@media (max-width: 991.98px) {
+  .ssi-band > .ssi-band-art {
+    background-size: auto 140%;
+    background-position: right -2rem center;
+  }
+}
+
+/* Light band: soft accent gradient, dark text, recoloured artwork. */
+html[data-bs-theme="light"] .ssi-band {
+  color: #0f172a;
+  mask-image: none;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background:
+    radial-gradient(55% 120% at 85% 0%, color-mix(in oklab, var(--tblr-primary) 24%, transparent), transparent 70%),
+    radial-gradient(40% 90% at 8% 100%, rgba(45, 212, 191, 0.14), transparent 70%),
+    linear-gradient(180deg, #eef2ff 0%, #f6f8fc 100%) !important;
+}
+
+html[data-bs-theme="light"] .ssi-band > .ssi-band-art {
+  filter: invert(1) hue-rotate(180deg) saturate(1.4);
+  opacity: 0.5;
+}
+
+html[data-bs-theme="light"] .ssi-band::before {
+  background: linear-gradient(90deg, rgba(246, 248, 252, 0.94) 0%, rgba(246, 248, 252, 0.6) 45%, rgba(246, 248, 252, 0) 75%);
+}
+
+@media (max-width: 991.98px) {
+  html[data-bs-theme="light"] .ssi-band::before {
+    background: linear-gradient(90deg, rgba(246, 248, 252, 0.94) 0%, rgba(246, 248, 252, 0.6) 60%, rgba(246, 248, 252, 0.25) 100%);
+  }
+}
+
+html[data-bs-theme="light"] .ssi-band::after {
+  opacity: 0.3;
+}
+
+html[data-bs-theme="light"] .ssi-band .page-title,
+html[data-bs-theme="light"] .ssi-hero .display-5,
+html[data-bs-theme="light"] .ssi-band .breadcrumb-item.active span {
+  color: #0f172a;
+}
+
+html[data-bs-theme="light"] .ssi-band .page-pretitle,
+html[data-bs-theme="light"] .ssi-band .page-description,
+html[data-bs-theme="light"] .ssi-band .breadcrumb-item,
+html[data-bs-theme="light"] .ssi-band .breadcrumb-item a,
+html[data-bs-theme="light"] .ssi-band .breadcrumb-item::before,
+html[data-bs-theme="light"] .ssi-hero .lead {
+  color: #475569;
+}
+
+html[data-bs-theme="light"] .ssi-gradient-text {
+  background: linear-gradient(90deg, var(--tblr-primary) 0%, #0d9488 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Floating scene and illustrated empty states, recoloured in light mode. */
+html[data-bs-theme="light"] .ssi-scene,
+html[data-bs-theme="light"] .empty::before {
+  filter: invert(1) hue-rotate(180deg) saturate(1.3);
+}
+
+/* Light sidebar, public bar and command bar: frosted white. */
+html[data-bs-theme="light"] .navbar.navbar-vertical,
+html[data-bs-theme="light"] .navbar.ssi-topbar {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+html[data-bs-theme="light"] .navbar.navbar-vertical {
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-bs-theme="light"] .navbar.ssi-topbar {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-bs-theme="light"] .ssi-sidebar-label {
+  color: #64748b;
+}
+
+html[data-bs-theme="light"] .ssi-sidebar-user {
+  border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+html[data-bs-theme="light"] .navbar-vertical .navbar-nav .nav-link.active {
+  color: color-mix(in oklab, var(--tblr-primary) 80%, #0f172a);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tblr-primary) 16%, transparent), transparent);
+}
+
+html[data-bs-theme="light"] .ssi-commandbar {
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+
+html[data-bs-theme="light"] .ssi-search-trigger {
+  background: #f1f5f9;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: #475569;
+}
+
+html[data-bs-theme="light"] .ssi-search-trigger:hover,
+html[data-bs-theme="light"] .ssi-search-trigger:focus-visible {
+  background: #fff;
+  color: #0f172a;
+}
+
+html[data-bs-theme="light"] .ssi-kbd {
+  border-color: rgba(15, 23, 42, 0.16);
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+}
+
+html[data-bs-theme="light"] .ssi-role-pill {
+  color: color-mix(in oklab, var(--tblr-primary) 75%, #0f172a);
+}
+
+/* Mode toggle: a little sun/moon pill. */
+.ssi-mode-toggle svg {
+  transition: transform 0.4s ease;
+}
+
+.ssi-mode-toggle:hover svg {
+  transform: rotate(25deg);
+}
+
+/* ---------- Quick-action tiles ---------- */
+.ssi-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tblr-secondary);
+  margin: 0.5rem 0 0.75rem;
+}
+
+.ssi-action {
+  --ssi-tone: var(--tblr-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.ssi-action-indigo { --ssi-tone: #6366f1; }
+.ssi-action-teal { --ssi-tone: #14b8a6; }
+.ssi-action-azure { --ssi-tone: #0ea5e9; }
+.ssi-action-orange { --ssi-tone: #f59e0b; }
+.ssi-action-purple { --ssi-tone: #a855f7; }
+.ssi-action-green { --ssi-tone: #22c55e; }
+
+.ssi-action::before {
+  content: "";
+  position: absolute;
+  inset: -50% -30% auto auto;
+  width: 12rem;
+  height: 12rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in oklab, var(--ssi-tone) 28%, transparent), transparent 70%);
+  transition: transform 0.35s ease, opacity 0.35s ease;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.ssi-action:hover::before {
+  transform: scale(1.25);
+  opacity: 1;
+}
+
+.ssi-action-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--ssi-tone), color-mix(in oklab, var(--ssi-tone) 55%, #0f172a));
+  box-shadow: 0 10px 24px -10px var(--ssi-tone);
+}
+
+.ssi-action-arrow {
+  color: var(--tblr-secondary);
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.ssi-action:hover .ssi-action-arrow,
+.ssi-action:focus-visible .ssi-action-arrow {
+  color: var(--ssi-tone);
+  transform: translate(2px, -2px);
+}
+
+.ssi-action:focus-visible {
+  outline: 2px solid var(--ssi-tone);
+  outline-offset: 2px;
+}
+
+/* ---------- Trust triangle ---------- */
+.ssi-triangle {
+  display: block;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  color: var(--tblr-body-color);
+}
+
+.ssi-triangle-node {
+  fill: var(--tblr-bg-surface);
+}
+
+.ssi-triangle-card {
+  overflow: hidden;
+}
+
+.ssi-dot {
+  flex: 0 0 auto;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-top: 0.45rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tblr-primary), #2dd4bf);
+  box-shadow: 0 0 12px var(--ssi-accent-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssi-action::before,
+  .ssi-action-arrow {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+ * Round 8: sign-in follows light/dark at every width.
+ * The artwork sits in a pseudo-element so light mode can recolour it.
+ * ===================================================================== */
+.ssi-auth-cover,
+.ssi-auth-panel {
+  position: relative;
+  isolation: isolate;
+}
+
+.ssi-auth-cover {
+  background:
+    radial-gradient(60% 60% at 70% 30%, var(--ssi-accent-glow), transparent 70%),
+    linear-gradient(160deg, var(--ssi-navy-950), var(--ssi-navy-800)) !important;
+  color: #fff;
+}
+
+.ssi-auth-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ssi-art) center / cover no-repeat;
+  pointer-events: none;
+}
+
+.ssi-cover-title {
+  color: #fff;
+}
+
+html[data-bs-theme="light"] .ssi-auth-cover {
+  color: #0f172a;
+  background:
+    radial-gradient(60% 60% at 70% 30%, color-mix(in oklab, var(--tblr-primary) 26%, transparent), transparent 70%),
+    radial-gradient(45% 40% at 15% 90%, rgba(45, 212, 191, 0.16), transparent 70%),
+    linear-gradient(160deg, #eef2ff, #f8fafc) !important;
+}
+
+html[data-bs-theme="light"] .ssi-auth-cover::before {
+  filter: invert(1) hue-rotate(180deg) saturate(1.4);
+  opacity: 0.65;
+}
+
+html[data-bs-theme="light"] .ssi-cover-title {
+  color: #0f172a;
+}
+
+html[data-bs-theme="light"] .ssi-auth-cover .text-secondary-light {
+  color: #475569;
+}
+
+@media (max-width: 991.98px) {
+  html[data-bs-theme] .ssi-auth-panel {
+    background:
+      radial-gradient(70% 50% at 50% 0%, var(--ssi-accent-glow), transparent 70%),
+      radial-gradient(60% 40% at 80% 90%, var(--ssi-teal-glow), transparent 70%),
+      linear-gradient(180deg, var(--ssi-navy-950), var(--ssi-navy-800)) !important;
+  }
+
+  .ssi-auth-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--ssi-art) center bottom -2rem / min(56rem, 140%) auto no-repeat;
+    pointer-events: none;
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-panel {
+    background:
+      radial-gradient(70% 50% at 50% 0%, color-mix(in oklab, var(--tblr-primary) 24%, transparent), transparent 70%),
+      radial-gradient(60% 40% at 80% 90%, rgba(45, 212, 191, 0.16), transparent 70%),
+      linear-gradient(180deg, #eef2ff, #f8fafc) !important;
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-panel::before {
+    filter: invert(1) hue-rotate(180deg) saturate(1.4);
+    opacity: 0.6;
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-form {
+    background: rgba(255, 255, 255, 0.82);
+    color: #0f172a;
+    border-color: color-mix(in oklab, var(--tblr-primary) 25%, rgba(15, 23, 42, 0.1));
+    box-shadow: 0 30px 60px -24px rgba(15, 23, 42, 0.25), 0 0 50px -24px var(--ssi-accent-glow);
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-form h1,
+  html[data-bs-theme="light"] .ssi-auth-form .form-label {
+    color: #0f172a;
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-form .text-secondary {
+    color: #475569 !important;
+  }
+
+  html[data-bs-theme="light"] .ssi-auth-form .form-control {
+    background: #fff;
+    border-color: rgba(15, 23, 42, 0.15);
+    color: #0f172a;
+  }
+}
+
+/* Cinematic hover on every card, not only grid tiles. */
+.page-body .card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.page-body .card:hover,
+.page-body .card:focus-within {
+  border-color: color-mix(in oklab, var(--tblr-primary) 45%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--tblr-primary) 22%, transparent),
+    0 18px 40px -20px var(--ssi-accent-glow);
+}
+
+html[data-bs-theme="dark"] .page-body .card:hover,
+html[data-bs-theme="dark"] .page-body .card:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--tblr-primary) 55%, transparent),
+    0 0 28px -6px var(--ssi-accent-glow),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+}
+
+/* Nested cards (e.g. stat tiles inside a card) keep their own, quieter hover. */
+.page-body .card .card:hover {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--tblr-primary) 35%, transparent);
+}
+
+/* Every card carries the accent edge highlight, brighter on hover. */
+.page-body .card:hover::after {
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-body .card {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+ * Round 9: wallet passes, animated verification, charts.
+ * ===================================================================== */
+
+/* ---------- Credential wallet pass ---------- */
+.ssi-pass {
+  --pass-hue: 230;
+  perspective: 1400px;
+  min-height: 16.5rem;
+  width: 100%;
+}
+
+.ssi-pass-inner {
+  position: relative;
+  height: 100%;
+  min-height: 16.5rem;
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.ssi-pass.is-flipped .ssi-pass-inner {
+  transform: rotateY(180deg);
+}
+
+.ssi-pass-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 18px;
+  color: #fff;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background:
+    radial-gradient(120% 80% at 100% 0%, hsl(calc(var(--pass-hue) + 40) 90% 65% / 0.55), transparent 60%),
+    radial-gradient(90% 70% at 0% 100%, hsl(calc(var(--pass-hue) - 30) 85% 55% / 0.45), transparent 60%),
+    linear-gradient(135deg, hsl(var(--pass-hue) 70% 32%), hsl(calc(var(--pass-hue) + 25) 75% 22%));
+  box-shadow: 0 24px 50px -24px hsl(var(--pass-hue) 80% 30% / 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Moving holographic sheen. */
+.ssi-pass-face::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.18) 50%, transparent 60%);
+  transform: translateX(-30%);
+  transition: transform 0.9s ease;
+  pointer-events: none;
+}
+
+.ssi-pass:hover .ssi-pass-face::after {
+  transform: translateX(30%);
+}
+
+.ssi-pass-back {
+  transform: rotateY(180deg);
+  background:
+    radial-gradient(100% 70% at 0% 0%, hsl(calc(var(--pass-hue) + 40) 80% 60% / 0.35), transparent 60%),
+    linear-gradient(135deg, hsl(calc(var(--pass-hue) + 25) 55% 18%), hsl(var(--pass-hue) 50% 12%));
+}
+
+.ssi-pass.is-inactive .ssi-pass-face {
+  filter: grayscale(0.75) brightness(0.85);
+}
+
+.ssi-pass-kicker {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.ssi-pass-title {
+  margin: 0.25rem 0 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.ssi-pass-chip {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(6px);
+}
+
+.ssi-pass-issuer {
+  display: flex;
+  flex-direction: column;
+}
+
+.ssi-pass-label,
+.ssi-pass-dates dt,
+.ssi-pass-claims dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.ssi-pass-mono {
+  font-family: var(--tblr-font-monospace);
+  font-size: 0.8125rem;
+  opacity: 0.95;
+}
+
+.ssi-pass-dates {
+  display: grid;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.ssi-pass-dates dd,
+.ssi-pass-claims dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ssi-pass-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.ssi-pass-status::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #a5b4fc;
+}
+
+.ssi-pass-status-revoked::before,
+.ssi-pass-status-suspended::before { background: #f87171; }
+.ssi-pass-status-expired::before { background: #fbbf24; }
+
+.ssi-pass-qr {
+  flex: 0 0 auto;
+  padding: 0.3rem;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.ssi-pass-claims {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  overflow: hidden;
+}
+
+.ssi-pass-claims dd {
+  overflow-wrap: anywhere;
+}
+
+.ssi-pass-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.ssi-pass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+}
+
+.ssi-pass-btn:hover,
+.ssi-pass-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.ssi-pass-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ---------- Verification checks reveal one by one ---------- */
+.ssi-check {
+  animation: ssi-check-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 0.12s);
+}
+
+.ssi-check-pass { box-shadow: inset 3px 0 0 #22c55e; }
+.ssi-check-fail { box-shadow: inset 3px 0 0 #ef4444; }
+.ssi-check-unknown { box-shadow: inset 3px 0 0 #94a3b8; }
+
+@keyframes ssi-check-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Verdict seal ---------- */
+.ssi-verdict {
+  overflow: hidden;
+}
+
+.ssi-verdict-ok { --ssi-verdict: #22c55e; border-color: color-mix(in oklab, #22c55e 45%, transparent); }
+.ssi-verdict-no { --ssi-verdict: #ef4444; border-color: color-mix(in oklab, #ef4444 45%, transparent); }
+
+.ssi-verdict::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(60% 120% at 0% 50%, color-mix(in oklab, var(--ssi-verdict) 22%, transparent), transparent 70%);
+}
+
+.ssi-verdict-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tblr-secondary);
+}
+
+.ssi-verdict-title {
+  margin: 0.125rem 0 0.25rem;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ssi-verdict);
+}
+
+.ssi-seal {
+  flex: 0 0 auto;
+  width: 6.5rem;
+  height: 6.5rem;
+  filter: drop-shadow(0 0 18px color-mix(in oklab, var(--ssi-verdict) 55%, transparent));
+}
+
+.ssi-seal circle,
+.ssi-seal path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ssi-seal-track {
+  stroke: color-mix(in oklab, var(--ssi-verdict) 18%, transparent);
+  stroke-width: 8;
+}
+
+.ssi-seal-ring {
+  stroke: var(--ssi-verdict);
+  stroke-width: 8;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+  animation: ssi-draw 0.9s ease-out 0.2s forwards;
+}
+
+.ssi-seal-mark {
+  stroke: var(--ssi-verdict);
+  stroke-width: 9;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: ssi-draw 0.5s ease-out 1s forwards;
+}
+
+@keyframes ssi-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ---------- Charts ---------- */
+.ssi-donut {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.ssi-donut svg {
+  width: 9.5rem;
+  height: 9.5rem;
+  flex: 0 0 auto;
+}
+
+.ssi-donut-track {
+  fill: none;
+  stroke: color-mix(in oklab, var(--tblr-body-color) 10%, transparent);
+  stroke-width: 12;
+}
+
+.ssi-donut-seg {
+  fill: none;
+  stroke-width: 12;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+  animation: ssi-fade 0.6s ease both;
+  animation-delay: calc(var(--i, 0) * 0.12s);
+}
+
+.ssi-donut-total {
+  fill: var(--tblr-body-color);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.ssi-donut-caption {
+  fill: var(--tblr-secondary);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ssi-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 10rem;
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.ssi-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ssi-legend-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.ssi-bars svg {
+  display: block;
+  width: 100%;
+  height: 11rem;
+}
+
+.ssi-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: ssi-grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 0.04s);
+}
+
+.ssi-bars-axis {
+  display: flex;
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--tblr-secondary);
+}
+
+.ssi-bars-axis span {
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+@keyframes ssi-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes ssi-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssi-pass-inner,
+  .ssi-pass-face::after { transition: none; }
+  .ssi-check,
+  .ssi-donut-seg,
+  .ssi-bar { animation: none; }
+  .ssi-seal-ring,
+  .ssi-seal-mark { animation: none; stroke-dashoffset: 0; }
+}

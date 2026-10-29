@@ -7,6 +7,36 @@ from app.main import app
 from app.application.services.oid4vp_service import fraud_client
 
 
+def _record_holder_consent(session_id: str, credential: dict) -> None:
+    """Seed server-side consent for the direct-post lifecycle fixture."""
+    from app.api.v1 import dependencies
+    from app.domain.oid4vp import ConsentAction, ConsentDecision
+    from app.infrastructure.crypto.local_holder_key_provider import SYNTHETIC_HOLDER_DID
+
+    manager = dependencies.get_mongo_connection_manager()
+    repository = dependencies.get_verification_session_repository(manager=manager)
+    session = repository.get_by_session_id(session_id)
+    assert session is not None
+    subject = credential["credentialSubject"]
+    repository.record_consent(
+        session.session_id,
+        consent_decision=ConsentDecision(
+            session_id=session.session_id,
+            verifier_did=session.verifier_did,
+            client_id=session.client_id,
+            purpose=session.purpose,
+            nonce=session.nonce,
+            holder_did=SYNTHETIC_HOLDER_DID,
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=session.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=session.expires_at,
+        ),
+        expected_version=session.version,
+    )
+
+
 @pytest.fixture(autouse=True)
 def isolate_optional_fraud_dependency(monkeypatch: pytest.MonkeyPatch):
     # Protocol lifecycle assertions must not depend on mutable host-level fraud
@@ -70,10 +100,23 @@ def test_oid4vci_full_offer_lifecycle(auth_headers_fn):
         assert offer_data["status"] == "PENDING"
         assert offer_data["deepLinkUri"].startswith("openid-credential-offer://")
 
-        # 2. Holder inspects offer
-        res_inspect = client.get(f"/api/v1/oid4vci/offers/{offer_id}")
+        # Offer ids are random (not ObjectId counters) so neighbours cannot be derived.
+        assert offer_id.startswith("offer_") and len(offer_id) >= len("offer_") + 32
+
+        # 2. The addressed holder and the issuing authority may inspect the offer.
+        res_inspect = client.get(f"/api/v1/oid4vci/offers/{offer_id}", headers=holder_hdrs)
         assert res_inspect.status_code == 200
         assert res_inspect.json()["offerId"] == offer_id
+        assert client.get(f"/api/v1/oid4vci/offers/{offer_id}", headers=issuer_hdrs).status_code == 200
+
+        # Nobody else learns the pre-authorized code or the subject data.
+        assert client.get(f"/api/v1/oid4vci/offers/{offer_id}").status_code == 401
+        res_other = client.get(
+            f"/api/v1/oid4vci/offers/{offer_id}",
+            headers=auth_headers_fn(client, "verifier"),
+        )
+        assert res_other.status_code == 404
+        assert "preAuthorizedCode" not in res_other.text
 
         # 3. Holder uses the canonical token, wallet proof, and credential flow.
         token_res = client.post(
@@ -136,7 +179,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         req_payload = {
             "purpose": "Verify holder qualification for security clearance",
             "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-            "requestedFields": ["Sertifika Sahibi", "Unvan", "Yetki Kapsami"],
+            "requestedFields": ["affiliation", "degree", "programCode"],
             "ttlSeconds": 600
         }
         res_create = client.post("/api/v1/oid4vp/requests", json=req_payload, headers=verifier_hdrs)
@@ -171,12 +214,14 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
             "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
             "credentialSubject": {
                 "id": SYNTHETIC_HOLDER_DID,
-                "Sertifika Sahibi": "Charaf Eddine Bessanane",
-                "Unvan": "Senior Distributed Systems & SSI Security Architect",
-                "Yetki Kapsami": "W3C VC 2.0 / OID4VCI / OID4VP Cryptographic Engine"
+                "affiliation": "student",
+                "programCode": "SYN-CS-001",
+                "degree": "Bachelor of Science",
+                "graduationYear": 2026,
             }
         }
         signed_vc = proof_service.sign_credential(raw_vc)
+        _record_holder_consent(session_id, signed_vc)
 
         # 3. Holder submits presentation via Direct Post
         from app.infrastructure.fixtures.signed_credentials import build_signed_presentation
@@ -191,8 +236,8 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
             "sessionId": session_id,
             "vpToken": sample_vp,
             "disclosedClaims": {
-                "Sertifika Sahibi": "Charaf Eddine Bessanane",
-                "Unvan": "Senior Distributed Systems & SSI Security Architect"
+                "affiliation": "student",
+                "degree": "Bachelor of Science",
             },
             "aiRiskScore": 12
         }
@@ -224,4 +269,4 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         poll_data = res_poll_after.json()
         assert poll_data["status"] == "VERIFIED"
         assert poll_data["verificationResult"]["finalPolicyResult"] == "ACCEPTED"
-        assert poll_data["disclosedClaims"]["Sertifika Sahibi"] == "Charaf Eddine Bessanane"
+        assert poll_data["disclosedClaims"]["degree"] == "Bachelor of Science"

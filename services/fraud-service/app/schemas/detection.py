@@ -6,10 +6,10 @@ class FraudDetectionRequest(BaseModel):
     """
     JSON request payload for the synthetic heuristic evaluation.
     """
-    did_id: str = Field(..., description="Decentralized Identifier string, e.g. did:key:z6Mku...")
+    did_id: str = Field(..., min_length=1, max_length=512, description="Decentralized Identifier string, e.g. did:key:z6Mku...")
     timestamp: int = Field(..., description="Unix epoch timestamp in seconds")
-    ip_address: str = Field(..., description="Origin IPv4 or IPv6 client address")
-    device_fingerprint: str = Field(..., description="Client device hardware/browser fingerprint hash")
+    ip_address: str = Field(..., max_length=64, description="Origin IPv4 or IPv6 client address")
+    device_fingerprint: str = Field(..., max_length=512, description="Client device hardware/browser fingerprint hash")
     recent_failed_attempts: int = Field(..., ge=0, description="Count of recent consecutive failed attempts")
 
     class Config:

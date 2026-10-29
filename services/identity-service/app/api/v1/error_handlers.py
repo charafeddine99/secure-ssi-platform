@@ -91,6 +91,7 @@ from app.domain.managed_key import (
     ProviderUnavailableError,
 )
 from app.domain.vc import CredentialValidationError, VerificationReasonCode
+from app.domain.did import DidResolutionError
 from app.schemas.credential_api import (
     ApiError,
     ApiErrorDetail,
@@ -547,13 +548,47 @@ async def http_error_handler(
     )
 
 
+def _failure_location(error: BaseException) -> str:
+    import traceback
+
+    frames = [frame for frame in traceback.extract_tb(error.__traceback__) if "/app/" in frame.filename.replace("\\", "/")]
+    if not frames:
+        return "unknown"
+    frame = frames[-1]
+    path = frame.filename.replace("\\", "/")
+    return f"{path[path.rfind('/app/') + 1:]}:{frame.lineno}:{frame.name}"
+
+
+async def did_resolution_error_handler(
+    request: Request,
+    error: DidResolutionError,
+) -> JSONResponse:
+    # A DID needed by the request could not be resolved (network, missing or
+    # invalid document). Upstream failure, not a server bug: 502, no internals.
+    LOGGER.warning(
+        "DID resolution failed request_id=%s code=%s",
+        _request_id(request),
+        getattr(error.code, "value", error.code),
+    )
+    return build_error_response(
+        request_id=_request_id(request),
+        status_code=502,
+        code="DID_RESOLUTION_FAILED",
+        message="A required DID document could not be resolved.",
+    )
+
+
 async def unexpected_error_handler(
     request: Request,
     error: Exception,
 ) -> JSONResponse:
+    # Exception messages can carry secrets or personal data, so only the type
+    # and the innermost application frame are logged (never the message).
     LOGGER.error(
-        "Unhandled request failure request_id=%s",
+        "Unhandled request failure request_id=%s type=%s at=%s",
         _request_id(request),
+        type(error).__name__,
+        _failure_location(error),
     )
     return build_error_response(
         request_id=_request_id(request),
@@ -601,4 +636,5 @@ def install_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ManagedKeyError, cast(Any, managed_key_error_handler))
     app.add_exception_handler(RepositoryError, cast(Any, repository_error_handler))
     app.add_exception_handler(HTTPException, cast(Any, http_error_handler))
+    app.add_exception_handler(DidResolutionError, cast(Any, did_resolution_error_handler))
     app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))

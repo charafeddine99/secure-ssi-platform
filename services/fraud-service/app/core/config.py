@@ -20,3 +20,19 @@ RISK_THRESHOLD_QUARANTINE = float(os.getenv("RISK_THRESHOLD_QUARANTINE", "0.80")
 # represent trained model components.
 RULE_SCORE_WEIGHT = float(os.getenv("RULE_SCORE_WEIGHT", os.getenv("XGB_WEIGHT", "0.60")))
 BEHAVIORAL_DEVIATION_WEIGHT = float(os.getenv("BEHAVIORAL_DEVIATION_WEIGHT", os.getenv("AE_WEIGHT", "0.40")))
+
+_cors_origins = os.getenv("FRAUD_CORS_ORIGINS", "")
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in _cors_origins.split(",")
+    if origin.strip()
+]
+if not CORS_ORIGINS:
+    CORS_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5178",
+        "http://127.0.0.1:5178",
+    ]

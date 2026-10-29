@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.infrastructure.cache_and_anchor import blockchain_anchor
 from app.application.services.oid4vp_service import fraud_client
+from app.api.v1 import dependencies
+from app.domain.oid4vp import ConsentAction, ConsentDecision
 client = TestClient(app)
 
 PASSWORDS = {
@@ -91,8 +93,10 @@ def _create_mock_vp_token(
         "validUntil": valid_until,
         "credentialSubject": {
             "id": effective_subject_did,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
 
@@ -121,6 +125,33 @@ def _create_mock_vp_token(
     )
 
 
+def _record_test_consent(session_id: str, vp_token: dict[str, Any]) -> None:
+    """Persist the explicit synthetic Holder decision required by OID4VP."""
+    manager = dependencies.get_mongo_connection_manager()
+    sessions = dependencies.get_verification_session_repository(manager=manager)
+    stored = sessions.get_by_session_id(session_id)
+    assert stored is not None
+    credential = vp_token["verifiableCredential"][0]
+    subject = credential["credentialSubject"]
+    sessions.record_consent(
+        stored.session_id,
+        consent_decision=ConsentDecision(
+            session_id=stored.session_id,
+            verifier_did=stored.verifier_did,
+            client_id=stored.client_id,
+            purpose=stored.purpose,
+            nonce=stored.nonce,
+            holder_did=vp_token["holder"],
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=stored.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=stored.expires_at,
+        ),
+        expected_version=stored.version,
+    )
+
+
 def _set_server_risk_score(monkeypatch: pytest.MonkeyPatch, score: int) -> None:
     """Control the server evaluator in tests; request JSON is never the score source."""
     monkeypatch.setattr(
@@ -146,7 +177,7 @@ def test_crypto_failure_hierarchy_zero_ai_risk_cannot_override_bad_signature(mon
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Academic Evaluation Matrix Test",
         "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-        "requestedFields": ["degree", "gpa"],
+        "requestedFields": ["degree", "programCode"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
     assert req_res.status_code == 201
@@ -229,18 +260,19 @@ def test_adaptive_policy_low_risk_acceptance(monkeypatch):
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Legitimate User Test",
         "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-        "requestedFields": ["degree", "gpa"],
+        "requestedFields": ["degree", "programCode"],
         "ttlSeconds": 300,
     }, headers=verifier_hdrs)
     session_id = req_res.json()["sessionId"]
     nonce = req_res.json()["nonce"]
 
     vp_token = _create_mock_vp_token(nonce=nonce)
+    _record_test_consent(session_id, vp_token)
     post_res = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id,
         "vpToken": vp_token,
         "aiRiskScore": 15,
-        "disclosedClaims": {"degree": "MSc Computer Science"},
+        "disclosedClaims": {"degree": "Bachelor of Science"},
     })
     assert post_res.status_code == 200
     res = post_res.json()["result"]
@@ -306,6 +338,7 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout(monk
     nonce = req_res.json()["nonce"]
 
     vp_token = _create_mock_vp_token(subject_did=subject_did, nonce=nonce, private_key=attacker_priv)
+    _record_test_consent(session_id, vp_token)
     post_res = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id,
         "vpToken": vp_token,
@@ -371,6 +404,7 @@ def test_dynamic_ai_risk_evaluation_fallback_heuristic(monkeypatch):
 
     # Client-supplied telemetry and scores must not control the server evaluator.
     vp_token = _create_mock_vp_token(nonce=nonce)
+    _record_test_consent(session_id, vp_token)
     post_res = client.post("/api/v1/oid4vp/response", json={
         "sessionId": session_id,
         "vpToken": vp_token,

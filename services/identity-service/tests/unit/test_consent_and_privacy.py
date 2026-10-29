@@ -265,6 +265,10 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 
+    from tests.support.consent import record_holder_approval
+
+    record_holder_approval(session.session_id, signed_vc, SYNTHETIC_HOLDER_DID, repository=session_repo)
+
     # Legacy selection metadata cannot hide claims from a signed VC.
     disclosed_claims = {
         "affiliation": "student",

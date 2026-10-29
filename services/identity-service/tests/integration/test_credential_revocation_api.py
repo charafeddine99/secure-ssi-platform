@@ -219,8 +219,8 @@ def test_public_status_lookup_returns_required_contract_and_audits(
     assert events[0].correlation_id == "status-request-1"
 
 
-@pytest.mark.parametrize("role", ["admin", "issuer"])
-def test_admin_and_issuer_can_revoke_exactly_once(
+@pytest.mark.parametrize("role", ["issuer"])
+def test_issuer_can_revoke_exactly_once(
     revocation_client: tuple[TestClient, RevocationRuntime],
     role: str,
 ) -> None:
@@ -504,14 +504,14 @@ def test_status_list_openapi_contract_is_public(
     )
 
 
-def test_cross_issuer_revocation_forbidden_and_admin_allowed(
+def test_cross_issuer_and_admin_revocation_forbidden(
     revocation_client: tuple[TestClient, RevocationRuntime],
 ) -> None:
     """
     Sprint 10 — Gap 1: Object-Level Revocation Authorization.
 
     Issuer A must NOT be able to revoke a credential issued by Issuer B.
-    Admin MUST be allowed to revoke according to RBAC policy.
+    Administrators cannot revoke at all: only the issuing authority can.
     """
     client, _ = revocation_client
     other_cred_id = "urn:uuid:other-issuer-cred-999"
@@ -525,14 +525,14 @@ def test_cross_issuer_revocation_forbidden_and_admin_allowed(
     assert res_issuer_cross.status_code == 403
     assert res_issuer_cross.json()["error"]["code"] == "PERMISSION_DENIED"
 
-    # 2. Admin attempts to revoke foreign credential -> 200 ALLOWED
+    # 2. Admin attempts to revoke -> 403 (no credentials:revoke permission)
     res_admin = client.post(
         f"/api/v1/credentials/{other_cred_id}/revoke",
         json={"reason": "Administrative revocation"},
         headers=auth_headers(client, "admin"),
     )
-    assert res_admin.status_code == 200
-    assert res_admin.json()["status"] == "REVOKED"
+    assert res_admin.status_code == 403
+    assert res_admin.json()["error"]["code"] == "PERMISSION_DENIED"
 
 
 def test_persistent_issuer_binding_blocks_foreign_revoke_and_history(

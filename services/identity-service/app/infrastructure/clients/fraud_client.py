@@ -19,6 +19,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://127.0.0.1:8002").rstrip("/")
+FRAUD_INTERNAL_SERVICE_TOKEN = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", "")
 FALLBACK_MODEL_VERSION = "identity-fallback-heuristic-v1"
 FALLBACK_RISK_SIGNALS = [
     "failed_attempt_velocity",
@@ -35,6 +36,11 @@ class FraudRiskClient:
     def __init__(self, base_url: str = FRAUD_SERVICE_URL, timeout_sec: float = 2.0):
         self.base_url = base_url
         self.timeout_sec = timeout_sec
+
+    @staticmethod
+    def _internal_headers() -> Dict[str, str]:
+        token = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", FRAUD_INTERNAL_SERVICE_TOKEN)
+        return {"X-Internal-Service-Token": token} if token else {}
 
     def evaluate_presentation_risk(
         self,
@@ -71,7 +77,11 @@ class FraudRiskClient:
 
         try:
             with httpx.Client(timeout=self.timeout_sec) as client:
-                res = client.post(f"{self.base_url}/api/v1/fraud/evaluate", json=payload)
+                res = client.post(
+                    f"{self.base_url}/api/v1/fraud/evaluate",
+                    json=payload,
+                    headers=self._internal_headers(),
+                )
                 if res.status_code == 200:
                     data = res.json()
                     float_score = float(data.get("risk_score", 0.15))
@@ -122,7 +132,11 @@ class FraudRiskClient:
         }
         try:
             with httpx.Client(timeout=1.0) as client:
-                client.post(f"{self.base_url}/api/v1/fraud/events", json=payload)
+                client.post(
+                    f"{self.base_url}/api/v1/fraud/events",
+                    json=payload,
+                    headers=self._internal_headers(),
+                )
         except Exception:
             pass  # Best effort, never block identity operations on telemetry failure
 

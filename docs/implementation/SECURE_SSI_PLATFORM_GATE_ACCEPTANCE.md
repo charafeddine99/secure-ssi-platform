@@ -70,3 +70,21 @@ At this 15 October checkpoint, **G0, G6, G7, G9 and G10 are PASS for their docum
 - G14 independent peer/conformance evidence.
 - G15 measured load/reliability results.
 - G16 clean-environment reproduction and thesis/demo claim reconciliation.
+
+## 25 October 2026 — acceptance evidence refresh
+
+This dated refresh supersedes prior “BLOCKED/not rerun” notes only for the exact checks below; older checkpoint entries remain historical. Run against current local HEAD `e26da1e49c80c6b157e5f6d5697c43a455bf7542` on `besna-dev`.
+
+| Gate / evidence item | Status | Observed evidence and scope |
+|---|---|---|
+| WP-05 targeted HTTP integration | **PASS, tested scope** | `tests/integration/test_wp05_oid4vci_token_and_proof.py`: 22 passed, 0 failed, 0 skipped, 4 warnings, exit 0 in the installed Python 3.11 environment. In current rebuilt Identity container, combined WP-05/WP-08/OID4VP target set: 74 passed, 0 failed, 0 skipped, 2 warnings. External profile interoperability/public context resolution remains unverified. |
+| WP-08 R1 fail-closed, R2 status purpose/suspension, R3 signed status-list validation and policy tests | **PASS, tested scope** | Included in the 125-test host-focused Identity run and 74-test current-container run; both passed. Does not demonstrate suspension restoration or independent peer interoperability. |
+| OID4VP session authorization | **PASS, tested scope** | Current authorization regression module was included in the 74-test container set. Unauthenticated fake session retrieval through Gateway and Identity returned 401. Authenticated cross-organization/browser journey is unverified. |
+| Root Python runner | **PASS, observed run** | `& '.\.venv\Scripts\python.exe' '.\run_tests.py'`: exit 0, 834 passed, 13 environment-gated skipped, 266 passing subtests, 12 warnings. |
+| Docker current-source L3 | **PASS for declared runtime scope** | Five app images built `--no-cache`; five app services recreated; all 7 Compose services healthy; web and four service health endpoints 200. MongoDB and Redis containers/volumes preserved. All images lack OCI source/revision labels; evidence does not supply image metadata attestation. |
+| Web production artifact comparison | **UNVERIFIED** | Docker-served Node 20 Alpine asset and host Node 24.19.0 build have different filenames, byte sizes and SHA-256. Both endpoints/builds succeeded, but exact artifact equivalence is not shown. |
+| Frontend checks | **PASS, observed run** | `npm.cmd test --prefix apps/web` (8 test files); lint and production build exit 0. No browser visual, responsive, keyboard or screen-reader audit performed. |
+| npm dependencies | **PARTIAL / remediation open** | One authorized online audit reported 3 vulnerable packages among 264: React Router 6.30.6 (two moderate advisories; remediation path requires major `react-router-dom` 7.18.4) and Vite 6.4.3 (reported fix available, exact fixed version absent from output; advisories include one high). No package/lockfile edit or auto-fix. |
+| WP-12 Golden Path and accessibility | **PARTIAL** | Build/tests pass; no authenticated current-source browser Golden Path, responsive visual sweep, keyboard/screen-reader/contrast audit or conformance finding. |
+
+**Overall project remains PARTIAL.** No external OID4VCI/OID4VP L4 conformance, production readiness, accreditation, or full accessibility claim is made. The prior G0–G16 aggregate is not mechanically changed by this addendum; each gate needs its own acceptance criteria and evidence review.

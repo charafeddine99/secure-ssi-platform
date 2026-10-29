@@ -287,31 +287,17 @@ class CredentialRevocationService:
     ) -> tuple[AuditEvent, ...]:
         credential = self._require_credential(credential_id)
         if caller_roles is not None or actor_id is not None:
-            is_admin = False
-            if caller_roles is not None:
-                is_admin = any(
-                    (r.value if hasattr(r, "value") else str(r)).lower() == "admin"
-                    for r in caller_roles
+            # Platform operators may read the audit trail; otherwise only the
+            # issuing authority bound to the caller's account. No account-name
+            # exceptions.
+            is_admin = caller_roles is not None and any(
+                (r.value if hasattr(r, "value") else str(r)).lower() == "admin"
+                for r in caller_roles
+            )
+            if not is_admin and caller_issuer_did != credential.issuer_did:
+                raise PermissionDeniedError(
+                    "Access to credential status history is restricted to the issuing authority or administrator."
                 )
-            if actor_id in {"usr_local_admin", "admin"}:
-                is_admin = True
-
-            if not is_admin:
-                effective_issuer = caller_issuer_did
-                if effective_issuer is None and actor_id is not None:
-                    if actor_id.startswith("did:"):
-                        effective_issuer = actor_id
-                    elif actor_id in {"usr_local_issuer", "issuer@example.test"}:
-                        effective_issuer = credential.issuer_did if credential.issuer_did in {
-                            "did:web:issuer.example.test",
-                            "did:web:issuer.example",
-                            "did:web:synthetic-issuer.local",
-                        } else "did:web:issuer.example.test"
-
-                if effective_issuer != credential.issuer_did and actor_id != credential.issuer_did:
-                    raise PermissionDeniedError(
-                        "Access to credential status history is restricted to the issuing authority or administrator."
-                    )
 
         if self._audit_repository is not None:
             return self._audit_repository.list_by_subject(credential.credential_id)
@@ -325,36 +311,13 @@ class CredentialRevocationService:
         caller_roles: tuple[Any, ...] | None = None,
         caller_issuer_did: str | None = None,
     ) -> None:
-        if caller_roles is not None:
-            is_admin = any(
-                (r.value if hasattr(r, "value") else str(r)).lower() == "admin"
-                for r in caller_roles
-            )
-            if is_admin:
-                return
-
-        if revoked_by in {"usr_local_admin", "admin"}:
+        # Only the issuing authority may revoke. There is no administrator
+        # override and no account-name exception: the caller's server-bound
+        # issuer DID must equal the credential's issuer.
+        if caller_issuer_did is not None and caller_issuer_did == credential.issuer_did:
             return
-
-        effective_issuer_did = caller_issuer_did
-        if effective_issuer_did is None:
-            if revoked_by.startswith("did:"):
-                effective_issuer_did = revoked_by
-            elif revoked_by in {"usr_local_issuer", "issuer@example.test"}:
-                effective_issuer_did = credential.issuer_did if credential.issuer_did in {
-                    "did:web:issuer.example.test",
-                    "did:web:issuer.example",
-                    "did:web:synthetic-issuer.local",
-                } else "did:web:issuer.example.test"
-
-        if effective_issuer_did is not None and effective_issuer_did == credential.issuer_did:
-            return
-
-        if revoked_by == credential.issuer_did:
-            return
-
         raise PermissionDeniedError(
-            "The authenticated issuer is not authorized to revoke credentials issued by another authority."
+            "Only the issuing authority can revoke this credential."
         )
 
 
