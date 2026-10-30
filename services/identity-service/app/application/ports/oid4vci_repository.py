@@ -11,6 +11,8 @@ class CredentialOfferRepository(Protocol):
     def get_by_pre_authorized_code(self, pre_authorized_code: str) -> CredentialOffer | None:
         ...
 
+    def record_pin_failure(self, offer_id: str, *, max_attempts: int) -> int: ...
+
     def mark_claimed(
         self,
         offer_id: str,

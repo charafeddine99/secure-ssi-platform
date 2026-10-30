@@ -36,6 +36,10 @@ class GuardianRecoveryProofResponse(BaseModel):
     proof: str
 
 
+class HolderWalletListResponse(ApiModel):
+    items: list["HolderWalletResponse"]
+
+
 class HolderWalletResponse(ApiModel):
     wallet_id: str
     owner_user_id: str
@@ -153,3 +157,6 @@ class PresentationChallengeResponse(ApiModel):
             status=challenge.status.value,
             version=challenge.version,
         )
+
+
+HolderWalletListResponse.model_rebuild()

@@ -47,6 +47,29 @@ Regression scripts: `ops.mjs` 33/33, `rev.mjs` PASS, `trust.mjs` 5/5, `fixes.mjs
 
 The P1 table below is still open for Codex. Owner decisions are unchanged.
 
+## Status update — 2026-10-30: two more P1 items fixed by Claude
+
+| Item | Change | Tests | Live evidence |
+|---|---|---|---|
+| HOL-03 / API-03 current wallet | `GET /api/v1/wallets`: owner-scoped list (`wallets.py list_wallets`, `HolderWalletService.list_owned`). Frontend `wallet.ts`: cached id → own wallet list (first-created is primary) → create only if none. | `test_golden_path::test_owner_scoped_wallet_listing_returns_only_own_wallets` | A second session opens the same wallet; anonymous 401 |
+| SEC-04 `tx_code` brute force | Token endpoint (and the legacy claim): constant-time PIN comparison; persistent `pinFailures` per offer (`record_pin_failure`); offer REVOKED after `MAX_TX_CODE_ATTEMPTS = 5`; non-PENDING offers rejected | `test_oid4_protocols::test_oid4vci_tx_code_attempts_are_limited_per_offer` | 5 wrong PINs → 400; afterwards the correct PIN is refused |
+
+New P2 for Codex:
+- **Flaky status-list timing.**
+  `test_wp05_issued_credential_participates_in_wp04_oid4vp_dcql_presentation`
+  failed once with `STATUS_LIST_NOT_YET_VALID` and passed 3/3 on rerun.
+  - Cause: the status-list credential's `validFrom` is compared to the second,
+    with no clock-skew tolerance.
+  - Fix: add a small skew allowance, for example the 10 s already used for JWT
+    validation.
+
+Still open for Codex:
+- issuer, verifier and holder history/list APIs (OD-07 decides scope);
+- quarantine scope and persistence (AI-09);
+- fraud-outage fault test (AI-12);
+- recovery live E2E (G11);
+- IP/UA retention (AI-13).
+
 ## P0 — original findings (now fixed, kept for traceability)
 
 ### P0-1 Enumerable public credential-offer read leaks pre-authorized code and claims

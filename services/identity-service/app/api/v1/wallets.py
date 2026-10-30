@@ -21,6 +21,7 @@ from app.domain.permissions import Permission
 from app.schemas.credential_api import ApiErrorResponse
 from app.schemas.holder_wallet_api import (
     HolderWalletCreateRequest,
+    HolderWalletListResponse,
     HolderWalletResponse,
     WalletCredentialInventoryResponse,
     WalletCredentialResponse,
@@ -64,6 +65,30 @@ def create_wallet(
             owner_user_id=principal.id,
             correlation_id=request.state.request_id,
         )
+    )
+
+
+@router.get(
+    "",
+    response_model=HolderWalletListResponse,
+    summary="List the authenticated holder's own wallets",
+    description=(
+        "Owner-scoped: the owner is the authenticated principal, never a request "
+        "parameter. Lets a client find its existing wallet instead of creating a new one."
+    ),
+    responses=_ERRORS,
+)
+def list_wallets(
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.WALLETS_READ)
+    ),
+    service: HolderWalletService = Depends(get_holder_wallet_service),
+) -> HolderWalletListResponse:
+    return HolderWalletListResponse(
+        items=[
+            HolderWalletResponse.from_domain(wallet)
+            for wallet in service.list_owned(owner_user_id=principal.id)
+        ]
     )
 
 

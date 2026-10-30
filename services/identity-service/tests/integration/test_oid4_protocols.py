@@ -270,3 +270,36 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         assert poll_data["status"] == "VERIFIED"
         assert poll_data["verificationResult"]["finalPolicyResult"] == "ACCEPTED"
         assert poll_data["disclosedClaims"]["degree"] == "Bachelor of Science"
+
+
+def test_oid4vci_tx_code_attempts_are_limited_per_offer(auth_headers_fn):
+    """SEC-04: a short transaction code cannot be brute-forced at the token endpoint."""
+    from app.application.services.oid4vci_service import MAX_TX_CODE_ATTEMPTS
+
+    subject = {"affiliation": "student", "programCode": "SYN-CS-009", "degree": "Bachelor of Science", "graduationYear": 2027}
+    grant = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+    with TestClient(app) as client:
+        issuer_hdrs = auth_headers_fn(client, "issuer")
+
+        def offer_code() -> str:
+            res = client.post(
+                "/api/v1/oid4vci/offers",
+                json={"credentialConfigurationIds": ["UniversityAffiliationCredential"], "subjectData": subject, "ttlSeconds": 600, "userPin": "4821"},
+                headers=issuer_hdrs,
+            )
+            assert res.status_code == 201, res.text
+            return res.json()["preAuthorizedCode"]
+
+        def token(code: str, pin: str):
+            return client.post("/api/v1/oid4vci/token", data={"grant_type": grant, "pre-authorized_code": code, "tx_code": pin})
+
+        # The right code still works after a few mistakes.
+        code = offer_code()
+        assert token(code, "0000").status_code == 400
+        assert token(code, "4821").status_code == 200
+
+        # Reaching the limit revokes the offer; even the right code is then refused.
+        code = offer_code()
+        for _ in range(MAX_TX_CODE_ATTEMPTS):
+            assert token(code, "0000").status_code == 400
+        assert token(code, "4821").status_code == 400

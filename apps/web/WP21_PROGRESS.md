@@ -152,3 +152,10 @@ Resume order (tick as done):
 - [x] Update reports (handoff status section, matrix regenerated: 0 Critical left)/CLAUDE_TO_CODEX_BACKEND_HANDOFF.md (mark P0-1..3, P1-A fixed by Claude) + regenerate validated matrix (scratchpad xl/build.py post; vdata3.py overrides) + FRONTEND checklist
 - PAUSED by user 2026-10-29 ('dur'): next = full suites, stack rebuild (gateway+identity), live checks, report updates. User said (2026-10-29): continue directly when the session/token renews — no need to ask.
 - Round 15 COMPLETE 2026-10-29. Note: Vite (:5173) and chain (:8546) run as app preview servers; after an app restart start them with preview_start 'web' and 'chain' (redeploy contracts with scratch hardhat.local8546 config).
+
+## Round 16 — continue open items (2026-10-30) — IN PROGRESS
+- [x] HOL-03 current wallet (done; 56 wallet/golden tests pass): identity GET /api/v1/wallets (owner-scoped list) + frontend wallet.ts getOrCreateHolderWallet uses it before POST
+- [x] SEC-04 tx_code attempt limit (done: MAX_TX_CODE_ATTEMPTS=5, compare_digest, repo record_pin_failure; tests pass). Note flaky STATUS_LIST_NOT_YET_VALID timing test (pre-existing) -> per offer (oid4vci token endpoint)
+- [x] Suites + rebuild identity + live checks (round16.mjs 5/5; regressions pass) (start preview 'web' + 'chain' if app restarted)
+- [x] axe-core 4.14.0 devDependency (user approved): 24 pages x light/dark = 0 violations after fixes (search button label-in-name, light-mode contrast, card-status layer). Manual AT pass still open. Also vite 6.4.4 -> 6.4.5 (GHSA-8g5g-mxqh-grgj, security patch exception to 2-week rule).
+- [x] Update handoff/checklist/matrix (scratchpad xl/vdata3.py + build.py post)

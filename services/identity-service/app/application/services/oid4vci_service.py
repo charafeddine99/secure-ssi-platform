@@ -48,6 +48,9 @@ CREDENTIAL_PROFILE_METADATA = {
     ),
 }
 
+# Wrong transaction codes allowed per offer before it is revoked (OID4VCI §13.6).
+MAX_TX_CODE_ATTEMPTS = 5
+
 class Oid4vciService:
     _SHARED_NONCES: dict[str, tuple[datetime, bool]] = {}
     _SHARED_REDEEMED_CODES: set[str] = set()
@@ -398,8 +401,19 @@ class Oid4vciService:
 
         if offer.status == OfferStatus.CLAIMED:
             raise InvalidGrantError("invalid_grant: Credential offer was already claimed.")
+        if offer.status != OfferStatus.PENDING:
+            raise InvalidGrantError("invalid_grant: Credential offer is no longer valid.")
 
-        if offer.user_pin and offer.user_pin != user_pin:
+        if offer.user_pin and not secrets.compare_digest(offer.user_pin, user_pin or ""):
+            # Short numeric codes are guessable: count failures per offer and
+            # revoke the offer once MAX_TX_CODE_ATTEMPTS is reached.
+            failures = self._offers.record_pin_failure(
+                offer.offer_id, max_attempts=MAX_TX_CODE_ATTEMPTS
+            )
+            if failures >= MAX_TX_CODE_ATTEMPTS:
+                raise InvalidGrantError(
+                    "invalid_grant: Too many invalid transaction codes; the offer was revoked."
+                )
             raise InvalidGrantError("invalid_grant: Invalid user PIN / transaction code.")
 
         # Single-use enforcement: mark pre-authorized code as redeemed for token issuance
@@ -814,7 +828,10 @@ class Oid4vciService:
             raise OfferNotFoundError("Credential offer has expired.")
         if offer.status == OfferStatus.CLAIMED:
             raise OfferAlreadyClaimedError("Credential offer was already claimed.")
-        if offer.user_pin and offer.user_pin != user_pin:
+        if offer.status != OfferStatus.PENDING:
+            raise OfferNotFoundError("Credential offer is no longer valid.")
+        if offer.user_pin and not secrets.compare_digest(offer.user_pin, user_pin or ""):
+            self._offers.record_pin_failure(offer.offer_id, max_attempts=MAX_TX_CODE_ATTEMPTS)
             raise ValueError("Invalid user PIN provided for credential offer.")
 
         cred_type = (

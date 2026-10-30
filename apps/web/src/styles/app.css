@@ -1839,3 +1839,31 @@ html[data-bs-theme="dark"] .page-body .card:focus-within {
   .ssi-seal-ring,
   .ssi-seal-mark { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ---------- Accessibility (axe-core 4.14, WCAG 2.2 AA) ---------- */
+
+/* Tabler draws the status accent over the whole card and masks it to 3px; give it
+   its real height so no hidden colour layer sits behind card text. */
+.card-status-top {
+  bottom: auto;
+  height: var(--tblr-card-status-size);
+  mask-image: none;
+}
+
+/* WCAG 1.4.3: Tabler's light "-lt" badges, alert titles and inactive steps fall
+   below 4.5:1 in light mode. Darken the text, keep the hue. */
+html:not([data-bs-theme="dark"]) .badge.bg-green-lt { color: color-mix(in srgb, var(--tblr-green) 52%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-yellow-lt { color: color-mix(in srgb, var(--tblr-yellow) 48%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-red-lt { color: color-mix(in srgb, var(--tblr-red) 72%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-azure-lt { color: color-mix(in srgb, var(--tblr-azure) 55%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-teal-lt { color: color-mix(in srgb, var(--tblr-teal) 50%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-orange-lt { color: color-mix(in srgb, var(--tblr-orange) 55%, #000) !important; }
+html:not([data-bs-theme="dark"]) .badge.bg-secondary-lt { color: #475569 !important; }
+
+html:not([data-bs-theme="dark"]) .alert-info { --tblr-alert-color: color-mix(in srgb, var(--tblr-info) 60%, #000); }
+html:not([data-bs-theme="dark"]) .alert-warning { --tblr-alert-color: color-mix(in srgb, var(--tblr-warning) 50%, #000); }
+html:not([data-bs-theme="dark"]) .alert-success { --tblr-alert-color: color-mix(in srgb, var(--tblr-success) 55%, #000); }
+html:not([data-bs-theme="dark"]) .alert-danger { --tblr-alert-color: color-mix(in srgb, var(--tblr-danger) 75%, #000); }
+html:not([data-bs-theme="dark"]) .alert .alert-description { color: #475569; }
+
+html:not([data-bs-theme="dark"]) .steps .step-item { color: #5b6574; }

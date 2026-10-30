@@ -47,10 +47,10 @@ function parseWallet(value: unknown): HolderWallet {
 
 /**
  * Resolve or create the signed-in user's server-managed wallet using the
- * existing contract: GET /auth/me → cached wallet ID (per account, same
- * localStorage key as before) → GET /wallets/{id} → otherwise POST /wallets.
- * NOTE: there is no owner-scoped wallet listing in the current API, so a new
- * browser may create an additional wallet (see FRONTEND_BACKEND_HANDOFF.md).
+ * GET /auth/me → cached wallet ID (per account) → GET /wallets/{id};
+ * otherwise the account's own wallets (GET /wallets, owner-scoped) and the
+ * first-created one is used, so every browser opens the same wallet.
+ * A wallet is created (POST /wallets) only when the account has none.
  */
 export async function getOrCreateHolderWallet(): Promise<HolderWallet> {
   const me = await apiRequest<{ id?: unknown }>("/api/v1/identity/auth/me");
@@ -64,6 +64,15 @@ export async function getOrCreateHolderWallet(): Promise<HolderWallet> {
       if (!(isApiError(error) && error.kind === "not_found")) throw error;
       clearCachedWalletId(userId);
     }
+  }
+  const owned = await apiRequest<{ items?: unknown }>("/api/v1/identity/wallets");
+  assertShape(Array.isArray(owned?.items), "wallet list");
+  const wallets = (owned.items as unknown[]).map(parseWallet);
+  if (wallets.length > 0) {
+    // Newest first from the API; the first-created wallet is the stable primary.
+    const primary = wallets[wallets.length - 1];
+    storeCachedWalletId(userId, primary.walletId);
+    return primary;
   }
   const created = parseWallet(await apiRequest<unknown>("/api/v1/identity/wallets", { method: "POST", body: {} }));
   storeCachedWalletId(userId, created.walletId);

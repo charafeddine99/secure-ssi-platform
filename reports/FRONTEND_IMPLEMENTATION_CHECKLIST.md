@@ -64,7 +64,27 @@ node, contracts verified). Anchor records stay empty until Codex wires anchoring
 - HOL-04 search/filter (P2)
 - HOL-08 camera scanning (P2)
 
+## Accessibility (2026-10-30)
+- SEC-21 / HIST-21: automated scan with axe-core **4.14.0**, an exact-pinned
+  devDependency.
+  - Scope: 24 pages (public site plus all four roles), light and dark mode.
+  - Rule sets: WCAG 2.0, 2.1 and 2.2 at levels A and AA.
+- Found and fixed:
+
+  | Finding | WCAG | Fix |
+  |---|---|---|
+  | Search button's accessible name didn't contain its visible text | 2.5.3 Label in Name | Name now comes from the visible text |
+  | Light-mode contrast below 4.5:1 in Tabler's "-lt" badges, alert titles and text, inactive steps | 1.4.3 | Accessibility block in `app.css` |
+  | Card status accent painted under the whole card (hidden by a mask) | — | Bar now has its real 3px height |
+
+- **Result: 0 violations on 24/24 pages in both modes.**
+- Still to do: a manual keyboard and screen-reader pass (NVDA or Narrator).
+  Automated rules cover only part of WCAG 2.2, so this is not a conformance claim.
+
+## Dependencies
+- Vite 6.4.4 → 6.4.5 for GHSA-8g5g-mxqh-grgj (`server.fs.deny` bypass with
+  queries; dev server only). This is an exception to the two-week release-age rule
+  for a same-line security patch. npm audit: 0.
+
 ## Still to verify (frontend)
-- SEC-21 / HIST-21: run axe-core and a manual keyboard/screen-reader pass. Until
-  then there is no WCAG conformance claim.
 - SEC-19: capture CSP headers from a rebuilt `web` container.

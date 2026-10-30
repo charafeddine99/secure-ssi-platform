@@ -35,6 +35,8 @@ class CredentialOfferDocumentMapper:
             "preAuthorizedCode": offer.pre_authorized_code,
             "status": offer.status.value,
             "userPin": offer.user_pin,
+            # Wrong transaction codes so far; incremented by record_pin_failure.
+            "pinFailures": 0,
             "createdAt": offer.created_at,
             "expiresAt": offer.expires_at,
             "claimedAt": offer.claimed_at,
@@ -95,6 +97,28 @@ class MongoCredentialOfferRepository(CredentialOfferRepository):
             return CredentialOfferDocumentMapper.from_document(doc) if doc else None
         except PyMongoError as e:
             raise PersistenceUnavailableError("Failed to lookup offer by pre-authorized code.") from e
+
+    def record_pin_failure(self, offer_id: str, *, max_attempts: int) -> int:
+        """Count a wrong transaction code; revoke the pending offer at ``max_attempts``.
+
+        The counter is persisted with the offer so it survives restarts and is
+        shared by every service instance. Returns the failure count so far.
+        """
+        try:
+            self._collection.update_one(
+                {"offerId": offer_id, "status": OfferStatus.PENDING.value},
+                {"$inc": {"pinFailures": 1}},
+            )
+            document = self._collection.find_one({"offerId": offer_id})
+            failures = int((document or {}).get("pinFailures", 0))
+            if failures >= max_attempts:
+                self._collection.update_one(
+                    {"offerId": offer_id, "status": OfferStatus.PENDING.value},
+                    {"$set": {"status": OfferStatus.REVOKED.value}, "$inc": {"version": 1}},
+                )
+        except PyMongoError as e:
+            raise PersistenceUnavailableError(f"Failed to record a PIN failure for offer {offer_id}.") from e
+        return failures
 
     def mark_claimed(
         self,

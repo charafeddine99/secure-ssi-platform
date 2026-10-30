@@ -215,7 +215,7 @@ export const AppShell: React.FC = () => {
       <div className="page-wrapper">
         <header className="ssi-commandbar d-none d-lg-block d-print-none" data-bs-theme={appearance.mode}>
           <div className="container-xl d-flex align-items-center gap-3">
-            <button type="button" className="ssi-search-trigger" onClick={() => setPaletteOpen(true)} aria-label="Search pages and actions (Ctrl+K)">
+            <button type="button" className="ssi-search-trigger" onClick={() => setPaletteOpen(true)}>
               <IconSearch size={18} aria-hidden="true" />
               <span className="flex-fill text-start">Search or jump to…</span>
               <kbd className="ssi-kbd">Ctrl</kbd><kbd className="ssi-kbd">K</kbd>
