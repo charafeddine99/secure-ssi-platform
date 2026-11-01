@@ -7,10 +7,11 @@ JSON nesting depth limits, payload size bounds, and CORS lockdown.
 
 from typing import Any
 import json
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from app.main import app
-from app.core.config import CORS_ORIGINS
-from app.core.middleware import RateLimiterMiddleware
+from app.core.config import CORS_ORIGINS, parse_boolean
+from app.core.middleware import RateLimiterMiddleware, SecurityHeadersMiddleware
 
 
 client = TestClient(app)
@@ -27,7 +28,30 @@ def test_defensive_security_headers():
     assert headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
     assert "camera=()" in headers.get("Permissions-Policy", "")
     assert "default-src 'self'" in headers.get("Content-Security-Policy", "")
-    assert "max-age=31536000" in headers.get("Strict-Transport-Security", "")
+    assert "Strict-Transport-Security" not in headers
+
+
+def test_hsts_is_opt_in_for_verified_tls_termination():
+    tls_edge_app = FastAPI()
+    tls_edge_app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=True)
+
+    @tls_edge_app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    response = TestClient(tls_edge_app).get("/health")
+    assert response.headers.get("Strict-Transport-Security") == "max-age=31536000"
+
+
+def test_hsts_setting_rejects_ambiguous_values():
+    assert parse_boolean("false", name="GATEWAY_HSTS_ENABLED") is False
+    assert parse_boolean("TRUE", name="GATEWAY_HSTS_ENABLED") is True
+    try:
+        parse_boolean("yes", name="GATEWAY_HSTS_ENABLED")
+    except RuntimeError as error:
+        assert "GATEWAY_HSTS_ENABLED" in str(error)
+    else:
+        raise AssertionError("Ambiguous HSTS configuration must fail closed.")
 
 
 def test_cors_origins_lockdown():
@@ -67,16 +91,32 @@ def test_rate_limit_exceeded_returns_429():
 
 
 def test_rate_limiter_bounds_client_state_and_ignores_forwarded_ip():
-    limiter_app = RateLimiterMiddleware(app, max_requests=20, max_clients=2)
+    class TestClientAddress:
+        """Set ASGI client metadata without relying on a Starlette-only kwarg."""
 
-    for client_ip in ("192.0.2.1", "192.0.2.2", "192.0.2.3"):
-        test_client = TestClient(
-            limiter_app,
-            client=(client_ip, 50000),
-            headers={"X-Forwarded-For": "198.51.100.99"},
-        )
-        response = test_client.get("/api/v1/unknown-rate-limit-probe")
-        assert response.status_code == 404
+        def __init__(self, inner_app):
+            self.inner_app = inner_app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                test_ip = dict(scope.get("headers", [])).get(b"x-test-client-ip")
+                if test_ip:
+                    scope = {**scope, "client": (test_ip.decode("ascii"), 50000)}
+            await self.inner_app(scope, receive, send)
+
+    limiter_app = RateLimiterMiddleware(app, max_requests=20, max_clients=2)
+    scoped_app = TestClientAddress(limiter_app)
+
+    with TestClient(scoped_app) as test_client:
+        for client_ip in ("192.0.2.1", "192.0.2.2", "192.0.2.3"):
+            response = test_client.get(
+                "/api/v1/unknown-rate-limit-probe",
+                headers={
+                    "X-Test-Client-IP": client_ip,
+                    "X-Forwarded-For": "198.51.100.99",
+                },
+            )
+            assert response.status_code == 404
 
     assert len(limiter_app.clients) == 2
     assert set(limiter_app.clients) == {

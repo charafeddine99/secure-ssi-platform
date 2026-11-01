@@ -167,6 +167,10 @@ class HolderWalletService:
             self._metrics.record_wallet_created()
         return stored
 
+    def list_owned(self, *, owner_user_id: str, limit: int = 100) -> tuple[HolderWallet, ...]:
+        """Wallets owned by the authenticated principal, newest first."""
+        return self._wallets.list_by_owner(owner_user_id, limit=limit)
+
     def get_owned(
         self,
         wallet_id: str,

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import secrets
+from app.services.credential_validator import PROGRAM_CODE_PATTERN
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Mapping
-from bson import ObjectId
 
 from app.application.ports.holder_wallet import HolderWalletRepository
 from app.application.ports.oid4vci_repository import CredentialOfferRepository
@@ -31,8 +31,25 @@ from app.domain.persistence import (
 from app.domain.credential_status import CredentialStatus
 from app.infrastructure.persistence.repositories import MongoAuditEventRepository
 from app.infrastructure.persistence.mappers import new_object_id
+from app.services.credential_validator import (
+    CREDENTIAL_PROFILE_CONTEXTS,
+    VC_V2_CONTEXT,
+)
 
 DEFAULT_ISSUER_DID = "did:web:issuer.example"
+CREDENTIAL_PROFILE_METADATA = {
+    "QualifiedElectronicAttestationCredential": (
+        "qeaa",
+        "Qualified Electronic Attestation Credential (QEAA)",
+    ),
+    "UniversityAffiliationCredential": (
+        "university_affiliation",
+        "Higher Education Affiliation",
+    ),
+}
+
+# Wrong transaction codes allowed per offer before it is revoked (OID4VCI §13.6).
+MAX_TX_CODE_ATTEMPTS = 5
 
 class Oid4vciService:
     _SHARED_NONCES: dict[str, tuple[datetime, bool]] = {}
@@ -80,6 +97,26 @@ class Oid4vciService:
                 "proof_signing_alg_values_supported": ["Ed25519"]
             }
         }
+        credential_configurations = {
+            credential_type: {
+                "format": "ldp_vc",
+                "scope": CREDENTIAL_PROFILE_METADATA[credential_type][0],
+                "cryptographic_binding_methods_supported": ["did:key"],
+                "credential_signing_alg_values_supported": ["Ed25519"],
+                "proof_types_supported": proof_types,
+                "credential_definition": {
+                    "@context": [VC_V2_CONTEXT, context],
+                    "type": ["VerifiableCredential", credential_type],
+                },
+                "display": [
+                    {
+                        "name": CREDENTIAL_PROFILE_METADATA[credential_type][1],
+                        "locale": "en-US",
+                    }
+                ],
+            }
+            for credential_type, context in CREDENTIAL_PROFILE_CONTEXTS.items()
+        }
         return {
             "credential_issuer": self._base_issuer_url,
             "credential_endpoint": f"{self._base_issuer_url}/api/v1/oid4vci/credential",
@@ -97,40 +134,7 @@ class Oid4vciService:
                     }
                 }
             ],
-            "credential_configurations_supported": {
-                "QualifiedElectronicAttestationCredential": {
-                    "format": "ldp_vc",
-                    "scope": "qeaa",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Qualified Electronic Attestation Credential (QEAA)", "locale": "en-US"}]
-                },
-                "NationalIdCredential": {
-                    "format": "ldp_vc",
-                    "scope": "national_id",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "National Identity Card", "locale": "en-US"}]
-                },
-                "UniversityAffiliationCredential": {
-                    "format": "ldp_vc",
-                    "scope": "university_affiliation",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Higher Education Affiliation", "locale": "en-US"}]
-                },
-                "DriverLicenseCredential": {
-                    "format": "ldp_vc",
-                    "scope": "driver_license",
-                    "cryptographic_binding_methods_supported": ["did:key"],
-                    "credential_signing_alg_values_supported": ["Ed25519"],
-                    "proof_types_supported": proof_types,
-                    "display": [{"name": "Mobile Driver License (mDL)", "locale": "en-US"}]
-                }
-            }
+            "credential_configurations_supported": credential_configurations
         }
 
     def supports_issuer(self, issuer_did: str) -> bool:
@@ -148,7 +152,9 @@ class Oid4vciService:
         self._validate_offer_subject(credential_configuration_ids, subject_data)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
-        offer_id = f"offer_{ObjectId()}"
+        # Offer references must not be guessable: ObjectIds are timestamp+counter
+        # based, so a neighbouring offer could be derived from one observed id.
+        offer_id = f"offer_{secrets.token_urlsafe(24)}"
         pre_authorized_code = secrets.token_urlsafe(32)
 
         offer = CredentialOffer(
@@ -172,6 +178,15 @@ class Oid4vciService:
         credential_configuration_ids: tuple[str, ...],
         subject_data: Mapping[str, Any],
     ) -> None:
+        unsupported_configs = sorted(
+            set(credential_configuration_ids) - set(CREDENTIAL_PROFILE_CONTEXTS)
+        )
+        if unsupported_configs:
+            raise UnsupportedCredentialConfigurationError(
+                "Credential configuration is not supported by the active profile: "
+                + ", ".join(unsupported_configs)
+                + "."
+            )
         routing_keys = {
             "id", "holder_did", "holderDid", "recipient_did", "recipientDid",
             "userId", "user_id",
@@ -212,8 +227,12 @@ class Oid4vciService:
         graduation_year = subject_data["graduationYear"]
         if not isinstance(affiliation, str) or affiliation not in {"student", "faculty", "alumni", "staff"}:
             raise InvalidCredentialSubjectError("University affiliation value is not supported.")
-        if not isinstance(program_code, str) or not program_code.strip():
-            raise InvalidCredentialSubjectError("University programCode must be a non-empty string.")
+        if not isinstance(program_code, str) or PROGRAM_CODE_PATTERN.fullmatch(program_code.strip()) is None:
+            # Same rule the credential validator applies at issuance, so an
+            # offer can never be created that the holder is unable to claim.
+            raise InvalidCredentialSubjectError(
+                "University programCode must match SYN- followed by 2-28 capital letters, digits or hyphens."
+            )
         if not isinstance(degree, str) or degree not in {
             "Bachelor of Science", "Master of Science", "Doctor of Philosophy"
         }:
@@ -228,6 +247,8 @@ class Oid4vciService:
             ) from error
         if isinstance(graduation_year, float) and graduation_year != parsed_year:
             raise InvalidCredentialSubjectError("University graduationYear must be an integer.")
+        if not 2000 <= parsed_year <= 2100:
+            raise InvalidCredentialSubjectError("University graduationYear must be between 2000 and 2100.")
 
         return {
             "affiliation": affiliation,
@@ -245,13 +266,41 @@ class Oid4vciService:
             raise OfferNotFoundError(f"Credential offer {offer_id} has expired.")
         return offer
 
-    def list_pending_offers(
+    def get_offer_for_principal(
         self,
+        offer_id: str,
         *,
+        issuer_did: str | None = None,
         holder_did: str | None = None,
         owner_user_id: str | None = None,
+    ) -> CredentialOffer:
+        """Return an offer only to its issuing authority or to the holder it is addressed to.
+
+        Any other caller gets OfferNotFoundError, so the route cannot be used to
+        probe whether an offer id exists (OWASP API1:2023).
+        """
+        offer = self.get_offer(offer_id)
+        if issuer_did is not None and offer.issuer_did == issuer_did:
+            return offer
+        subject = offer.subject_data
+        recipients = {
+            subject.get(key)
+            for key in ("holder_did", "holderDid", "recipient_did", "recipientDid")
+            if isinstance(subject.get(key), str)
+        }
+        users = {subject.get(key) for key in ("userId", "user_id") if isinstance(subject.get(key), str)}
+        if recipients & set(self._holder_dids_for(holder_did, owner_user_id)):
+            return offer
+        if owner_user_id is not None and owner_user_id in users:
+            return offer
+        raise OfferNotFoundError(f"Credential offer {offer_id} not found.")
+
+    def _holder_dids_for(
+        self,
+        holder_did: str | None,
+        owner_user_id: str | None,
         limit: int = 50,
-    ) -> tuple[CredentialOffer, ...]:
+    ) -> list[str]:
         holder_dids: list[str] = []
         if holder_did:
             holder_dids.append(holder_did)
@@ -263,6 +312,16 @@ class Oid4vciService:
                         holder_dids.append(w.holder_did)
             except Exception:
                 pass
+        return holder_dids
+
+    def list_pending_offers(
+        self,
+        *,
+        holder_did: str | None = None,
+        owner_user_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[CredentialOffer, ...]:
+        holder_dids = self._holder_dids_for(holder_did, owner_user_id, limit)
         return self._offers.list_pending(
             holder_dids=holder_dids if holder_dids else None,
             owner_user_id=owner_user_id,
@@ -342,8 +401,19 @@ class Oid4vciService:
 
         if offer.status == OfferStatus.CLAIMED:
             raise InvalidGrantError("invalid_grant: Credential offer was already claimed.")
+        if offer.status != OfferStatus.PENDING:
+            raise InvalidGrantError("invalid_grant: Credential offer is no longer valid.")
 
-        if offer.user_pin and offer.user_pin != user_pin:
+        if offer.user_pin and not secrets.compare_digest(offer.user_pin, user_pin or ""):
+            # Short numeric codes are guessable: count failures per offer and
+            # revoke the offer once MAX_TX_CODE_ATTEMPTS is reached.
+            failures = self._offers.record_pin_failure(
+                offer.offer_id, max_attempts=MAX_TX_CODE_ATTEMPTS
+            )
+            if failures >= MAX_TX_CODE_ATTEMPTS:
+                raise InvalidGrantError(
+                    "invalid_grant: Too many invalid transaction codes; the offer was revoked."
+                )
             raise InvalidGrantError("invalid_grant: Invalid user PIN / transaction code.")
 
         # Single-use enforcement: mark pre-authorized code as redeemed for token issuance
@@ -577,10 +647,16 @@ class Oid4vciService:
         if cred_type and cred_type != "VerifiableCredential":
             vc_types.append(cred_type)
 
+        credential_context = CREDENTIAL_PROFILE_CONTEXTS.get(cred_type)
+        if credential_context is None:
+            raise UnsupportedCredentialConfigurationError(
+                "Credential configuration is not supported by the active profile."
+            )
+
         unsigned_vc = {
             "@context": [
-                "https://www.w3.org/ns/credentials/v2",
-                "https://secure-ssi.example/contexts/university-affiliation/v1"
+                VC_V2_CONTEXT,
+                credential_context,
             ],
             "id": cred_uuid,
             "type": vc_types,
@@ -752,7 +828,10 @@ class Oid4vciService:
             raise OfferNotFoundError("Credential offer has expired.")
         if offer.status == OfferStatus.CLAIMED:
             raise OfferAlreadyClaimedError("Credential offer was already claimed.")
-        if offer.user_pin and offer.user_pin != user_pin:
+        if offer.status != OfferStatus.PENDING:
+            raise OfferNotFoundError("Credential offer is no longer valid.")
+        if offer.user_pin and not secrets.compare_digest(offer.user_pin, user_pin or ""):
+            self._offers.record_pin_failure(offer.offer_id, max_attempts=MAX_TX_CODE_ATTEMPTS)
             raise ValueError("Invalid user PIN provided for credential offer.")
 
         cred_type = (

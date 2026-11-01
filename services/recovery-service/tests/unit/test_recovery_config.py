@@ -41,3 +41,24 @@ def test_production_requires_explicit_valid_secrets() -> None:
     assert settings.environment == "production"
     assert "J" * 32 not in repr(settings)
     assert "G" * 32 not in repr(settings)
+
+
+@pytest.mark.parametrize("environment", ["prd", "qa", "uat", "docker"])
+def test_unknown_environment_names_fail_closed(environment: str) -> None:
+    # Only explicitly named development/test environments may use fallbacks.
+    with pytest.raises(RecoveryConfigurationError):
+        load_settings({"RECOVERY_ENVIRONMENT": environment})
+
+
+def test_published_development_secrets_are_rejected_in_production() -> None:
+    from app.core.config import _DEVELOPMENT_GRANT_SECRET, _DEVELOPMENT_JWT_SECRET
+
+    with pytest.raises(RecoveryConfigurationError):
+        load_settings(
+            {
+                "RECOVERY_ENVIRONMENT": "production",
+                "RECOVERY_AUTH_JWT_SECRET": _DEVELOPMENT_JWT_SECRET,
+                "RECOVERY_IDENTITY_GRANT_SECRET": _DEVELOPMENT_GRANT_SECRET,
+                "RECOVERY_SHARE_ENVELOPE_KEY_BASE64": base64.b64encode(b"k" * 32).decode(),
+            }
+        )

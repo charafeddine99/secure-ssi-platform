@@ -1,5 +1,52 @@
 # WP-08 FINAL ACCEPTANCE GATE REPORT
 
+## Current-source Docker L3 verification — 24 October 2026
+
+This entry supersedes the 23 October `BLOCKED` Docker decision for branch `besna-dev`, HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`. The repository source revision did not change. The five application images were rebuilt without cache from the verified Compose contexts and recreated. No application source files were edited during this verification. Docker images do not contain `org.opencontainers.image.revision` or `.source` labels; provenance is established here by the recorded branch/HEAD, exact local no-cache build command, Compose contexts, and matching served/local Web bundle digest, not by OCI attestation.
+
+| Acceptance item | Current result | Evidence and boundary |
+|---|---|---|
+| R1 — status/persistence fail closed | **PASS in focused integration tests** | The rebuilt Identity container ran the WP-08 remediation suite; unavailable/throwing/timeout/missing persistence and trust inputs reject. |
+| R2 — revocation/suspension purpose and enforcement | **PASS in focused integration tests** | Tests cover active and inactive suspension bits, persisted suspended/revoked states, malformed or unsupported purposes, and invalid indices. Suspension restoration/lifecycle transitions are not claimed. |
+| R3 — status-list authenticity | **PASS in focused integration tests** | Tests cover proof/signature, issuer/trust, tampered list/proof, malformed credential, publication binding, and index failure cases. No independent peer conformance is claimed. |
+| OID4VP session authorization | **PASS in focused integration tests; live unauthenticated probe returned 401** | The integration test verifies authenticated owner access, unauthenticated rejection, a different verifier returning the same 404 as a guessed ID, holder request-context limits, and fail-closed behavior without persisted ownership. The live HTTP probe covered unauthenticated access only; it did not create or submit a live session. |
+| Focused WP-08/OID4VP suite | **PASS: 52 passed, 0 failed, 0 skipped, 2 warnings** | Four test files ran inside the rebuilt Identity container; exact command is in the test-evidence register. |
+| Full Identity Service regression (24 October follow-up) | **PASS: 708 passed, 0 failed, 12 skipped, 3 warnings** | Ran from current source in an isolated, no-network test container. Seven live-Mongo tests and five Hardhat-dependent tests were skipped; exact evidence is in the test-evidence register. |
+| Repository-wide test runner | **Attempted; interrupted without a test summary** | Two attempts did not produce suite totals. An earlier run on the same HEAD reported 820 passed, 13 skipped, 0 failed, plus 246 subtests; that remains historical evidence only. |
+| Five current-source application images | **PASS** | Explicit `--no-cache` Compose build exited 0 for `web`, `api-gateway`, `identity-service`, `fraud-service`, and `recovery-service`. The Web build ran lint and TypeScript/Vite production compilation (1,830 modules). |
+| Compose recreation and health | **PASS: 7/7 healthy** | The five targets were force-recreated with `--no-build`; MongoDB and Redis were retained, not rebuilt or removed. Both named project data volumes remained present. |
+| Web bundle served by the running container | **PASS: exact digest match** | HTTP `GET /` and the referenced JavaScript returned 200. Served `index-C7R2dkgq.js` and `apps/web/dist/assets/index-C7R2dkgq.js` both SHA-256 `211B4531725937B891AF637BAB60B1CF5878E669A3FE6A48FE8A40F1874B2259`. |
+| Live API smoke | **PASS: 5 HTTP 200, 2 HTTP 401** | Web `/` and Gateway, Identity, Fraud, Recovery `/health` returned 200. Unauthenticated OID4VP request retrieval through Identity and Gateway returned 401. No mutation API was called. |
+
+### Current-source decision
+
+**WP-08 acceptance for the scoped R1–R3, policy, OID4VP authorization, and current-source Docker L3 checks: PASS.** The full Identity Service regression also passed with the 12 environment-gated skips listed above. The repository-wide runner was attempted twice in the follow-up but did not yield a test summary; its earlier 820-pass result remains historical. The pre-existing current-source `BLOCKED` status is superseded by the successful rebuild and observed runtime results above. No WP-09 code was changed in this verification; G9/WP-09 implementation and a scoped PASS are already recorded in the 15 October plan update. This is not a claim of a full authenticated browser Golden Path, an authenticated live-network owner/cross-organization session trace, suspension restoration, independent L4 interoperability, or production readiness. npm reported 3 dependency advisories during the Web image build (2 moderate, 1 high); package names, dependency paths, advisory identifiers, and fixes were not present in the retained build summary and remain unassessed.
+
+Exact commands, container/image metadata, health results, API probes, and limitations are recorded in `docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md` under the 24 October entry.
+
+## Current-source revalidation — 23 October 2026
+
+This entry supersedes prior WP-08 status claims **for the current source revision only**. Current branch `besna-dev` is at HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`, created locally from `main` at that same commit. Local `origin/main` points to the same commit, but no fetch was performed and remote freshness is unknown. The 15 October Docker/L3 acceptance below applies to its then-tested source snapshot (`59e8933...`) and is historical evidence only.
+
+| Acceptance item | Current result | Evidence and boundary |
+|---|---|---|
+| R1 — status/persistence fail closed | **PASS in executed tests** | Current WP-08 remediation API tests passed in the focused run and in the full Identity suite. |
+| R2 — revocation/suspension enforcement | **PASS in executed tests** | Purpose/status enforcement and rejection paths passed. Suspension restoration/lifecycle transitions remain unimplemented and are not claimed. |
+| R3 — status-list authenticity | **PASS in executed tests** | Current status proof/authenticity and policy rejection cases passed. No independent peer conformance is claimed. |
+| OID4VP session authorization | **PASS in executed tests** | The current `test_oid4vp_session_authorization.py` was included in the focused run; no live current-source Docker API path was exercised. |
+| Focused WP-08 + OID4VP authorization | **PASS: 52 passed, 0 failed, 0 skipped, 2 warnings** | Four current Identity integration files, rerun with elevated local-process permission after the sandboxed attempt hung. Pytest emitted runtime `17863.41s`; this unusual duration is not independently validated. |
+| Full repository runner | **Previously observed PASS: 820 passed, 13 skipped, 0 failed; 246 subtests passed** | Same unchanged HEAD; not rerun during this continuation. `run_tests.py` did not emit skip reasons. |
+| Frontend fail-closed | **PASS: 8 checks** | Current source test `verifyPresentation_fail_closed.test.ts`. |
+| Frontend lint/build | **PASS** | `npm.cmd run lint --prefix apps/web` exit 0; `npm.cmd run build --prefix apps/web` exit 0, 1,830 modules transformed. |
+| Existing Docker runtime availability | **PASS, runtime only** | Docker Desktop/Engine 29.8.1; the existing target Compose project reports 7/7 healthy. Container-internal Web `/` and Gateway, Identity, Fraud, Recovery `/health` returned HTTP 200 (5/5). Host-side probes were blocked by sandbox `HttpRequestException`. |
+| Current-source Docker provenance/L3 | **BLOCKED** | Backend containers were created 18 October, before the 22 October OID4VP security commit, and have no OCI source-revision labels. Running Web references `index-C7R2dkgq.js`; current local build references `index-B6PGGrvY.js`. The exact five-image `--no-cache` build command was rejected before execution by automatic approval review on two attempts. No workaround was attempted; no images or containers were changed. |
+
+### Current-source decision
+
+**WP-08 is PARTIAL at current HEAD: R1–R3 and OID4VP authorization pass the executed tests, but current-source Docker L3 is BLOCKED. Do not start WP-09.** The attached task authorized the build, but automatic approval review rejected the command and explicitly barred an indirect workaround. Direct visible user confirmation may be required before retrying. L4 interoperability, suspension restoration, production readiness, and a browser Golden Path remain unclaimed. No source-code fix was indicated by the tests; no commit or push was made.
+
+Exact commands and observations are recorded in `docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md` under the 23 October current-source revalidation.
+
 ## Final validation continuation — 2026-10-13
 
 This dated addendum supersedes the 2026-10-12 status below. The controlling Final Implementation Plan and its G6 criteria are unchanged. **WP-08: PASS for the scoped G6/L3 acceptance evidence below. WP-09 remains gated and has not started. L4 interoperability is not claimed.**
@@ -643,3 +690,28 @@ services:
 ### Decision
 
 **WP-08 / G6: PASS at L3 for the scoped R1–R3, policy/UI, current Identity regression, real-Mongo, and isolated Compose runtime evidence above.** The five Hardhat skips are outside WP-08 and are not counted as passes. L4 interoperability, suspension restoration, public-chain receipt behavior, production readiness, and a browser Golden Path are not claimed. G9 is no longer blocked by WP-08; continue in the controlling Master Plan order, with G8 next.
+
+## 25 October 2026 — current-source L3 evidence addendum
+
+This addendum supersedes the 15 October “current-source build and health” block for the present source revision. It preserves earlier evidence as historical. Branch `besna-dev`, source HEAD `e26da1e49c80c6b157e5f6d5697c43a455bf7542`; the working tree includes eight modified Identity integration test files and a pre-existing untracked audit directory. No application code was modified in this verification.
+
+| Acceptance item | Observed result | Boundary |
+|---|---|---|
+| R1 — fail-closed status and persistence | **PASS in tested scope** | Current focused remediation/policy tests passed as part of the 74-test in-container set and the 125-test host set. |
+| R2 — revocation, suspension purpose, status purpose | **PASS in tested scope** | Focused tests passed. Suspension restoration lifecycle is not established. |
+| R3 — status-list authenticity/signature verification | **PASS in tested scope** | Focused security tests passed; no independent external verifier is claimed. |
+| OID4VP session authorization | **PASS in tested scope** | Targeted authorization tests are included in the 74-test in-container run; unauthenticated retrieval through Gateway and Identity returned HTTP 401. Authenticated cross-organization browser journey remains unverified. |
+| Focused running-container suite | **PASS: 74 passed, 0 failed, 0 skipped, 2 warnings** | Python 3.12 inside the freshly rebuilt Identity service; includes WP-05, WP-08, issuance interoperability test module, and OID4VP session authorization. This test-module result alone does not prove independent L4 interoperability. |
+| Host Identity regression | **PASS: 719 passed, 0 failed, 12 skipped, 7 warnings** | Python 3.11.16 venv. Skips are environment-gated and not counted as passing. |
+| Current-source Compose runtime | **PASS: 7/7 healthy** | Five app images built `--no-cache`; only five app services recreated. Existing MongoDB/Redis containers and volumes remained. Web and four service health endpoints returned 200. |
+| Unauthorized request smoke | **PASS: HTTP 401** | Fake OID4VP session retrieval tested through Gateway and directly through Identity; this is a negative unauthenticated probe, not an authenticated owner/tenant journey. |
+
+Exact focused running-container command:
+
+```powershell
+docker compose --project-name wp08-l3-20261013 --file docker-compose.yml exec -T identity-service python -m pytest -q -rs tests/integration/test_wp05_oid4vci_token_and_proof.py tests/integration/test_wp08_remediation_status_security.py tests/integration/test_wp08_policy_evaluation.py tests/integration/test_issuance_interoperability.py tests/integration/test_oid4vp_session_authorization.py
+```
+
+All five images lack OCI `org.opencontainers.image.revision` and `.source` labels. The build was invoked with `--no-cache` from this current working tree; container creation times and image IDs are recorded in the execution evidence, but the OCI metadata does not independently attest the revision. The Docker-served frontend bundle (`index-7Lu304ao.js`, SHA-256 `A372A08253EEA13E0B7DC2D5DD1406773B0A49CA90ECAB9583E0A65457054152`) differs from the host Node 24.19.0 build (`index-37arp1TW.js`, SHA-256 `8148FB8F061EA8B4185790388805CB551B4A2BC34273C1BB05231CD6557106D1`). Exact bundle equivalence is therefore **unverified**; Docker build uses Node 20 Alpine, but no controlled same-runtime comparison was performed.
+
+**Decision:** WP-08 / G6 is **PASS at L3 for the scoped R1–R3, policy, targeted authorization, full Identity suite, and current-source Compose health/negative HTTP evidence above**. Overall project acceptance remains **PARTIAL**. L4 interoperability, suspension restoration, authenticated cross-organization browser flow, rendered Golden Path/accessibility, public-chain receipt behavior and production readiness are not claimed. Do not infer that passing a test module alone constitutes external interoperability.

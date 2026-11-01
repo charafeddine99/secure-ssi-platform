@@ -19,6 +19,7 @@ class VerificationSessionRepository(Protocol):
         presentation_id: str,
         verification_result: NinePointVerificationResult,
         disclosed_claims: Mapping[str, Any] | None,
+        consent_status: str,
         expected_version: int,
     ) -> VerificationSession:
         ...
@@ -46,5 +47,14 @@ class VerificationSessionRepository(Protocol):
         verifier_did: str,
         *,
         limit: int = 50,
+    ) -> tuple[VerificationSession, ...]:
+        ...
+
+    def list_by_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 50,
+        skip: int = 0,
     ) -> tuple[VerificationSession, ...]:
         ...

@@ -1,173 +1,104 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
-import { RootLayout } from "../layouts/RootLayout";
-import { PublicLayout } from "../layouts/PublicLayout";
-import { HolderLayout } from "../layouts/HolderLayout";
-import { InstitutionalLayout } from "../layouts/InstitutionalLayout";
-import { RoleGuard } from "./RoleGuard";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { PublicLayout } from "../layouts/PublicLayout.tsx";
+import { AppShell } from "../layouts/AppShell.tsx";
+import { RoleGuard } from "./RoleGuard.tsx";
+import { LoadingState } from "../components/ui/States.tsx";
 
-// Loading placeholder for async route transitions
-const PageLoader: React.FC = () => (
-  <div className="page-loader" role="status" aria-live="polite">
-    <div className="page-loader__message">Loading</div>
-  </div>
+const lazy = <T, K extends keyof T>(loader: () => Promise<T>, name: K) =>
+  React.lazy(() => loader().then((module) => ({ default: module[name] as unknown as React.ComponentType })));
+
+const LandingPage = lazy(() => import("../pages/public/LandingPage.tsx"), "LandingPage");
+const EcosystemPage = lazy(() => import("../pages/public/EcosystemPage.tsx"), "EcosystemPage");
+const ArchitectureDocsPage = lazy(() => import("../pages/public/ArchitectureDocsPage.tsx"), "ArchitectureDocsPage");
+const LoginPage = lazy(() => import("../pages/public/LoginPage.tsx"), "LoginPage");
+const NotFoundPage = lazy(() => import("../pages/public/NotFoundPage.tsx"), "NotFoundPage");
+
+const WalletDashboard = lazy(() => import("../pages/holder/WalletDashboard.tsx"), "WalletDashboard");
+const CredentialDetailPage = lazy(() => import("../pages/holder/CredentialDetailPage.tsx"), "CredentialDetailPage");
+const ScanQrPage = lazy(() => import("../pages/holder/ScanQrPage.tsx"), "ScanQrPage");
+const PresentationConsentPage = lazy(() => import("../pages/holder/PresentationConsentPage.tsx"), "PresentationConsentPage");
+const ActivityHistoryPage = lazy(() => import("../pages/holder/ActivityHistoryPage.tsx"), "ActivityHistoryPage");
+const SecuritySettingsPage = lazy(() => import("../pages/holder/SecuritySettingsPage.tsx"), "SecuritySettingsPage");
+
+const IssuerDashboard = lazy(() => import("../pages/issuer/IssuerDashboard.tsx"), "IssuerDashboard");
+const CredentialTemplatesPage = lazy(() => import("../pages/issuer/CredentialTemplatesPage.tsx"), "CredentialTemplatesPage");
+const IssueCredentialPage = lazy(() => import("../pages/issuer/IssueCredentialPage.tsx"), "IssueCredentialPage");
+const RevocationRegistryPage = lazy(() => import("../pages/issuer/RevocationRegistryPage.tsx"), "RevocationRegistryPage");
+
+const VerifierDashboard = lazy(() => import("../pages/verifier/VerifierDashboard.tsx"), "VerifierDashboard");
+const CreateRequestPage = lazy(() => import("../pages/verifier/CreateRequestPage.tsx"), "CreateRequestPage");
+const VerifyPresentationPage = lazy(() => import("../pages/verifier/VerifyPresentationPage.tsx"), "VerifyPresentationPage");
+const VerificationHistoryPage = lazy(() => import("../pages/verifier/VerificationHistoryPage.tsx"), "VerificationHistoryPage");
+
+const GuardianDashboard = lazy(() => import("../pages/guardian/GuardianDashboard.tsx"), "GuardianDashboard");
+const RecoveryRequestsPage = lazy(() => import("../pages/guardian/RecoveryRequestsPage.tsx"), "RecoveryRequestsPage");
+const ApproveRecoveryPage = lazy(() => import("../pages/guardian/ApproveRecoveryPage.tsx"), "ApproveRecoveryPage");
+
+const AdminDashboard = lazy(() => import("../pages/admin/AdminDashboard.tsx"), "AdminDashboard");
+const AdminUsersPage = lazy(() => import("../pages/admin/AdminUsersPage.tsx"), "AdminUsersPage");
+const TrustRegistryPage = lazy(() => import("../pages/admin/TrustRegistryPage.tsx"), "TrustRegistryPage");
+const SmartContractsPage = lazy(() => import("../pages/admin/SmartContractsPage.tsx"), "SmartContractsPage");
+const AuditExplorerPage = lazy(() => import("../pages/admin/AuditExplorerPage.tsx"), "AuditExplorerPage");
+const AiFraudMonitorPage = lazy(() => import("../pages/admin/AiFraudMonitorPage.tsx"), "AiFraudMonitorPage");
+
+/** Legacy canonical URL /credentials/:id now resolves to the wallet route. */
+const CredentialAlias: React.FC = () => {
+  const { id = "" } = useParams();
+  return <Navigate to={`/wallet/credentials/${encodeURIComponent(id)}`} replace />;
+};
+
+const guarded = (element: React.ReactNode, role: React.ComponentProps<typeof RoleGuard>["allowedRole"], permission?: React.ComponentProps<typeof RoleGuard>["requiredPermission"]) => (
+  <RoleGuard allowedRole={role} requiredPermission={permission}>{element}</RoleGuard>
 );
 
-// Public Pages (Lazy)
-const LandingPage = React.lazy(() => import("../pages/public/LandingPage").then(m => ({ default: m.LandingPage })));
-const EcosystemPage = React.lazy(() => import("../pages/public/EcosystemPage").then(m => ({ default: m.EcosystemPage })));
-const ArchitectureDocsPage = React.lazy(() => import("../pages/public/ArchitectureDocsPage").then(m => ({ default: m.ArchitectureDocsPage })));
-const AuthPage = React.lazy(() => import("../components/auth/AuthPage").then(m => ({ default: m.AuthPage })));
-const NotFoundPage = React.lazy(() => import("../pages/public/NotFoundPage").then(m => ({ default: m.NotFoundPage })));
+export const AppRoutes: React.FC = () => (
+  <React.Suspense fallback={<div className="page-body"><div className="container-xl"><LoadingState label="Loading page" /></div></div>}>
+    <Routes>
+      <Route element={<PublicLayout />}>
+        <Route index element={<LandingPage />} />
+        <Route path="ecosystem" element={<EcosystemPage />} />
+        <Route path="docs" element={<ArchitectureDocsPage />} />
+      </Route>
+      {/* Tabler single-page sign-in layout, without the public navbar. */}
+      <Route path="login" element={<LoginPage />} />
 
-// Holder Pages (Lazy)
-const WalletDashboard = React.lazy(() => import("../pages/holder/WalletDashboard").then(m => ({ default: m.WalletDashboard })));
-const CredentialDetailPage = React.lazy(() => import("../pages/holder/CredentialDetailPage").then(m => ({ default: m.CredentialDetailPage })));
-const ScanQrPage = React.lazy(() => import("../pages/holder/ScanQrPage").then(m => ({ default: m.ScanQrPage })));
-const PresentationConsentPage = React.lazy(() => import("../pages/holder/PresentationConsentPage").then(m => ({ default: m.PresentationConsentPage })));
-const ActivityHistoryPage = React.lazy(() => import("../pages/holder/ActivityHistoryPage").then(m => ({ default: m.ActivityHistoryPage })));
-const SecuritySettingsPage = React.lazy(() => import("../pages/holder/SecuritySettingsPage").then(m => ({ default: m.SecuritySettingsPage })));
+      <Route element={<RoleGuard><AppShell /></RoleGuard>}>
+        <Route path="wallet" element={guarded(<WalletDashboard />, "HOLDER", "wallets:read")} />
+        <Route path="wallet/credentials/:id" element={guarded(<CredentialDetailPage />, "HOLDER", "wallets:credentials:read")} />
+        <Route path="wallet/scan" element={guarded(<ScanQrPage />, "HOLDER", "wallets:read")} />
+        <Route path="wallet/consent" element={guarded(<PresentationConsentPage />, "HOLDER", "presentations:create")} />
+        <Route path="wallet/activity" element={guarded(<ActivityHistoryPage />, "HOLDER", "presentations:read")} />
+        <Route path="wallet/security" element={guarded(<SecuritySettingsPage />, "HOLDER", "wallet:key:read")} />
+        <Route path="credentials/:id" element={guarded(<CredentialAlias />, "HOLDER")} />
+        <Route path="consent/presentation" element={guarded(<PresentationConsentPage />, "HOLDER", "presentations:create")} />
 
-// Issuer Pages (Lazy)
-const IssuerDashboard = React.lazy(() => import("../pages/issuer/IssuerDashboard").then(m => ({ default: m.IssuerDashboard })));
-const CredentialTemplatesPage = React.lazy(() => import("../pages/issuer/CredentialTemplatesPage").then(m => ({ default: m.CredentialTemplatesPage })));
-const IssueCredentialPage = React.lazy(() => import("../pages/issuer/IssueCredentialPage").then(m => ({ default: m.IssueCredentialPage })));
-const RevocationRegistryPage = React.lazy(() => import("../pages/issuer/RevocationRegistryPage").then(m => ({ default: m.RevocationRegistryPage })));
+        <Route path="issuer" element={guarded(<IssuerDashboard />, "ISSUER", "credentials:sign")} />
+        <Route path="issuer/templates" element={guarded(<CredentialTemplatesPage />, "ISSUER", "credentials:sign")} />
+        <Route path="issuer/issue" element={guarded(<IssueCredentialPage />, "ISSUER", "credentials:sign")} />
+        <Route path="issuer/revocations" element={guarded(<RevocationRegistryPage />, "ISSUER", "credentials:revoke")} />
 
-// Verifier Pages (Lazy)
-const VerifierDashboard = React.lazy(() => import("../pages/verifier/VerifierDashboard").then(m => ({ default: m.VerifierDashboard })));
-const CreateRequestPage = React.lazy(() => import("../pages/verifier/CreateRequestPage").then(m => ({ default: m.CreateRequestPage })));
-const VerifyPresentationPage = React.lazy(() => import("../pages/verifier/VerifyPresentationPage").then(m => ({ default: m.VerifyPresentationPage })));
-const VerificationHistoryPage = React.lazy(() => import("../pages/verifier/VerificationHistoryPage").then(m => ({ default: m.VerificationHistoryPage })));
+        <Route path="verifier" element={guarded(<VerifierDashboard />, "VERIFIER", "presentations:verify")} />
+        <Route path="verifier/request" element={guarded(<CreateRequestPage />, "VERIFIER", "presentations:verify")} />
+        <Route path="verifier/verify" element={guarded(<VerifyPresentationPage />, "VERIFIER", "presentations:verify")} />
+        <Route path="verifier/history" element={guarded(<VerificationHistoryPage />, "VERIFIER", "presentations:read")} />
 
-// Guardian Pages (Lazy)
-const GuardianDashboard = React.lazy(() => import("../pages/guardian/GuardianDashboard").then(m => ({ default: m.GuardianDashboard })));
-const RecoveryRequestsPage = React.lazy(() => import("../pages/guardian/RecoveryRequestsPage").then(m => ({ default: m.RecoveryRequestsPage })));
-const ApproveRecoveryPage = React.lazy(() => import("../pages/guardian/ApproveRecoveryPage").then(m => ({ default: m.ApproveRecoveryPage })));
+        {/* Guardian duties are an assignment on a Holder account, not a separate Identity role. */}
+        <Route path="guardian" element={guarded(<GuardianDashboard />, "HOLDER")} />
+        <Route path="guardian/requests" element={guarded(<RecoveryRequestsPage />, "HOLDER")} />
+        <Route path="guardian/approve/:id" element={guarded(<ApproveRecoveryPage />, "HOLDER")} />
 
-// Admin Pages (Lazy)
-const AdminDashboard = React.lazy(() => import("../pages/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
-const SmartContractsPage = React.lazy(() => import("../pages/admin/SmartContractsPage").then(m => ({ default: m.SmartContractsPage })));
-const AuditExplorerPage = React.lazy(() => import("../pages/admin/AuditExplorerPage").then(m => ({ default: m.AuditExplorerPage })));
-const AiFraudMonitorPage = React.lazy(() => import("../pages/admin/AiFraudMonitorPage").then(m => ({ default: m.AiFraudMonitorPage })));
-const AdminUsersPage = React.lazy(() => import("../pages/admin/AdminUsersPage").then(m => ({ default: m.AdminUsersPage })));
+        <Route path="admin" element={guarded(<AdminDashboard />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/users" element={guarded(<AdminUsersPage />, "ADMIN", "admin:users:read")} />
+        <Route path="admin/trust-registry" element={guarded(<TrustRegistryPage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/contracts" element={guarded(<SmartContractsPage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/audit" element={guarded(<AuditExplorerPage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/fraud-monitor" element={guarded(<AiFraudMonitorPage />, "ADMIN", "admin:operations:read")} />
+      </Route>
 
-export const AppRoutes: React.FC = () => {
-  return (
-    <React.Suspense fallback={<PageLoader />}>
-      <Routes>
-      <Route path="/" element={<RootLayout />}>
-        {/* 1. Public Pages */}
-        <Route element={<PublicLayout />}>
-          <Route index element={<LandingPage />} />
-          <Route path="ecosystem" element={<EcosystemPage />} />
-          <Route path="docs" element={<ArchitectureDocsPage />} />
-          <Route path="login" element={<AuthPage />} />
-        </Route>
-
-        {/* 2. Holder Wallet Routes */}
-        <Route
-          path="wallet"
-          element={
-            <RoleGuard allowedRole="HOLDER" requiredPermission="wallets:read" requireAuth={true}>
-              <HolderLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<WalletDashboard />} />
-          <Route path="credentials/:id" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallets:credentials:read"><CredentialDetailPage /></RoleGuard>} />
-          <Route path="scan" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallets:read"><ScanQrPage /></RoleGuard>} />
-          <Route path="consent" element={<RoleGuard allowedRole="HOLDER" requiredPermission="presentations:create"><PresentationConsentPage /></RoleGuard>} />
-          <Route path="activity" element={<RoleGuard allowedRole="HOLDER" requiredPermission="presentations:read"><ActivityHistoryPage /></RoleGuard>} />
-          <Route path="security" element={<RoleGuard allowedRole="HOLDER" requiredPermission="wallet:key:read"><SecuritySettingsPage /></RoleGuard>} />
-        </Route>
-
-        {/* 2b. Direct Holder Canonical URLs */}
-        <Route
-          path="credentials/:id"
-          element={
-            <RoleGuard allowedRole="HOLDER" requiredPermission="wallets:credentials:read" requireAuth={true}>
-              <HolderLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<CredentialDetailPage />} />
-        </Route>
-        <Route
-          path="consent/presentation"
-          element={
-            <RoleGuard allowedRole="HOLDER" requiredPermission="presentations:create" requireAuth={true}>
-              <HolderLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<PresentationConsentPage />} />
-        </Route>
-
-        {/* 3. Issuer Portal Routes */}
-        <Route
-          path="issuer"
-          element={
-            <RoleGuard allowedRole="ISSUER" requireAuth={true}>
-              <InstitutionalLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><IssuerDashboard /></RoleGuard>} />
-          <Route path="templates" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><CredentialTemplatesPage /></RoleGuard>} />
-          <Route path="issue" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:sign"><IssueCredentialPage /></RoleGuard>} />
-          <Route path="revocations" element={<RoleGuard allowedRole="ISSUER" requiredPermission="credentials:revoke"><RevocationRegistryPage /></RoleGuard>} />
-        </Route>
-
-        {/* 4. Verifier Portal Routes */}
-        <Route
-          path="verifier"
-          element={
-            <RoleGuard allowedRole="VERIFIER" requireAuth={true}>
-              <InstitutionalLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:verify"><VerifierDashboard /></RoleGuard>} />
-          <Route path="request" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentation-challenges:create"><CreateRequestPage /></RoleGuard>} />
-          <Route path="verify" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:verify"><VerifyPresentationPage /></RoleGuard>} />
-          <Route path="history" element={<RoleGuard allowedRole="VERIFIER" requiredPermission="presentations:read"><VerificationHistoryPage /></RoleGuard>} />
-        </Route>
-
-        {/* Guardian recovery is an assigned Holder capability, not a global Identity role. */}
-        <Route
-          path="guardian"
-          element={
-            <RoleGuard allowedRole="HOLDER" requireAuth={true}>
-              <InstitutionalLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<GuardianDashboard />} />
-          <Route path="requests" element={<RecoveryRequestsPage />} />
-          <Route path="approve/:id" element={<ApproveRecoveryPage />} />
-        </Route>
-
-        {/* 6. Admin Portal Routes */}
-        <Route
-          path="admin"
-          element={
-            <RoleGuard allowedRole="ADMIN" requiredPermission="admin:operations:read" requireAuth={true}>
-              <InstitutionalLayout />
-            </RoleGuard>
-          }
-        >
-          <Route index element={<AdminDashboard />} />
-          <Route path="users" element={<RoleGuard allowedRole="ADMIN" requiredPermission="admin:users:read"><AdminUsersPage /></RoleGuard>} />
-          <Route path="contracts" element={<SmartContractsPage />} />
-          <Route path="audit" element={<AuditExplorerPage />} />
-          <Route path="fraud-monitor" element={<AiFraudMonitorPage />} />
-        </Route>
-
-        {/* 7. Catch-all / 404 Route */}
+      <Route element={<PublicLayout />}>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
-    </React.Suspense>
-  );
-};
+  </React.Suspense>
+);

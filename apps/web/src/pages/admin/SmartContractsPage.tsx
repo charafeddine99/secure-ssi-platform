@@ -1,146 +1,86 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Clock, Database, RefreshCw } from "lucide-react";
-import {
-  fetchBlockchainAnchors,
-  fetchBlockchainContracts,
-  fetchBlockchainStatus,
-  BlockchainStatus,
-  OnChainAnchor,
-  SmartContractInfo,
-} from "../../services/api";
+import React from "react";
+import { IconRefresh } from "@tabler/icons-react";
+import { fetchBlockchainAnchors, fetchBlockchainContracts, fetchBlockchainStatus } from "../../api/admin.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, Stat, Table } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { AsyncView } from "../../components/ui/AsyncView.tsx";
+import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
+import { Badge, type BadgeTone } from "../../components/ui/StatusBadge.tsx";
+import { EmptyState } from "../../components/ui/States.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { formatDateTime, humanize } from "../../lib/format.ts";
+
+function anchorTone(status: string, hasTx: boolean): BadgeTone {
+  if (status === "CONFIRMED" && hasTx) return "success";
+  if (status === "FAILED") return "danger";
+  if (status === "PENDING" || status === "SUBMITTED") return "info";
+  return "neutral";
+}
 
 export const SmartContractsPage: React.FC = () => {
-  const [status, setStatus] = useState<BlockchainStatus | null>(null);
-  const [contracts, setContracts] = useState<SmartContractInfo[]>([]);
-  const [anchors, setAnchors] = useState<OnChainAnchor[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [network, configuredContracts, recentAnchors] = await Promise.all([
-        fetchBlockchainStatus(),
-        fetchBlockchainContracts(),
-        fetchBlockchainAnchors(15),
-      ]);
-      setStatus(network);
-      setContracts(configuredContracts);
-      setAnchors(recentAnchors);
-      if (!network) setError("Optional EVM status is unavailable.");
-    } catch {
-      setStatus(null);
-      setContracts([]);
-      setAnchors([]);
-      setError("Blockchain telemetry could not be loaded.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const confirmedAnchors = anchors.filter(
-    (anchor) => anchor.status === "CONFIRMED" && Boolean(anchor.txHash),
-  );
-
+  const status = useAsync(() => fetchBlockchainStatus(), []);
+  const contracts = useAsync(() => fetchBlockchainContracts(), []);
+  const anchors = useAsync(() => fetchBlockchainAnchors(15), []);
+  const reload = () => { status.reload(); contracts.reload(); anchors.reload(); };
   return (
-    <main style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <p className="workspace-eyebrow">Administration</p>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#fff", margin: 0 }}>
-            Optional EVM integrity evidence
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "6px 0 0" }}>
-            Chain state is separate from credential trust, proof validity, and status-list decisions.
-          </p>
-        </div>
-        <button type="button" onClick={() => void loadData()} disabled={loading} style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #374151", background: "#1f2937", color: "#e2e8f0", display: "flex", alignItems: "center", gap: "7px", cursor: loading ? "wait" : "pointer" }}>
-          <RefreshCw size={14} className={loading ? "spin" : ""} />
-          Refresh telemetry
-        </button>
-      </header>
-
-      {error && <div role="status" style={{ color: "#fbbf24", background: "#2a2110", border: "1px solid #854d0e", borderRadius: "8px", padding: "12px" }}>{error}</div>}
-
-      <section aria-label="Optional network status" style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: "14px", padding: "18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "16px" }}>
-        <div>
-          <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Connection</div>
-          <div style={{ color: status?.connected ? "#34d399" : "#cbd5e1", fontWeight: 700, marginTop: "4px" }}>{status ? (status.connected ? "Connected" : "Offline / unavailable") : "Unknown"}</div>
-        </div>
-        <div>
-          <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Network</div>
-          <div style={{ color: "#f8fafc", fontWeight: 700, marginTop: "4px" }}>{status?.network || "Not reported"}</div>
-        </div>
-        <div>
-          <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Chain ID</div>
-          <div style={{ color: "#f8fafc", fontWeight: 700, marginTop: "4px" }}>{status?.chainId ?? "Not reported"}</div>
-        </div>
-        <div>
-          <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Current block</div>
-          <div style={{ color: "#f8fafc", fontWeight: 700, marginTop: "4px" }}>{status?.connected && status.currentBlockNumber != null ? `#${status.currentBlockNumber}` : "Unavailable"}</div>
-        </div>
-      </section>
-
-      <section style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: "14px", padding: "18px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "9px", marginBottom: "12px" }}>
-          <Database size={18} color="#c084fc" />
-          <h2 style={{ color: "#f8fafc", fontSize: "1rem", margin: 0 }}>Configured contract directory</h2>
-        </div>
-        <p style={{ color: "#94a3b8", fontSize: "0.8rem", margin: "0 0 14px" }}>
-          An address returned by configuration does not prove that a contract is deployed or verified. Connection and receipt evidence are shown separately.
-        </p>
-        {contracts.length === 0 ? (
-          <p style={{ color: "#94a3b8", fontSize: "0.82rem", margin: 0 }}>{loading ? "Loading configured contracts…" : "No contract directory response is available."}</p>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
-            {contracts.map((contract) => (
-              <article key={contract.name} style={{ background: "#0d131f", border: "1px solid #1f2937", borderRadius: "10px", padding: "14px" }}>
-                <h3 style={{ color: "#f8fafc", fontSize: "0.9rem", margin: "0 0 8px" }}>{contract.name}</h3>
-                <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Configured address</div>
-                <code style={{ color: "#cbd5e1", fontSize: "0.72rem", wordBreak: "break-all" }}>{contract.address || "Not configured"}</code>
-                <p style={{ color: "#94a3b8", fontSize: "0.76rem", lineHeight: 1.5 }}>{contract.purpose}</p>
-                <div style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Directory status: {contract.status || "Not reported"}</div>
-              </article>
-            ))}
-          </div>
+    <Page
+      eyebrow="Administration"
+      title="Optional anchoring"
+      description="Optional ledger for event commitments."
+      breadcrumbs={[{ label: "Administration", to: "/admin" }, { label: "Optional anchoring" }]}
+      actions={<Button variant="secondary" onClick={reload} icon={<IconRefresh aria-hidden="true" />}>Refresh</Button>}
+    >
+      <Alert tone="info">Only CONFIRMED records with a transaction hash are anchored. No personal data is written to the ledger.</Alert>
+      <AsyncView state={status} onRetry={status.reload} loadingLabel="Checking ledger node">
+        {(s) => (
+          <Grid cols={4}>
+            <Stat label="Node" value={s.connected ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>} />
+            <Stat label="Network" value={<span>{s.network}</span>} />
+            <Stat label="Chain ID" value={s.chainId ?? "—"} />
+            <Stat label="Latest block" value={s.currentBlockNumber ?? "—"} />
+          </Grid>
         )}
-      </section>
-
-      <section style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: "14px", padding: "18px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "9px", marginBottom: "8px" }}>
-          <Clock size={18} color="#c084fc" />
-          <h2 style={{ color: "#f8fafc", fontSize: "1rem", margin: 0 }}>Receipt-backed anchors</h2>
-        </div>
-        <p style={{ color: "#94a3b8", fontSize: "0.8rem", margin: "0 0 14px" }}>
-          Only records marked CONFIRMED with a transaction hash are shown as confirmed anchors. Other states remain visible as pending, offline, skipped, or failed evidence.
-        </p>
-        {anchors.length === 0 ? (
-          <p style={{ color: "#94a3b8", fontSize: "0.82rem", margin: 0 }}>{loading ? "Loading anchor records…" : "No anchor records were returned by the service."}</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {anchors.map((anchor) => {
-              const confirmed = confirmedAnchors.includes(anchor);
-              return (
-                <article key={anchor.anchorId} style={{ background: "#0d131f", border: "1px solid #1f2937", borderRadius: "9px", padding: "12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
-                    <strong style={{ color: "#e2e8f0", fontSize: "0.8rem" }}>{anchor.eventType} · {anchor.contractType}</strong>
-                    <span style={{ color: confirmed ? "#34d399" : "#fbbf24", fontSize: "0.75rem", fontWeight: 700 }}>{anchor.status}</span>
-                  </div>
-                  <div style={{ color: "#94a3b8", fontSize: "0.72rem", marginTop: "5px" }}>Digest: <code style={{ wordBreak: "break-all" }}>{anchor.eventHash}</code></div>
-                  <div style={{ color: "#94a3b8", fontSize: "0.72rem", marginTop: "4px" }}>Transaction: {confirmed ? <code>{anchor.txHash}</code> : "No confirmed transaction receipt"}</div>
-                  <div style={{ color: "#94a3b8", fontSize: "0.72rem", marginTop: "4px" }}>Block: {confirmed && anchor.blockNumber != null ? anchor.blockNumber : "Not confirmed"} · Created: {new Date(anchor.createdAt).toLocaleString()}</div>
-                  {anchor.errorMessage && <div style={{ color: "#fbbf24", fontSize: "0.72rem", marginTop: "4px" }}>{anchor.errorMessage}</div>}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </main>
+      </AsyncView>
+      <Card title="Contracts" flush>
+        <AsyncView state={contracts} onRetry={contracts.reload} loadingLabel="Loading contract directory">
+          {(items) => items.length === 0 ? <EmptyState title="No contracts configured" description="The service reports no contract addresses." /> : (
+            <Table caption="Configured contracts">
+              <thead><tr><th scope="col">Contract</th><th scope="col">Address</th><th scope="col">Purpose</th><th scope="col">Status</th></tr></thead>
+              <tbody>
+                {items.map((c) => (
+                  <tr key={`${c.name}-${c.address}`}>
+                    <td data-label="Contract" className="fw-medium">{c.name}</td>
+                    <td data-label="Address">{c.address ? <IdentifierText value={c.address} label={`${c.name} address`} /> : "Not deployed"}</td>
+                    <td data-label="Purpose" className="text-secondary">{c.purpose}</td>
+                    <td data-label="Status"><Badge tone={c.deploymentVerified ? "success" : "neutral"}>{humanize(c.status)}{c.deploymentVerified ? " · verified" : ""}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </AsyncView>
+      </Card>
+      <Card title="Recent anchor records" flush>
+        <AsyncView state={anchors} onRetry={anchors.reload} loadingLabel="Loading anchor records">
+          {(items) => items.length === 0 ? <EmptyState title="No anchor records" description="Nothing has been submitted to the ledger." /> : (
+            <Table caption="Anchor records" stackBelow="md">
+              <thead><tr><th scope="col">Event</th><th scope="col">Status</th><th scope="col">Transaction</th><th scope="col">Created</th></tr></thead>
+              <tbody>
+                {items.map((a) => (
+                  <tr key={a.anchorId}>
+                    <td data-label="Event">{humanize(a.eventType)} · {a.contractType}</td>
+                    <td data-label="Status"><Badge tone={anchorTone(a.status, Boolean(a.txHash))}>{humanize(a.status)}</Badge>{a.errorMessage ? <span className="small text-secondary"> {a.errorMessage}</span> : null}</td>
+                    <td data-label="Transaction">{a.txHash ? <IdentifierText value={a.txHash} label="transaction hash" /> : "None"}{a.blockNumber ? ` · block ${a.blockNumber}` : ""}</td>
+                    <td data-label="Created" className="text-secondary">{formatDateTime(a.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </AsyncView>
+      </Card>
+    </Page>
   );
 };

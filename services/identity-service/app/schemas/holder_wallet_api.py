@@ -36,6 +36,10 @@ class GuardianRecoveryProofResponse(BaseModel):
     proof: str
 
 
+class HolderWalletListResponse(ApiModel):
+    items: list["HolderWalletResponse"]
+
+
 class HolderWalletResponse(ApiModel):
     wallet_id: str
     owner_user_id: str
@@ -92,6 +96,22 @@ class WalletCredentialResponse(ApiModel):
 class WalletCredentialInventoryResponse(ApiModel):
     wallet_id: str
     credentials: list[WalletCredentialResponse]
+
+
+class HolderActivityEventResponse(ApiModel):
+    event_id: str
+    event_type: str
+    subject_id: str | None
+    correlation_id: str | None
+    created_at: datetime
+
+
+class HolderActivityResponse(ApiModel):
+    wallet_id: str
+    items: list[HolderActivityEventResponse]
+    limit: int
+    offset: int
+    has_more: bool
 
 
 class PresentationChallengeCreateRequest(BaseModel):
@@ -153,3 +173,6 @@ class PresentationChallengeResponse(ApiModel):
             status=challenge.status.value,
             version=challenge.version,
         )
+
+
+HolderWalletListResponse.model_rebuild()

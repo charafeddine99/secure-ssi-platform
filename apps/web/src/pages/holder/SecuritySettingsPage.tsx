@@ -1,557 +1,412 @@
-import React, { useState, useEffect } from "react";
-import { useAuth } from "../../context/AuthContext";
-import { StatusChip } from "../../components/common/StatusChip";
+import React from "react";
+import { IconKey, IconTrash, IconUserPlus } from "@tabler/icons-react";
 import {
-  fetchRecoveryPolicy,
-  fetchGuardians,
-  fetchRecoveryRequests,
-  getOrCreateHolderWallet,
-  canInitiateRecovery,
-  initiateRecoveryRequest,
+  ACTIVE_RECOVERY_STATES,
+  addGuardian,
   cancelRecoveryRequest,
-  RecoveryPolicy,
-  RecoveryRequest,
-  BackendGuardian
-} from "../../services/api";
-import {
-  KeyRound,
-  Users,
-  Check,
-  AlertTriangle,
-  ShieldAlert,
-  XCircle,
-} from "lucide-react";
+  canInitiateRecovery,
+  fetchGuardians,
+  fetchRecoveryPolicyStrict,
+  fetchRecoveryRequests,
+  initiateRecoveryRequest,
+  removeGuardian,
+  upsertRecoveryPolicy,
+  type Guardian,
+  type RecoveryPolicy,
+  type RecoveryReason,
+  type RecoveryRequest,
+} from "../../api/recovery.ts";
+import type { HolderWallet } from "../../api/wallet.ts";
+import { fetchWalletKeys, type WalletKey } from "../../api/keys.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, Table } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Checkbox, SelectField, TextField } from "../../components/ui/Field.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { ConfirmDialog } from "../../components/ui/Dialog.tsx";
+import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
+import { Badge, RecoveryStateBadge } from "../../components/ui/StatusBadge.tsx";
+import type { BadgeTone } from "../../components/ui/tones.ts";
+import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States.tsx";
+import { useToast } from "../../components/ui/toastContext.ts";
+import { RecoveryProgress } from "../../components/ssi/RecoveryProgress.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { describeError } from "../../lib/http.ts";
+import { formatDateTime, formatDuration, humanize } from "../../lib/format.ts";
+import { useHolderWallet } from "./useHolderWallet.ts";
+import { toForm, validatePolicyForm, type PolicyForm } from "./recoveryPolicyForm.ts";
+
+interface RecoveryData {
+  policy: RecoveryPolicy | null;
+  guardians: Guardian[];
+  requests: RecoveryRequest[];
+}
+
+async function loadRecovery(walletId: string): Promise<RecoveryData> {
+  const [policy, guardians, requests] = await Promise.all([
+    fetchRecoveryPolicyStrict(walletId),
+    fetchGuardians(walletId),
+    fetchRecoveryRequests(20),
+  ]);
+  return {
+    policy,
+    guardians: guardians.filter((guardian) => guardian.walletId === walletId),
+    requests: requests.filter((request) => request.walletId === walletId),
+  };
+}
 
 export const SecuritySettingsPage: React.FC = () => {
-  const { user } = useAuth();
-
-  // Recovery State
-  const [policy, setPolicy] = useState<RecoveryPolicy | null>(null);
-  const [guardiansList, setGuardiansList] = useState<BackendGuardian[]>([]);
-  const [activePetition, setActivePetition] = useState<RecoveryRequest | null>(null);
-  const [loadingRecovery, setLoadingRecovery] = useState(true);
-  const [holderWalletId, setHolderWalletId] = useState<string | null>(null);
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [recoveryReason, setRecoveryReason] = useState("ACCOUNT_COMPROMISE");
-  const [customReason, setCustomReason] = useState("");
-  const [submittingRecovery, setSubmittingRecovery] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const activeGuardianCount = guardiansList.filter((guardian) => guardian.approved === 1).length;
-  const recoveryCanStart = canInitiateRecovery(
-    holderWalletId,
-    policy,
-    activeGuardianCount,
-    activePetition !== null,
+  const wallet = useHolderWallet();
+  return (
+    <Page
+      eyebrow="Holder wallet"
+      title="Recovery and security"
+      description="Guardians and recovery rules for your wallet."
+      breadcrumbs={[{ label: "Wallet", to: "/wallet" }, { label: "Recovery and security" }]}
+    >
+      <Alert tone="info" title="How wallet recovery works">
+        Your key is held by the platform. Completed recovery rotates it; approvals alone change nothing.
+      </Alert>
+      {wallet.status === "loading" && <div className="card"><LoadingState label="Opening your wallet" /></div>}
+      {wallet.status === "error" && <div className="card"><ErrorState error={wallet.error} title="Your wallet could not be opened" onRetry={wallet.reload} /></div>}
+      {wallet.status === "success" && <WalletKeysCard walletId={wallet.data.walletId} />}
+      {wallet.status === "success" && <RecoverySettings wallet={wallet.data} />}
+    </Page>
   );
+};
 
-  const loadRecoveryData = async () => {
-    setLoadingRecovery(true);
+const RecoverySettings: React.FC<{ wallet: HolderWallet }> = ({ wallet }) => {
+  const toast = useToast();
+  const data = useAsync(() => loadRecovery(wallet.walletId), [wallet.walletId]);
+
+  if (data.status === "loading") return <div className="card"><LoadingState label="Loading recovery configuration" /></div>;
+  if (data.status === "error") return <div className="card"><ErrorState error={data.error} title="The recovery service could not be reached" onRetry={data.reload} /></div>;
+
+  const { policy, guardians, requests } = data.data;
+  const activeGuardians = guardians.filter((guardian) => guardian.status === "ACTIVE");
+  const activeRequest = requests.find((request) => ACTIVE_RECOVERY_STATES.includes(request.status)) ?? null;
+
+  return (
+    <>
+      {activeRequest && <ActiveRecovery request={activeRequest} policy={policy} onChanged={() => { data.reload(); }} />}
+      <Grid cols={2}>
+        <PolicyCard walletId={wallet.walletId} policy={policy} onSaved={() => { toast("success", "Recovery policy saved."); data.reload(); }} />
+        <GuardiansCard walletId={wallet.walletId} guardians={guardians} policy={policy} onChanged={data.reload} />
+      </Grid>
+      {!activeRequest && (
+        <StartRecovery
+          walletId={wallet.walletId}
+          policy={policy}
+          activeGuardianCount={activeGuardians.length}
+          onStarted={() => { toast("success", "Recovery requested. Your guardians can now respond."); data.reload(); }}
+        />
+      )}
+      <Card title="Recovery history" flush>
+        {requests.length === 0 ? <EmptyState title="No recovery requests" /> : (
+          <Table caption="Recovery requests">
+            <thead><tr><th scope="col">Requested</th><th scope="col">Reason</th><th scope="col">State</th><th scope="col">Approvals</th></tr></thead>
+            <tbody>
+              {requests.map((request) => (
+                <tr key={request.requestId}>
+                  <td data-label="Requested">{formatDateTime(request.createdAt)}</td>
+                  <td data-label="Reason">{humanize(request.reason)}</td>
+                  <td data-label="State"><RecoveryStateBadge state={request.status} /></td>
+                  <td data-label="Approvals">{request.approvalsCount ?? "?"} / {request.requiredCount ?? "?"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+    </>
+  );
+};
+
+const PolicyCard: React.FC<{ walletId: string; policy: RecoveryPolicy | null; onSaved: () => void }> = ({ walletId, policy, onSaved }) => {
+  const [form, setForm] = React.useState<PolicyForm>(() => toForm(policy));
+  const [errors, setErrors] = React.useState<Partial<Record<keyof PolicyForm, string>>>({});
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const set = (key: keyof PolicyForm) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((current) => ({ ...current, [key]: key === "allowCancellation" ? event.target.checked : event.target.value }));
+
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const result = validatePolicyForm(form, walletId);
+    setErrors(result.errors);
+    setSaveError(null);
+    if (!result.policy) return;
+    setSaving(true);
     try {
-      const wallet = await getOrCreateHolderWallet();
-      setHolderWalletId(wallet.walletId);
-      const [pol, guards, reqs] = await Promise.all([
-        fetchRecoveryPolicy(wallet.walletId),
-        fetchGuardians(wallet.walletId),
-        fetchRecoveryRequests(10)
-      ]);
-      setPolicy(pol);
-      setGuardiansList(guards);
-
-      const active = reqs.find(
-        (r) => r.walletId === wallet.walletId
-          && ["PENDING_APPROVALS", "QUORUM_REACHED", "WAITING_TIMELOCK", "READY_FOR_EXECUTION"].includes(r.status)
-      );
-      setActivePetition(active || null);
-    } catch (err: unknown) {
-      console.warn("Could not load recovery configuration:", err);
-      setHolderWalletId(null);
-      setPolicy(null);
-      setGuardiansList([]);
-      setActivePetition(null);
-      setStatusMsg({
-        type: "error",
-        text: err instanceof Error ? err.message : "Recovery Service state is unavailable."
-      });
+      await upsertRecoveryPolicy(result.policy);
+      onSaved();
+    } catch (error) {
+      setSaveError(describeError(error));
     } finally {
-      setLoadingRecovery(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRecoveryData();
-  }, []);
-
-  const handleInitiateRecovery = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmittingRecovery(true);
-    setStatusMsg(null);
-    try {
-      if (!holderWalletId) throw new Error("A server-managed holder wallet is required before recovery can be requested.");
-      if (!policy || policy.walletId !== holderWalletId) throw new Error("The Recovery Service policy for this wallet is unavailable.");
-      if (activePetition) throw new Error("An active recovery request already exists.");
-      if (!recoveryCanStart) throw new Error("Active Guardian records cannot satisfy this wallet's Recovery Service policy.");
-      const reasonText = customReason.trim() || recoveryReason;
-      const res = await initiateRecoveryRequest({
-        walletId: holderWalletId,
-        reason: reasonText
-      });
-      setStatusMsg({
-        type: "success",
-        text: `Recovery Service request ${res.requestId} created. Guardian notification delivery is not confirmed.`
-      });
-      setShowRecoveryModal(false);
-      await loadRecoveryData();
-    } catch (err: unknown) {
-      setStatusMsg({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to initiate recovery petition."
-      });
-    } finally {
-      setSubmittingRecovery(false);
-    }
-  };
-
-  const handleCancelRecovery = async () => {
-    if (!activePetition) return;
-    setStatusMsg(null);
-    try {
-      await cancelRecoveryRequest(activePetition.requestId);
-      setStatusMsg({
-        type: "success",
-        text: `Recovery petition ${activePetition.requestId} cancelled.`
-      });
-      await loadRecoveryData();
-    } catch (err: unknown) {
-      setStatusMsg({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to cancel recovery petition."
-      });
+      setSaving(false);
     }
   };
 
   return (
-    <main className="holder-page holder-security-page" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <header className="holder-page-header">
-        <div>
-          <p className="holder-page-eyebrow">PERSONAL WALLET</p>
-          <h1>Security and recovery</h1>
-          <p>Review wallet identity and the Recovery Service policy for this account.</p>
+    <Card
+      title="Recovery policy"
+      subtitle={policy ? `Version ${policy.version ?? 1}. Changes apply to future recovery requests.` : "No policy yet. Recovery cannot start until you save one."}
+      actions={policy ? <Badge tone="success">Configured</Badge> : <Badge tone="warning">Not configured</Badge>}
+    >
+      <form onSubmit={onSubmit} noValidate>
+        <div className="row">
+          <TextField groupClassName="col-sm-6 mb-3" label="Required approvals (M)" type="number" min={1} max={32} value={form.minimumApprovals} onChange={set("minimumApprovals")} error={errors.minimumApprovals} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Maximum guardians (N)" type="number" min={1} max={32} value={form.maximumGuardians} onChange={set("maximumGuardians")} error={errors.maximumGuardians} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Approval window (hours)" type="number" min={0} step="any" value={form.approvalWindowHours} onChange={set("approvalWindowHours")} error={errors.approvalWindowHours} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Time-lock after quorum (hours)" type="number" min={0} step="any" value={form.timeLockHours} onChange={set("timeLockHours")} error={errors.timeLockHours} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Request expires after (hours)" type="number" min={0} step="any" value={form.expirationHours} onChange={set("expirationHours")} error={errors.expirationHours} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Attempts before cooldown" type="number" min={1} max={20} value={form.maximumAttempts} onChange={set("maximumAttempts")} error={errors.maximumAttempts} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Cooldown (hours)" type="number" min={0} step="any" value={form.cooldownHours} onChange={set("cooldownHours")} error={errors.cooldownHours} required />
         </div>
-      </header>
-      {loadingRecovery && <p className="holder-inline-status" role="status">Loading wallet security settings…</p>}
-      {/* Sovereign Identity Overview */}
-      <div
-        className="holder-security-card holder-security-identity"
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <KeyRound size={20} color="#60a5fa" />
-            <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              Wallet identity
-            </h2>
-          </div>
-        </div>
+        <Checkbox className="mb-3" checked={form.allowCancellation} onChange={set("allowCancellation")} label="Allow me to cancel a recovery request before it completes" />
+        {saveError && <Alert tone="danger" live="assertive" title="Policy not saved" className="mb-3">{saveError}</Alert>}
+        <Button type="submit" loading={saving}>Save policy</Button>
+      </form>
+    </Card>
+  );
+};
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.8rem" }}>
-          <div style={{ backgroundColor: "#0d131f", padding: "10px 12px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-            <span style={{ color: "#94a3b8" }}>Decentralized Identifier (DID):</span>
-            <div style={{ fontFamily: "var(--font-mono)", color: "#60a5fa", marginTop: "2px", wordBreak: "break-all" }}>
-              {user?.did || "Not provided by Identity Service"}
-            </div>
-          </div>
+const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy: RecoveryPolicy | null; onChanged: () => void }> = ({
+  walletId, guardians, policy, onChanged,
+}) => {
+  const toast = useToast();
+  const [name, setName] = React.useState("");
+  const [userId, setUserId] = React.useState("");
+  const [did, setDid] = React.useState("");
+  const [adding, setAdding] = React.useState(false);
+  const [addError, setAddError] = React.useState<string | null>(null);
+  const [toRemove, setToRemove] = React.useState<Guardian | null>(null);
+  const [removing, setRemoving] = React.useState(false);
+  const active = guardians.filter((guardian) => guardian.status === "ACTIVE");
+  const atLimit = policy !== null && active.length >= policy.maximumGuardians;
 
-          <div style={{ backgroundColor: "#0d131f", padding: "10px 12px", borderRadius: "8px", border: "1px solid #1f2937" }}>
-            <span style={{ color: "#94a3b8" }}>EVM Wallet Address:</span>
-            <div style={{ fontFamily: "var(--font-mono)", color: "#c084fc", marginTop: "2px" }}>
-              {user?.walletAddress || "No linked EVM address"}
-            </div>
-          </div>
-        </div>
-      </div>
+  const onAdd = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAddError(null);
+    if (!name.trim() || !userId.trim() || !did.trim().startsWith("did:")) {
+      setAddError("Enter the guardian's name, account ID and wallet DID (starting with did:). The guardian can find these on their wallet page.");
+      return;
+    }
+    setAdding(true);
+    try {
+      await addGuardian({ walletId, guardianUserId: userId, guardianDid: did, displayName: name });
+      setName(""); setUserId(""); setDid("");
+      toast("success", "Guardian added.");
+      onChanged();
+    } catch (error) {
+      setAddError(describeError(error));
+    } finally {
+      setAdding(false);
+    }
+  };
 
-      {statusMsg && (
-        <div
-          className={`holder-notice holder-notice--${statusMsg.type}`}
-          role={statusMsg.type === "error" ? "alert" : "status"}
-          style={{
-            padding: "12px 16px",
-            borderRadius: "8px",
-            backgroundColor: statusMsg.type === "success" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-            border: `1px solid ${statusMsg.type === "success" ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-            color: statusMsg.type === "success" ? "#34d399" : "#f87171",
-            fontSize: "0.85rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px"
-          }}
-        >
-          {statusMsg.type === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}
-          {statusMsg.text}
-        </div>
-      )}
+  const onRemove = async () => {
+    if (!toRemove) return;
+    setRemoving(true);
+    try {
+      await removeGuardian(toRemove.guardianId);
+      toast("success", "Guardian removed.");
+      setToRemove(null);
+      onChanged();
+    } catch (error) {
+      toast("danger", describeError(error));
+    } finally {
+      setRemoving(false);
+    }
+  };
 
-      {/* Active Recovery Petition Warning Banner */}
-      {activePetition && (
-        <div
-          className="holder-active-recovery"
-          style={{
-            backgroundColor: "#1c1917",
-            borderRadius: "14px",
-            border: "1px solid #d97706",
-            padding: "18px 20px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "14px"
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
-            <AlertTriangle size={22} color="#f59e0b" style={{ flexShrink: 0, marginTop: "2px" }} />
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontWeight: 700, color: "#ffffff", fontSize: "0.95rem" }}>
-                  Active Recovery Petition: {activePetition.requestId}
-                </span>
-                <StatusChip status={activePetition.status} size="sm" />
-              </div>
-              <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "#cbd5e1" }}>
-                Approvals: <strong>{activePetition.approvalsCount} of {activePetition.requiredCount}</strong>
-                {activePetition.timelockExpiresAt && (
-                  <span style={{ color: "#fbbf24", marginLeft: "8px" }}>
-                    • Time-lock active until {new Date(activePetition.timelockExpiresAt).toLocaleTimeString()}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="holder-danger-action"
-            onClick={handleCancelRecovery}
-            style={{
-              padding: "8px 14px",
-              borderRadius: "8px",
-              backgroundColor: "rgba(239, 68, 68, 0.2)",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              color: "#f87171",
-              fontSize: "0.8rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <XCircle size={14} />
-            Cancel Recovery
-          </button>
-        </div>
-      )}
-
-      {/* Wallet key export and mnemonic recovery are not implemented. */}
-      <div
-        className="holder-security-card holder-security-key-state"
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: "0 0 8px 0" }}>
-          Key export and recovery phrase restore are unavailable
-        </h3>
-        <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>
-          Wallet keys are server-managed. This account has no local recovery phrase to export or restore.
-        </p>
-      </div>
-
-      {/* Guardian records from the Recovery Service; independent signatures are not implied. */}
-      <div
-        className="holder-security-card holder-security-recovery"
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Users size={18} color="#fbbf24" />
-            <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-              Guardian records and recovery policy
-            </h3>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "0.7rem", color: "#34d399", fontWeight: 600 }}>
-              Threshold: {policy ? `${policy.minimumApprovals}-of-${policy.maximumGuardians}` : "Unavailable"}
-            </span>
-
-            {!activePetition && (
-              <button
-                type="button"
-                onClick={() => setShowRecoveryModal(true)}
-                disabled={!recoveryCanStart}
-                title={recoveryCanStart ? "Create a Recovery Service request" : "A valid backend policy and enough active Guardian records are required."}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "#dc2626",
-                  color: "#ffffff",
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                  border: "none",
-                  cursor: recoveryCanStart ? "pointer" : "not-allowed",
-                  opacity: recoveryCanStart ? 1 : 0.55,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}
-              >
-                <ShieldAlert size={13} />
-                Initiate Emergency Recovery
-              </button>
-            )}
-          </div>
-
-        {!activePetition && !recoveryCanStart && (
-          <p role="status" style={{ fontSize: "0.75rem", color: "#fbbf24", margin: "0 0 12px" }}>
-            Recovery requests are unavailable until this wallet has a valid backend policy and enough active Guardian records.
-          </p>
-        )}
-        </div>
-
-        {/* Policy Specs Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "10px",
-            marginBottom: "16px",
-            fontSize: "0.75rem",
-            backgroundColor: "#0d131f",
-            padding: "12px",
-            borderRadius: "8px",
-            border: "1px solid #1f2937"
-          }}
-        >
-          <div>
-            <span style={{ color: "#94a3b8" }}>Quorum Threshold:</span>
-            <div style={{ color: "#60a5fa", fontWeight: 600, marginTop: "2px" }}>
-              {policy ? `${policy.minimumApprovals} of ${policy.maximumGuardians} approvals` : "Policy unavailable"}
-            </div>
-          </div>
-          <div>
-            <span style={{ color: "#94a3b8" }}>Time-Lock Delay:</span>
-            <div style={{ color: "#fbbf24", fontWeight: 600, marginTop: "2px" }}>
-              {policy ? `${policy.timeLockSeconds} seconds` : "Unavailable"}
-            </div>
-          </div>
-          <div>
-            <span style={{ color: "#94a3b8" }}>Approval Window:</span>
-            <div style={{ color: "#34d399", fontWeight: 600, marginTop: "2px" }}>
-              {policy ? `${Math.round(policy.approvalWindowSeconds / 60)} minutes` : "Unavailable"}
-            </div>
-          </div>
-          <div>
-            <span style={{ color: "#94a3b8" }}>Anti-Compromise:</span>
-            <div style={{ color: "#c084fc", fontWeight: 600, marginTop: "2px" }}>
-              Status unavailable; key rotation is not confirmed
-            </div>
-          </div>
-        </div>
-
-        {/* Guardians List */}
-        <div className="holder-guardian-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {!loadingRecovery && guardiansList.length === 0 && (
-            <p className="holder-empty-inline">No Guardian records were returned for this wallet.</p>
-          )}
-          {guardiansList.map((g, i) => (
-            <div
-              key={i}
-              className="holder-guardian-row"
-              style={{
-                backgroundColor: "#0d131f",
-                padding: "10px 14px",
-                borderRadius: "8px",
-                border: "1px solid #1f2937",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "8px"
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
-                    {g.guardian_name}
-                  </span>
-                  <span style={{ fontSize: "0.7rem", color: "#60a5fa" }}>({g.guardian_role})</span>
+  return (
+    <Card title="Guardians" subtitle={`${active.length} active${policy ? ` of at most ${policy.maximumGuardians}` : ""}. Guardians must have their own platform account and wallet.`} flush>
+      {active.length === 0 ? <EmptyState title="No guardians yet" description="Add people you trust." /> : (
+        <ul className="list-group list-group-flush" aria-label="Active guardians">
+          {active.map((guardian) => (
+            <li key={guardian.guardianId} className="list-group-item">
+              <div className="row align-items-center g-3">
+                <div className="col-auto"><span className="avatar avatar-sm bg-secondary-lt" aria-hidden="true">{guardian.displayName.slice(0, 1).toUpperCase()}</span></div>
+                <div className="col min-w-0">
+                  <div className="fw-medium">{guardian.displayName}</div>
+                  <div className="small text-secondary"><IdentifierText value={guardian.guardianDid} label="guardian DID" copy={false} /> · added {formatDateTime(guardian.createdAt)}</div>
                 </div>
-                <div style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#94a3b8", marginTop: "2px" }}>
-                  {g.guardian_address}
+                <div className="col-auto">
+                  <Button variant="ghost" size="sm" onClick={() => setToRemove(guardian)} icon={<IconTrash aria-hidden="true" />}>
+                    Remove<span className="visually-hidden"> {guardian.displayName}</span>
+                  </Button>
                 </div>
               </div>
-              <span
-                className={g.approved ? "holder-record-status is-active" : "holder-record-status"}
-                style={{
-                  fontSize: "0.68rem",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  backgroundColor: "rgba(16, 185, 129, 0.15)",
-                  color: "#34d399",
-                  fontWeight: 600
-                }}
-              >
-                {g.approved ? "ACTIVE SERVICE RECORD" : "SERVICE RECORD NOT ACTIVE"}
-              </span>
-            </div>
+            </li>
           ))}
+        </ul>
+      )}
+      <form className="card-body border-top" onSubmit={onAdd} noValidate aria-label="Add a guardian">
+        <h3 className="card-title mb-3">Add a guardian</h3>
+        <TextField label="Display name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required autoComplete="off" />
+        <TextField label="Guardian account ID" value={userId} onChange={(e) => setUserId(e.target.value)} required autoComplete="off" spellCheck={false} />
+        <TextField label="Guardian wallet DID" value={did} onChange={(e) => setDid(e.target.value)} required autoComplete="off" spellCheck={false} hint="Shown on the guardian's own wallet page." />
+        {addError && <Alert tone="danger" live="assertive" title="Guardian not added" className="mb-3">{addError}</Alert>}
+        {atLimit && <Alert tone="warning" className="mb-3">Your policy allows no more guardians. Raise the maximum first.</Alert>}
+        <Button type="submit" variant="secondary" loading={adding} disabled={atLimit} icon={<IconUserPlus aria-hidden="true" />}>Add guardian</Button>
+      </form>
+      <ConfirmDialog
+        open={toRemove !== null}
+        title="Remove guardian?"
+        confirmLabel="Remove guardian"
+        confirmVariant="danger"
+        busy={removing}
+        onConfirm={onRemove}
+        onCancel={() => setToRemove(null)}
+      >
+        <p>{toRemove?.displayName} will no longer be able to approve recovery for this wallet. Removal may be refused while a recovery request is active.</p>
+      </ConfirmDialog>
+    </Card>
+  );
+};
+
+const REASONS: Array<{ value: RecoveryReason; label: string }> = [
+  { value: "LOST_ACCESS", label: "I lost access to my account" },
+  { value: "DEVICE_LOSS", label: "My device was lost or stolen" },
+  { value: "KEY_LOSS", label: "My key is no longer usable" },
+  { value: "ACCOUNT_COMPROMISE", label: "I believe my account was compromised" },
+];
+
+const StartRecovery: React.FC<{ walletId: string; policy: RecoveryPolicy | null; activeGuardianCount: number; onStarted: () => void }> = ({
+  walletId, policy, activeGuardianCount, onStarted,
+}) => {
+  const [reason, setReason] = React.useState<RecoveryReason>("LOST_ACCESS");
+  const [confirming, setConfirming] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const allowed = canInitiateRecovery(walletId, policy, activeGuardianCount, false);
+  const blocker = !policy
+    ? "Save a recovery policy first."
+    : activeGuardianCount < policy.minimumApprovals
+      ? `You need at least ${policy.minimumApprovals} active guardian${policy.minimumApprovals === 1 ? "" : "s"}; you have ${activeGuardianCount}.`
+      : activeGuardianCount > policy.maximumGuardians
+        ? "You have more active guardians than the policy allows."
+        : null;
+
+  const onConfirm = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await initiateRecoveryRequest({ walletId, reason });
+      setConfirming(false);
+      onStarted();
+    } catch (err) {
+      setError(describeError(err));
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Start recovery" subtitle="Only if you lost access or suspect compromise." status="danger">
+      <div className="row g-3 align-items-end">
+        <div className="col-md-6">
+          <SelectField groupClassName="mb-0" label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RecoveryReason)}>
+            {REASONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </SelectField>
+        </div>
+        <div className="col-md-auto">
+          <Button variant="danger" onClick={() => setConfirming(true)} disabled={!allowed} icon={<IconKey aria-hidden="true" />}>Request recovery</Button>
         </div>
       </div>
-
-      {/* Emergency Recovery Initiation Modal */}
-      {showRecoveryModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.75)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px"
-          }}
-        >
-          <div
-            className="holder-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="holder-recovery-dialog-title"
-            style={{
-              backgroundColor: "#111827",
-              borderRadius: "16px",
-              border: "1px solid #dc2626",
-              padding: "24px",
-              maxWidth: "500px",
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px"
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <ShieldAlert size={24} color="#ef4444" />
-              <h3 id="holder-recovery-dialog-title" style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: 0 }}>
-                Create Recovery Service request
-              </h3>
-            </div>
-
-            <p style={{ fontSize: "0.85rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
-              This creates a Recovery Service request only. It does not prove independent Guardian DID signatures, split or recover key shares, rotate keys, change credential status, notify guardians, or submit an on-chain transaction. The active service policy is shown only when the backend returns it.
-            </p>
-
-            <form onSubmit={handleInitiateRecovery} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <label style={{ fontSize: "0.8rem", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
-                  Incident Classification:
-                </label>
-                <select
-                  value={recoveryReason}
-                  onChange={(e) => setRecoveryReason(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    backgroundColor: "#0d131f",
-                    border: "1px solid #374151",
-                    color: "#f8fafc",
-                    fontSize: "0.85rem"
-                  }}
-                >
-                  <option value="ACCOUNT_COMPROMISE">Private Key Compromise / Extraction</option>
-                  <option value="LOST_ACCESS">Device Hardware Loss / Theft</option>
-                  <option value="SUSPECTED_FRAUD">Suspicious Cryptographic Activity</option>
-                  <option value="ROUTINE_ROTATION">Scheduled Key Lifecycle Rotation</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "0.8rem", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
-                  Additional Incident Details (Optional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Device lost while traveling abroad"
-                  value={customReason}
-                  onChange={(e) => setCustomReason(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    backgroundColor: "#0d131f",
-                    border: "1px solid #374151",
-                    color: "#f8fafc",
-                    fontSize: "0.85rem",
-                    boxSizing: "border-box"
-                  }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowRecoveryModal(false)}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    backgroundColor: "#1f2937",
-                    border: "1px solid #374151",
-                    color: "#94a3b8",
-                    fontSize: "0.85rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingRecovery || !recoveryCanStart}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "8px",
-                    backgroundColor: "#dc2626",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: "0.85rem",
-                    fontWeight: 700,
-                    cursor: submittingRecovery || !recoveryCanStart ? "not-allowed" : "pointer",
-                    opacity: recoveryCanStart ? 1 : 0.55
-                  }}
-                >
-                  {submittingRecovery ? "Creating request..." : "Create Recovery Request"}
-                </button>
-              </div>
-            </form>
-          </div>
+      {(blocker || error) && (
+        <div className="vstack gap-3 mt-3">
+          {blocker && <Alert tone="warning">{blocker}</Alert>}
+          {error && <Alert tone="danger" live="assertive" title="Recovery not started">{error}</Alert>}
         </div>
       )}
-    </main>
+      <ConfirmDialog open={confirming} title="Request wallet recovery?" confirmLabel="Request recovery" confirmVariant="danger" busy={busy} onConfirm={onConfirm} onCancel={() => setConfirming(false)}>
+        <p>Your guardians will be asked to approve. If {policy?.minimumApprovals ?? "the required number of"} approve, a time-lock of {formatDuration(policy?.timeLockSeconds ?? 0)} starts before the managed key is rotated.</p>
+      </ConfirmDialog>
+    </Card>
+  );
+};
+
+const ActiveRecovery: React.FC<{ request: RecoveryRequest; policy: RecoveryPolicy | null; onChanged: () => void }> = ({ request, policy, onChanged }) => {
+  const toast = useToast();
+  const [confirming, setConfirming] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const canCancel = policy?.allowCancellation !== false && request.status !== "EXECUTING";
+
+  const onCancel = async () => {
+    setBusy(true);
+    try {
+      await cancelRecoveryRequest(request.requestId);
+      toast("success", "Recovery request cancelled.");
+      setConfirming(false);
+      onChanged();
+    } catch (error) {
+      toast("danger", describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Recovery in progress"
+      subtitle={`Requested ${formatDateTime(request.createdAt)} · approvals close ${formatDateTime(request.approvalExpiresAt)}`}
+      actions={<RecoveryStateBadge state={request.status} />}
+    >
+      <RecoveryProgress request={request} />
+      <div className="btn-list mt-4">
+        <Button variant="secondary" size="sm" onClick={onChanged}>Refresh</Button>
+        {canCancel && <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>Cancel request</Button>}
+      </div>
+      <ConfirmDialog open={confirming} title="Cancel recovery?" confirmLabel="Cancel recovery" confirmVariant="danger" busy={busy} onConfirm={onCancel} onCancel={() => setConfirming(false)}>
+        <p>Guardian approvals collected so far will be discarded. Starting again counts as a new attempt.</p>
+      </ConfirmDialog>
+    </Card>
+  );
+};
+
+// Mirrors ManagedKeyState in services/identity-service/app/domain/managed_key.py.
+const KEY_STATE_TONE: Record<string, BadgeTone> = {
+  PENDING: "info",
+  ACTIVE: "success",
+  ROTATING: "info",
+  SUSPENDED: "warning",
+  COMPROMISED: "danger",
+  REVOKED: "danger",
+  DESTROY_PENDING: "warning",
+  DESTROYED: "neutral",
+  FAILED: "danger",
+};
+
+/** Read-only view of the wallet's signing keys. Lifecycle changes happen through recovery only. */
+const WalletKeysCard: React.FC<{ walletId: string }> = ({ walletId }) => {
+  const keys = useAsync<WalletKey[]>(() => fetchWalletKeys(walletId), [walletId]);
+  return (
+    <Card title="Wallet keys" subtitle="Public key information only. The private key stays with the platform's key custody." flush>
+      {keys.status === "loading" && <LoadingState label="Loading wallet keys" />}
+      {keys.status === "error" && <ErrorState error={keys.error} title="Wallet keys are unavailable" onRetry={keys.reload} />}
+      {keys.status === "success" && keys.data.length === 0 && (
+        <EmptyState icon={<IconKey size={32} aria-hidden="true" />} title="No managed keys" description="The key service returned no keys for this wallet." />
+      )}
+      {keys.status === "success" && keys.data.length > 0 && (
+        <Table caption="Wallet keys" stackBelow="md">
+          <thead><tr><th scope="col">Fingerprint</th><th scope="col">Algorithm</th><th scope="col">Purpose</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Created</th></tr></thead>
+          <tbody>
+            {keys.data.map((key) => (
+              <tr key={key.keyId}>
+                <td data-label="Fingerprint">{key.fingerprint ? <IdentifierText value={key.fingerprint} label="key fingerprint" /> : <span className="text-secondary">Not reported</span>}</td>
+                <td data-label="Algorithm">{key.algorithm}</td>
+                <td data-label="Purpose">{humanize(key.purpose)}</td>
+                <td data-label="Version">{key.keyVersion}</td>
+                <td data-label="State"><Badge tone={KEY_STATE_TONE[key.state.toUpperCase()] ?? "neutral"}>{humanize(key.state)}</Badge></td>
+                <td data-label="Created">{formatDateTime(key.createdAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
   );
 };

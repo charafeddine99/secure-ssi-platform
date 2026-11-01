@@ -3,12 +3,24 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.application.hybrid_detector import detector
+from app.core import security
+from app.core.security import FraudPrincipal
 
 client = TestClient(app)
+SERVICE_TOKEN = "fraud-test-internal-service-token-32bytes"
+SERVICE_HEADERS = {"X-Internal-Service-Token": SERVICE_TOKEN}
+ADMIN_HEADERS = {"Authorization": "Bearer test-admin-token"}
+
+
+def evaluate(payload):
+    return client.post(
+        "/api/v1/fraud/evaluate", json=payload, headers=SERVICE_HEADERS
+    )
 
 @pytest.fixture(autouse=True)
-def reset_detector_state():
+def reset_detector_state(monkeypatch):
     """Her test öncesi karantina hafızasını sıfırlar."""
+    monkeypatch.setattr(security, "FRAUD_INTERNAL_SERVICE_TOKEN", SERVICE_TOKEN)
     detector._quarantined_dids.clear()
     yield
 
@@ -31,7 +43,7 @@ def test_normal_user_evaluation_low_risk():
         "device_fingerprint_match": True,
         "is_tor_or_proxy": False
     }
-    response = client.post("/api/v1/fraud/evaluate", json=payload)
+    response = evaluate(payload)
     assert response.status_code == 200
     data = response.json()
     assert data["risk_level"] == "LOW"
@@ -53,7 +65,7 @@ def test_impossible_travel_returns_critical_advice_without_mutating_quarantine()
         "device_fingerprint_match": False,
         "is_tor_or_proxy": False
     }
-    response = client.post("/api/v1/fraud/evaluate", json=payload)
+    response = evaluate(payload)
     assert response.status_code == 200
     data = response.json()
     assert data["risk_level"] in ("HIGH", "CRITICAL")
@@ -61,7 +73,7 @@ def test_impossible_travel_returns_critical_advice_without_mutating_quarantine()
     assert any("İmkansız seyahat" in r for r in data["reasons"])
     assert detector.is_quarantined(payload["did"]) is False
 
-    repeated = client.post("/api/v1/fraud/evaluate", json=payload)
+    repeated = evaluate(payload)
     assert repeated.status_code == 200
     assert repeated.json()["risk_score"] == data["risk_score"]
     assert repeated.json()["risk_level"] == data["risk_level"]
@@ -81,7 +93,7 @@ def test_brute_force_failure_requires_step_up_or_review():
         "device_fingerprint_match": True,
         "is_tor_or_proxy": False
     }
-    response = client.post("/api/v1/fraud/evaluate", json=payload)
+    response = evaluate(payload)
     assert response.status_code == 200
     data = response.json()
     assert data["risk_level"] in ("MEDIUM", "HIGH")
@@ -101,21 +113,33 @@ def test_tor_proxy_combined_risk():
         "device_fingerprint_match": False,
         "is_tor_or_proxy": True
     }
-    response = client.post("/api/v1/fraud/evaluate", json=payload)
+    response = evaluate(payload)
     assert response.status_code == 200
     data = response.json()
     assert data["is_anomaly"] is True
     assert data["risk_score"] >= 0.60
 
-def test_manual_quarantine_and_release_lifecycle():
+def test_manual_quarantine_and_release_lifecycle(monkeypatch):
+    async def admin_identity(_token):
+        return FraudPrincipal(
+            subject="admin-test",
+            roles=frozenset({"admin"}),
+            permissions=frozenset({"admin:operations:read"}),
+        )
+
+    monkeypatch.setattr(security, "_introspect_bearer_token", admin_identity)
     target_did = "did:key:z6MkuCompromisedAccount"
     # 1. Karantinaya al
-    q_res = client.post("/api/v1/fraud/quarantine", json={"did": target_did, "reason": "Şüpheli anahtar ele geçirme şüphesi"})
+    q_res = client.post(
+        "/api/v1/fraud/quarantine",
+        json={"did": target_did, "reason": "Şüpheli anahtar ele geçirme şüphesi"},
+        headers=ADMIN_HEADERS,
+    )
     assert q_res.status_code == 200
     assert q_res.json()["is_quarantined"] is True
 
     # 2. Risk evaluation remains advisory and does not change the explicit state.
-    eval_res = client.post("/api/v1/fraud/evaluate", json={
+    eval_res = evaluate({
         "did": target_did,
         "action": "presentation_verification",
         "client_ip": "127.0.0.1",
@@ -134,14 +158,20 @@ def test_manual_quarantine_and_release_lifecycle():
     assert detector.is_quarantined(target_did) is True
 
     # 3. Karantina durumunu sorgula
-    stat_res = client.get(f"/api/v1/fraud/quarantine/{target_did}")
+    stat_res = client.get(
+        f"/api/v1/fraud/quarantine/{target_did}", headers=ADMIN_HEADERS
+    )
     assert stat_res.status_code == 200
     assert stat_res.json()["is_quarantined"] is True
+    assert stat_res.json()["effect_scope"] == "fraud-service-process-local"
 
     # 4. Karantinayı kaldır
-    rel_res = client.delete(f"/api/v1/fraud/quarantine/{target_did}")
+    rel_res = client.delete(
+        f"/api/v1/fraud/quarantine/{target_did}", headers=ADMIN_HEADERS
+    )
     assert rel_res.status_code == 200
     assert rel_res.json()["status"] == "RELEASED"
+    assert rel_res.json()["effect_scope"] == "fraud-service-process-local"
 
 def test_model_stats_report_heuristic_status_without_model_metrics():
     response = client.get("/api/v1/fraud/stats")
@@ -158,7 +188,7 @@ def test_model_stats_report_heuristic_status_without_model_metrics():
 
 
 def test_evaluation_returns_versioned_advisory_heuristic():
-    response = client.post("/api/v1/fraud/evaluate", json={
+    response = evaluate({
         "did": "did:key:z6MkuHeuristicMetadata",
         "failed_attempts": 0,
         "geo_distance_km": 0,
@@ -190,7 +220,7 @@ def test_inference_latency_benchmark():
     }
     start = time.perf_counter()
     for _ in range(50):
-        client.post("/api/v1/fraud/evaluate", json=payload)
+        evaluate(payload)
     elapsed = time.perf_counter() - start
     avg_latency = elapsed / 50.0
     # Rapordaki hedef 0.85 sn (850 ms); mikroservis içi 50 ms altında olmalıdır

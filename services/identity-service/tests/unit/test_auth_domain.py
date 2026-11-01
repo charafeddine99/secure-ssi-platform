@@ -21,8 +21,10 @@ def test_supported_roles_are_closed_enum_values() -> None:
     }
 
 
-def test_admin_has_all_permissions() -> None:
-    assert set(permissions_for_roles((Role.ADMIN,))) == set(Permission)
+def test_admin_has_all_permissions_except_credential_revocation() -> None:
+    assert set(permissions_for_roles((Role.ADMIN,))) == set(Permission) - {
+        Permission.CREDENTIALS_REVOKE
+    }
 
 
 def test_issuer_preserves_existing_permissions_but_cannot_manage_keys() -> None:

@@ -58,7 +58,7 @@ def _create_session(
         json={
             "purpose": "WP-08 Policy Integration Test",
             "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-            "requestedFields": fields or ["degree", "gpa"],
+            "requestedFields": fields or ["degree", "programCode"],
             "ttlSeconds": ttl,
         },
         headers=headers,
@@ -93,8 +93,10 @@ def _make_valid_vp_token(*, nonce: str, expired: bool = False) -> dict[str, Any]
         "validUntil": valid_until,
         "credentialSubject": {
             "id": SYNTHETIC_HOLDER_DID,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
     proof_service = build_local_proof_service(clock=lambda: now)
@@ -122,8 +124,10 @@ def _make_invalid_sig_vp_token(*, nonce: str) -> dict[str, Any]:
         "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
         "credentialSubject": {
             "id": SYNTHETIC_HOLDER_DID,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
         "proof": {
             "type": "DataIntegrityProof",
@@ -181,6 +185,40 @@ class TestWp08PolicyEvaluatorViaApi:
         hdrs = _verifier_headers()
         sess = _create_session(hdrs)
         vp = _make_valid_vp_token(nonce=sess["nonce"])
+
+        # A successful verifier decision requires a server-recorded, session-
+        # bound Holder approval even when the cryptographic and risk checks pass.
+        from app.api.v1 import dependencies
+        from app.domain.oid4vp import ConsentAction, ConsentDecision
+        from app.infrastructure.crypto.local_holder_key_provider import (
+            SYNTHETIC_HOLDER_DID,
+        )
+
+        manager = dependencies.get_mongo_connection_manager()
+        session_repository = dependencies.get_verification_session_repository(
+            manager=manager
+        )
+        stored_session = session_repository.get_by_session_id(sess["sessionId"])
+        assert stored_session is not None
+        credential = vp["verifiableCredential"][0]
+        subject = credential["credentialSubject"]
+        session_repository.record_consent(
+            stored_session.session_id,
+            consent_decision=ConsentDecision(
+                session_id=stored_session.session_id,
+                verifier_did=stored_session.verifier_did,
+                client_id=stored_session.client_id,
+                purpose=stored_session.purpose,
+                nonce=stored_session.nonce,
+                holder_did=SYNTHETIC_HOLDER_DID,
+                decision=ConsentAction.APPROVE,
+                approved_credentials=(credential["id"],),
+                requested_claims=stored_session.requested_fields,
+                approved_claims={key: value for key, value in subject.items() if key != "id"},
+                expires_at=stored_session.expires_at,
+            ),
+            expected_version=stored_session.version,
+        )
 
         res = client.post("/api/v1/oid4vp/response", json={
             "sessionId": sess["sessionId"],

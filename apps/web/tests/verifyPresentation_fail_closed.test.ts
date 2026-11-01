@@ -223,7 +223,7 @@ async function runTests() {
     // ------------------------------------------------------------------------
     {
       console.log("Test 7: Missing backend credential status must not default to ACTIVE");
-      mockStorage.ssi_access_token = "mock-test-jwt-token";
+      mockStorage.ssi_session_active = "1";
       globalThis.fetch = async () => new Response(JSON.stringify({
         credentials: [{ credentialId: "credential-without-status" }]
       }), {
@@ -233,7 +233,7 @@ async function runTests() {
 
       const credentials = await fetchCredentials(undefined, undefined, "wallet_test_1234567890123456");
       assert.strictEqual(credentials[0]?.status, "UNKNOWN");
-      delete mockStorage.ssi_access_token;
+      delete mockStorage.ssi_session_active;
       console.log("  ✓ PASSED: Missing credential status normalized to UNKNOWN\n");
     }
 

@@ -44,7 +44,7 @@ def _all_ok() -> dict[str, PolicyCheckResult]:
     }
 
 
-def _evaluate(**overrides: PolicyCheckResult | int) -> VerificationPolicyResult:
+def _evaluate(**overrides: PolicyCheckResult | int | None) -> VerificationPolicyResult:
     """Call VerificationPolicyEvaluator.evaluate with all-OK defaults, plus overrides."""
     kwargs = _all_ok()
     ai_score = overrides.pop("ai_risk_score", 10)
@@ -254,6 +254,15 @@ class TestCryptographicFailureHierarchy:
         assert result.first_failure is None
         assert result.all_crypto_passed is True
 
+    def test_all_pass_risk_unavailable_is_rejected_without_fabricated_score(self) -> None:
+        result = _evaluate(ai_risk_score=None)
+
+        assert result.decision is PolicyDecision.REJECTED
+        assert result.ai_risk_level is AiRiskLevel.UNAVAILABLE
+        assert result.ai_risk_score is None
+        assert result.details["riskAssessmentStatus"] == "UNAVAILABLE"
+        assert result.to_audit_dict()["aiRiskScore"] is None
+
 
 # ---------------------------------------------------------------------------
 # VerificationPolicyEvaluator — AI gate (all crypto pass)
@@ -330,6 +339,16 @@ class TestScoreClamping:
         result = _evaluate(ai_risk_score=-5)
         assert result.ai_risk_score == 0
         assert result.ai_risk_level is AiRiskLevel.LOW
+
+    def test_missing_score_requires_unavailable_level(self) -> None:
+        checks = tuple(PolicyCheckResult.ok(n) for n in PolicyCheckName)
+        with pytest.raises(ValueError, match="ai_risk_level=UNAVAILABLE"):
+            VerificationPolicyResult(
+                decision=PolicyDecision.REJECTED,
+                crypto_checks=checks,
+                ai_risk_level=AiRiskLevel.LOW,
+                ai_risk_score=None,
+            )
 
 
 # ---------------------------------------------------------------------------

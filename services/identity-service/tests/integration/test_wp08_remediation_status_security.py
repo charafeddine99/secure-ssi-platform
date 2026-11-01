@@ -21,6 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.api.v1 import dependencies
 from app.application.services.oid4vp_service import fraud_client
 from app.infrastructure import cache_and_anchor
 from app.api.v1.dependencies import (
@@ -50,6 +51,7 @@ from app.infrastructure.crypto.multibase import encode_base58_btc
 from app.domain.bitstring_status_list import StatusListPublication, StatusPurpose
 from app.domain.credential_status import CredentialStatus
 from app.domain.did import DidResolutionMetadata, DidResolutionResult
+from app.domain.oid4vp import ConsentAction, ConsentDecision
 from app.services.did_document_validator import (
     DID_V1_CONTEXT,
     MULTIKEY_V1_CONTEXT,
@@ -87,13 +89,42 @@ def _create_session(headers: dict[str, str]) -> dict[str, Any]:
         json={
             "purpose": "WP-08 Remediation Test",
             "requestedCredentialTypes": ["UniversityAffiliationCredential"],
-            "requestedFields": ["degree", "gpa"],
+            "requestedFields": ["degree", "programCode"],
             "ttlSeconds": 300,
         },
         headers=headers,
     )
     assert res.status_code == 201, f"Session create failed: {res.text}"
     return res.json()
+
+
+def _record_test_consent(
+    session: dict[str, Any], vp_token: dict[str, Any]
+) -> None:
+    """Record the explicit Holder decision required by the local OID4VP profile."""
+    manager = dependencies.get_mongo_connection_manager()
+    sessions = dependencies.get_verification_session_repository(manager=manager)
+    stored = sessions.get_by_session_id(session["sessionId"])
+    assert stored is not None
+    credential = vp_token["verifiableCredential"][0]
+    subject = credential["credentialSubject"]
+    sessions.record_consent(
+        stored.session_id,
+        consent_decision=ConsentDecision(
+            session_id=stored.session_id,
+            verifier_did=stored.verifier_did,
+            client_id=stored.client_id,
+            purpose=stored.purpose,
+            nonce=stored.nonce,
+            holder_did=vp_token["holder"],
+            decision=ConsentAction.APPROVE,
+            approved_credentials=(credential["id"],),
+            requested_claims=stored.requested_fields,
+            approved_claims={key: value for key, value in subject.items() if key != "id"},
+            expires_at=stored.expires_at,
+        ),
+        expected_version=stored.version,
+    )
 
 
 def _make_vc_with_status(
@@ -120,8 +151,10 @@ def _make_vc_with_status(
         "validUntil": (now + timedelta(days=365)).isoformat().replace("+00:00", "Z"),
         "credentialSubject": {
             "id": SYNTHETIC_HOLDER_DID,
-            "degree": "MSc Computer Science",
-            "gpa": "3.95",
+            "affiliation": "student",
+            "programCode": "SYN-CS-001",
+            "degree": "Bachelor of Science",
+            "graduationYear": 2026,
         },
     }
     if include_status:
@@ -546,6 +579,7 @@ class TestWp08R2SuspensionStatusEnforcement:
             status_list_index=42,
             status_list_url="http://localhost:8001/api/v1/status-lists/suspension-000000000000000000000001",
         )
+        _record_test_consent(session, vp_token)
 
         pub = _generate_status_list_publication(
             status_list_id="suspension-000000000000000000000001",
@@ -576,6 +610,7 @@ class TestWp08R2SuspensionStatusEnforcement:
             status_list_index=42,
             status_list_url="http://localhost:8001/api/v1/status-lists/suspension-000000000000000000000001",
         )
+        _record_test_consent(session, vp_token)
 
         pub = _generate_status_list_publication(
             status_list_id="suspension-000000000000000000000001",
@@ -795,6 +830,7 @@ class TestWp08R3StatusListProofValidation:
             nonce=session["nonce"],
             status_list_index=10,
         )
+        _record_test_consent(session, vp_token)
 
         pub = _generate_status_list_publication(active_indices=[])
         mock_sl = MagicMock()
@@ -869,6 +905,7 @@ class TestWp08R3StatusListProofValidation:
         headers = _verifier_headers()
         session = _create_session(headers)
         vp_token = _make_vc_with_status(nonce=session["nonce"], status_list_index=10)
+        _record_test_consent(session, vp_token)
         publication = _generate_status_list_publication(active_indices=[])
         document = copy.deepcopy(dict(publication.document))
         document["type"] = ["VerifiableCredential"]
@@ -906,6 +943,7 @@ class TestWp08R3StatusListProofValidation:
         headers = _verifier_headers()
         session = _create_session(headers)
         vp_token = _make_vc_with_status(nonce=session["nonce"], status_list_index=10)
+        _record_test_consent(session, vp_token)
         publication = _generate_status_list_publication(active_indices=[])
 
         key_provider = LocalHolderKeyProvider()

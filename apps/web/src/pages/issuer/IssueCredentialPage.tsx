@@ -1,294 +1,300 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, FileCheck2, QrCode, RefreshCw, ShieldCheck } from "lucide-react";
-import { QRCodeDisplay } from "../../components/common/QRCodeDisplay";
-import { StatusChip } from "../../components/common/StatusChip";
+import React from "react";
+import { useSearchParams } from "react-router-dom";
+import { IconArrowLeft, IconArrowRight, IconBraces, IconForms, IconRefresh } from "@tabler/icons-react";
 import {
   createOid4vciOffer,
   fetchOid4vciIssuerMetadata,
   getOid4vciOffer,
-  type Oid4vciIssuerMetadata,
   type Oid4vciOffer,
-} from "../../services/api";
+} from "../../api/issuance.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, DataGrid, Table } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { SelectField, TextAreaField, TextField } from "../../components/ui/Field.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { AsyncView } from "../../components/ui/AsyncView.tsx";
+import { QrPanel } from "../../components/ui/QrPanel.tsx";
+import { Badge } from "../../components/ui/StatusBadge.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { describeError } from "../../lib/http.ts";
+import { formatDateTime, humanize, renderClaimValue } from "../../lib/format.ts";
+import {
+  GRADUATION_YEAR_RANGE,
+  UNIVERSITY_AFFILIATIONS,
+  UNIVERSITY_CONFIG_ID,
+  UNIVERSITY_DEGREES,
+  defaultUniversityForm,
+  offerTone,
+  parseOfferDraft,
+  subjectTemplate,
+  universityErrors,
+  universitySubject,
+  type UniversityForm,
+} from "./issuerLogic.ts";
 
-type PageStep = "details" | "review" | "created";
-type MetadataState = "loading" | "ready" | "error";
+type Step = "details" | "review" | "created";
 
-const formatDate = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Not supplied" : date.toLocaleString();
-};
+const TERMINAL = ["CLAIMED", "EXPIRED", "REVOKED"];
 
 export const IssueCredentialPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const [metadata, setMetadata] = useState<Oid4vciIssuerMetadata | null>(null);
-  const [selectedConfiguration, setSelectedConfiguration] = useState("");
-  const [subjectJson, setSubjectJson] = useState("");
-  const [ttlSeconds, setTtlSeconds] = useState(1800);
-  const [userPin, setUserPin] = useState("");
-  const [reviewData, setReviewData] = useState<Record<string, unknown> | null>(null);
-  const [offer, setOffer] = useState<Oid4vciOffer | null>(null);
-  const [offerStatus, setOfferStatus] = useState("");
-  const [metadataState, setMetadataState] = useState<MetadataState>("loading");
-  const [metadataError, setMetadataError] = useState<string | null>(null);
-  const [step, setStep] = useState<PageStep>("details");
-  const [creating, setCreating] = useState(false);
-  const [refreshingOffer, setRefreshingOffer] = useState(false);
-  const [pollingError, setPollingError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [params] = useSearchParams();
+  const metadata = useAsync((signal) => fetchOid4vciIssuerMetadata(signal), []);
+  const [configId, setConfigId] = React.useState("");
+  const [subjectJson, setSubjectJson] = React.useState("");
+  const [recipientDid, setRecipientDid] = React.useState("");
+  const [ttlMinutes, setTtlMinutes] = React.useState("30");
+  const [pin, setPin] = React.useState("");
+  const [step, setStep] = React.useState<Step>("details");
+  const [subject, setSubject] = React.useState<Record<string, unknown> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [offer, setOffer] = React.useState<Oid4vciOffer | null>(null);
+  const [pollError, setPollError] = React.useState<string | null>(null);
+  const [uni, setUni] = React.useState<UniversityForm>(() => defaultUniversityForm());
+  const [uniErrors, setUniErrors] = React.useState<Partial<Record<keyof UniversityForm, string>>>({});
+  const [advanced, setAdvanced] = React.useState(false);
+  const structured = configId === UNIVERSITY_CONFIG_ID && !advanced;
 
-  const configurations = useMemo(
-    () => Object.entries(metadata?.credential_configurations_supported || {}),
-    [metadata],
-  );
+  const updateUni = (key: keyof UniversityForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const next = { ...uni, [key]: key === "programCode" ? event.target.value.toUpperCase() : event.target.value };
+    setUni(next);
+    setSubjectJson(JSON.stringify(universitySubject(next), null, 2));
+    if (uniErrors[key]) setUniErrors((current) => ({ ...current, [key]: undefined }));
+  };
 
-  const loadMetadata = useCallback(async () => {
-    setMetadataState("loading");
-    setMetadataError(null);
+  React.useEffect(() => {
+    if (metadata.status !== "success" || configId) return;
+    const available = metadata.data.credential_configurations_supported;
+    const requested = params.get("credentialConfigurationId") ?? "";
+    const initial = available[requested] ? requested : Object.keys(available)[0] ?? "";
+    setConfigId(initial);
+    setSubjectJson(subjectTemplate(initial));
+  }, [metadata.status, metadata.data, params, configId]);
+
+  const refresh = React.useCallback(async (offerId: string) => {
     try {
-      const result = await fetchOid4vciIssuerMetadata();
-      setMetadata(result);
-      const requested = searchParams.get("credentialConfigurationId") || "";
-      const available = result.credential_configurations_supported;
-      setSelectedConfiguration(available[requested] ? requested : Object.keys(available)[0] || "");
-      setMetadataState("ready");
+      setOffer(await getOid4vciOffer(offerId));
+      setPollError(null);
     } catch (cause) {
-      setMetadata(null);
-      setMetadataError(cause instanceof Error ? cause.message : "Issuer metadata could not be loaded.");
-      setMetadataState("error");
-    }
-  }, [searchParams]);
-
-  useEffect(() => { void loadMetadata(); }, [loadMetadata]);
-
-  const refreshOffer = useCallback(async (offerId: string) => {
-    try {
-      const current = await getOid4vciOffer(offerId);
-      setOffer(current);
-      setOfferStatus(current.status);
-      setPollingError(null);
-    } catch (cause) {
-      setPollingError(cause instanceof Error ? cause.message : "Offer status could not be refreshed.");
+      setPollError(describeError(cause));
     }
   }, []);
 
-  useEffect(() => {
-    const offerId = offer?.offerId;
-    if (!offerId || ["CLAIMED", "EXPIRED", "REVOKED"].includes(offerStatus.toUpperCase())) return;
-    const interval = window.setInterval(() => { void refreshOffer(offerId); }, 5000);
-    return () => window.clearInterval(interval);
-  }, [offer?.offerId, offerStatus, refreshOffer]);
+  React.useEffect(() => {
+    if (!offer || TERMINAL.includes(offer.status.toUpperCase())) return;
+    const timer = window.setInterval(() => { void refresh(offer.offerId); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [offer, refresh]);
 
-  const continueToReview = (event: React.FormEvent<HTMLFormElement>) => {
+  const onReview = (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (!selectedConfiguration || !metadata?.credential_configurations_supported[selectedConfiguration]) {
-      setError("Choose a configuration that is currently published in issuer metadata.");
-      return;
+    const ttl = Number(ttlMinutes);
+    if (!Number.isInteger(ttl) || ttl < 1 || ttl > 1440) { setError("Offer lifetime must be 1 to 1440 minutes."); return; }
+    if (structured) {
+      const problems = universityErrors(uni);
+      setUniErrors(problems);
+      if (Object.keys(problems).length > 0) { setError("Some attributes need attention."); return; }
     }
-    let subjectData: unknown;
-    try {
-      subjectData = JSON.parse(subjectJson);
-    } catch {
-      setError("Enter valid JSON for the credential subject data.");
-      return;
-    }
-    if (!subjectData || typeof subjectData !== "object" || Array.isArray(subjectData)) {
-      setError("Subject data must be a JSON object.");
-      return;
-    }
-    if (userPin && !/^\d{4,8}$/.test(userPin)) {
-      setError("The optional user PIN must contain 4 to 8 digits.");
-      return;
-    }
-    setReviewData(subjectData as Record<string, unknown>);
+    const parsed = parseOfferDraft(structured ? JSON.stringify(universitySubject(uni)) : subjectJson, recipientDid.trim(), pin.trim(), configId);
+    if ("error" in parsed) { setError(parsed.error); return; }
+    setSubject(parsed.subject);
     setStep("review");
   };
 
-  const createOffer = async () => {
-    if (!reviewData || !selectedConfiguration) return;
-    setError(null);
-    setPollingError(null);
+  const onCreate = async () => {
+    if (!subject || !configId) return;
     setCreating(true);
+    setError(null);
     try {
       const created = await createOid4vciOffer({
-        credentialConfigurationIds: [selectedConfiguration],
-        subjectData: reviewData,
-        ttlSeconds,
-        userPin: userPin || undefined,
+        credentialConfigurationIds: [configId],
+        subjectData: subject,
+        recipientDid: recipientDid.trim() || undefined,
+        ttlSeconds: Number(ttlMinutes) * 60,
+        userPin: pin.trim() || undefined,
       });
       setOffer(created);
-      setOfferStatus(created.status);
       setStep("created");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The credential offer could not be created.");
+      setError(describeError(cause));
     } finally {
       setCreating(false);
     }
   };
 
-  const refreshOfferManually = async () => {
-    if (!offer?.offerId) return;
-    setRefreshingOffer(true);
-    await refreshOffer(offer.offerId);
-    setRefreshingOffer(false);
-  };
+  const restart = () => { setOffer(null); setSubject(null); setPin(""); setStep("details"); setError(null); };
 
-  const copyOfferLink = async () => {
-    if (!offer?.deepLinkUri) return;
-    try {
-      await navigator.clipboard.writeText(offer.deepLinkUri);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setError("The offer link could not be copied. Use the accessible offer URI below.");
-    }
-  };
-
-  const resetOffer = () => {
-    setOffer(null);
-    setOfferStatus("");
-    setReviewData(null);
-    setSubjectJson("");
-    setUserPin("");
-    setStep("details");
-    setError(null);
-    setPollingError(null);
-  };
-
-  const selectedProfile = metadata?.credential_configurations_supported[selectedConfiguration];
-  const selectedName = selectedProfile?.display?.find((item) => item.name)?.name || selectedConfiguration;
+  const stepOrder = ["details", "review", "created"].indexOf(step);
 
   return (
-    <main className="workspace-page issuer-page issuer-issue-page">
-      <Link className="workspace-text-action issuer-back-link" to="/issuer"><ArrowLeft size={16} aria-hidden="true" /> Issuer overview</Link>
-      <header className="workspace-page-header issuer-page-header">
-        <div>
-          <p className="workspace-eyebrow">OID4VCI · Offer creation</p>
-          <h1>Create a credential offer</h1>
-          <p>Use a published configuration, review the offer details, then create a claim link for a holder wallet.</p>
-        </div>
-      </header>
-
-      {metadataState === "loading" && (
-        <section className="issuer-data-state" role="status" aria-busy="true">
-          <span className="issuer-loading-mark" aria-hidden="true"><RefreshCw size={17} /></span>
-          <div><strong>Loading issuer configurations</strong><p>Offer creation will be available when published metadata is loaded.</p></div>
-        </section>
-      )}
-      {metadataState === "error" && (
-        <section className="issuer-data-state issuer-data-state--error" role="alert">
-          <span className="issuer-loading-mark" aria-hidden="true"><FileCheck2 size={18} /></span>
-          <div className="issuer-data-state__copy"><strong>Issuer metadata could not be loaded</strong><p>{metadataError}</p></div>
-          <button type="button" className="workspace-secondary-action" onClick={() => void loadMetadata()}>Retry</button>
-        </section>
-      )}
-      {metadataState === "ready" && configurations.length === 0 && (
-        <section className="issuer-data-state issuer-data-state--empty">
-          <span className="issuer-loading-mark" aria-hidden="true"><FileCheck2 size={18} /></span>
-          <div><strong>Offer creation is unavailable</strong><p>The metadata endpoint returned no credential configurations supported for issuance.</p></div>
-        </section>
-      )}
-
-      {error && <div className="workspace-error issuer-form-error" role="alert">{error}</div>}
-
-      {metadataState === "ready" && configurations.length > 0 && step !== "created" && (
-        <>
-          <ol className="issuer-stepper" aria-label="Offer creation steps">
-            <li className={step === "details" ? "is-current" : "is-complete"}><span>{step === "details" ? "1" : <Check size={14} aria-hidden="true" />}</span><div><strong>Offer details</strong><small>Configuration and subject data</small></div></li>
-            <li className={step === "review" ? "is-current" : ""}><span>2</span><div><strong>Review</strong><small>Confirm before creating</small></div></li>
+    <Page
+      eyebrow="Issuer workspace"
+      title="Create credential offer"
+      breadcrumbs={[{ label: "Issuer", to: "/issuer" }, { label: "Create offer" }]}
+    >
+      <div className="card">
+        <div className="card-body py-3">
+          <ol className="steps steps-counter steps-blue my-2" aria-label="Offer progress">
+            {(["details", "review", "created"] as Step[]).map((s, i) => (
+              <li key={s} className={["step-item", i === stepOrder ? "active" : ""].filter(Boolean).join(" ")} aria-current={i === stepOrder ? "step" : undefined}>
+                {s === "details" ? "Details" : s === "review" ? "Review" : "Share with holder"}
+                <span className="visually-hidden"> — {i < stepOrder ? "completed" : i === stepOrder ? "current step" : "not started"}</span>
+              </li>
+            ))}
           </ol>
+        </div>
+      </div>
 
-          {step === "details" && (
-            <form className="workspace-panel workspace-form issuer-form-panel" onSubmit={continueToReview}>
-              <div className="issuer-form-section-heading"><span className="issuer-config-card__icon"><FileCheck2 size={19} aria-hidden="true" /></span><div><h2>Offer details</h2><p>Configuration choices come from the current issuer metadata response.</p></div></div>
-              <div className="workspace-form-grid issuer-form-grid">
-                <label className="workspace-field">
-                  <span>Credential configuration</span>
-                  <select className="form-select" value={selectedConfiguration} onChange={(event) => setSelectedConfiguration(event.target.value)} required>
-                    {configurations.map(([id, configuration]) => <option key={id} value={id}>{configuration.display?.find((item) => item.name)?.name || id}</option>)}
-                  </select>
-                  <small className="issuer-field-detail"><code>{selectedConfiguration}</code>{selectedProfile?.format && <> · {selectedProfile.format}</>}</small>
-                </label>
-                <label className="workspace-field">
-                  <span>Offer validity</span>
-                  <select className="form-select" value={ttlSeconds} onChange={(event) => setTtlSeconds(Number(event.target.value))}>
-                    <option value={300}>5 minutes</option><option value={900}>15 minutes</option><option value={1800}>30 minutes</option><option value={3600}>1 hour</option>
-                  </select>
-                  <small className="issuer-field-detail">The service will return the authoritative expiry time.</small>
-                </label>
-              </div>
-              <label className="workspace-field issuer-subject-field">
-                <span>Credential subject data <small>JSON object</small></span>
-                <textarea className="form-textarea workspace-json-input" value={subjectJson} onChange={(event) => setSubjectJson(event.target.value)} placeholder="Paste the JSON object for this credential subject" spellCheck={false} required aria-describedby="issuer-subject-help" />
-                <small id="issuer-subject-help">Enter only attributes verified by your organization and authorized for issuance. Data is sent to the Identity Service when you confirm creation.</small>
-              </label>
-              <label className="workspace-field issuer-pin-field">
-                <span>User PIN <small>Optional</small></span>
-                <input className="form-input" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={userPin} onChange={(event) => setUserPin(event.target.value)} placeholder="4–8 digits" aria-describedby="issuer-pin-help" />
-                <small id="issuer-pin-help">If used, the holder needs this PIN when claiming the offer.</small>
-              </label>
-              <div className="issuer-form-footer">
-                <p><ShieldCheck size={16} aria-hidden="true" /> Creating an offer does not issue a credential. The holder must complete the claim flow.</p>
-                <button type="submit" className="workspace-primary-action">Review offer <ArrowRight size={16} aria-hidden="true" /></button>
-              </div>
-            </form>
-          )}
-
-          {step === "review" && reviewData && (
-            <section className="workspace-panel issuer-review-panel" aria-labelledby="issuer-review-title">
-              <div className="issuer-form-section-heading"><span className="issuer-config-card__icon"><ShieldCheck size={19} aria-hidden="true" /></span><div><h2 id="issuer-review-title">Review offer details</h2><p>Confirm the configuration and offer settings before sending the request to the Identity Service.</p></div></div>
-              <dl className="issuer-review-list">
-                <div><dt>Credential configuration</dt><dd><strong>{selectedName}</strong><code>{selectedConfiguration}</code></dd></div>
-                <div><dt>Offer validity</dt><dd>{ttlSeconds / 60} minutes</dd></div>
-                <div><dt>Recipient identity</dt><dd>No recipient identifier is included in the current offer request.</dd></div>
-                <div><dt>User PIN</dt><dd>{userPin ? "Configured (value hidden)" : "Not configured"}</dd></div>
-                <div><dt>Subject attributes</dt><dd>{Object.keys(reviewData).length ? Object.keys(reviewData).join(", ") : "No attribute keys supplied"}</dd></div>
-              </dl>
-              <p className="issuer-review-note">The attribute values are intentionally not repeated in this review screen. Confirm only if the submitted data is accurate and authorized.</p>
-              <div className="issuer-review-actions">
-                <button type="button" className="workspace-secondary-action" onClick={() => { setError(null); setStep("details"); }}>Back to edit</button>
-                <button type="button" className="workspace-primary-action" onClick={() => void createOffer()} disabled={creating}>
-                  {creating ? <><RefreshCw size={16} className="spin" aria-hidden="true" /> Creating offer…</> : <><QrCode size={16} aria-hidden="true" /> Create offer</>}
-                </button>
-              </div>
-            </section>
-          )}
-        </>
-      )}
-
-      {step === "created" && offer && (
-        <section className="workspace-panel issuer-created-panel" aria-labelledby="issuer-created-title">
-          <div className="issuer-created-heading">
-            <span className="issuer-created-heading__icon"><CheckCircle2 size={22} aria-hidden="true" /></span>
-            <div><p className="workspace-eyebrow">Offer returned by service</p><h2 id="issuer-created-title">Credential offer created</h2><p>A credential is not issued until the holder completes the claim flow.</p></div>
-            <StatusChip status={offerStatus || offer.status} />
-          </div>
-          <div className="issuer-created-content">
-            <div className="issuer-created-qr">
-              {offer.deepLinkUri ? <QRCodeDisplay value={offer.deepLinkUri} size={196} title="Holder claim offer" subtitle="Scan with a compatible wallet" /> : <div className="issuer-data-state issuer-data-state--error" role="alert"><strong>QR unavailable</strong><p>The service response did not include an offer link.</p></div>}
-            </div>
-            <dl className="issuer-review-list issuer-offer-result-details">
-              <div><dt>Offer ID</dt><dd><code>{offer.offerId}</code></dd></div>
-              <div><dt>Configuration</dt><dd>{offer.credentialConfigurationIds.join(", ") || "Not supplied"}</dd></div>
-              <div><dt>Current status</dt><dd><StatusChip status={offerStatus || offer.status} size="sm" /></dd></div>
-              <div><dt>Expires</dt><dd>{formatDate(offer.expiresAt)}</dd></div>
-              <div><dt>Issuer endpoint</dt><dd><code>{offer.credentialIssuer || "Not supplied"}</code></dd></div>
-            </dl>
-          </div>
-          {pollingError && <div className="workspace-inline-error issuer-poll-error" role="status">Status refresh failed: {pollingError}</div>}
-          <div className="issuer-created-actions">
-            {offer.deepLinkUri && <button type="button" className="workspace-secondary-action" onClick={() => void copyOfferLink()}><Copy size={16} aria-hidden="true" /> {copied ? "Link copied" : "Copy offer link"}</button>}
-            <button type="button" className="workspace-secondary-action" onClick={() => void refreshOfferManually()} disabled={refreshingOffer}>
-              <RefreshCw size={16} aria-hidden="true" className={refreshingOffer ? "spin" : undefined} /> Refresh status
-            </button>
-            <button type="button" className="workspace-primary-action" onClick={resetOffer}>Create another offer</button>
-          </div>
-          {offer.deepLinkUri && <details className="issuer-uri-details"><summary>Show offer link</summary><code>{offer.deepLinkUri}</code></details>}
-          {error && <div className="workspace-error" role="alert">{error}</div>}
-        </section>
-      )}
-    </main>
+      <AsyncView state={metadata} onRetry={metadata.reload} loadingLabel="Loading issuer metadata" errorTitle="Issuer metadata could not be loaded">
+        {(data) => {
+          const configs = Object.entries(data.credential_configurations_supported);
+          if (step === "details") {
+            return (
+              <form onSubmit={onReview} noValidate>
+                <Card
+                  title="Offer details"
+                  footer={(
+                    <div className="d-flex justify-content-end">
+                      <Button type="submit" icon={<IconArrowRight aria-hidden="true" />}>Review offer</Button>
+                    </div>
+                  )}
+                >
+                  <div className="row">
+                    <div className="col-lg-7">
+                      <SelectField label="Credential type" value={configId} onChange={(e) => { setConfigId(e.target.value); setSubjectJson(subjectTemplate(e.target.value)); setUni(defaultUniversityForm()); setUniErrors({}); setAdvanced(false); }} required>
+                        {configs.map(([id, config]) => <option key={id} value={id}>{config.display?.[0]?.name ?? humanize(id)}</option>)}
+                      </SelectField>
+                      {configId === UNIVERSITY_CONFIG_ID && (
+                        <div className="d-flex align-items-center justify-content-between mb-2">
+                          <span className="form-label mb-0">Subject attributes</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { if (advanced) setUni(defaultUniversityForm()); setAdvanced((value) => !value); }}
+                            icon={advanced ? <IconForms aria-hidden="true" /> : <IconBraces aria-hidden="true" />}
+                            aria-pressed={advanced}
+                          >
+                            {advanced ? "Use form" : "Edit as JSON"}
+                          </Button>
+                        </div>
+                      )}
+                      {structured ? (
+                        <div className="row">
+                          <SelectField groupClassName="col-md-6 mb-3" label="Affiliation" value={uni.affiliation} onChange={updateUni("affiliation")} error={uniErrors.affiliation} required>
+                            {UNIVERSITY_AFFILIATIONS.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
+                          </SelectField>
+                          <SelectField groupClassName="col-md-6 mb-3" label="Degree" value={uni.degree} onChange={updateUni("degree")} error={uniErrors.degree} required>
+                            <option value="">Choose a degree…</option>
+                            {UNIVERSITY_DEGREES.map((value) => <option key={value} value={value}>{value}</option>)}
+                          </SelectField>
+                          <TextField
+                            groupClassName="col-md-6 mb-3"
+                            label="Programme code"
+                            hint="Format SYN-…, e.g. SYN-CS-301."
+                            value={uni.programCode}
+                            onChange={updateUni("programCode")}
+                            error={uniErrors.programCode}
+                            className="font-monospace"
+                            spellCheck={false}
+                            autoComplete="off"
+                            required
+                          />
+                          <TextField
+                            groupClassName="col-md-6 mb-3"
+                            label="Graduation year"
+                            type="number"
+                            min={GRADUATION_YEAR_RANGE.min}
+                            max={GRADUATION_YEAR_RANGE.max}
+                            value={uni.graduationYear}
+                            onChange={updateUni("graduationYear")}
+                            error={uniErrors.graduationYear}
+                            required
+                          />
+                          <p className="small text-secondary mb-3">Use only data the holder has agreed to have issued.</p>
+                        </div>
+                      ) : (
+                        <TextAreaField
+                          label="Subject attributes (JSON)"
+                          hint={configId === UNIVERSITY_CONFIG_ID
+                            ? `Keys: affiliation (${UNIVERSITY_AFFILIATIONS.join(", ")}), programCode (SYN-…), degree (${UNIVERSITY_DEGREES.join(", ")}), graduationYear.`
+                            : "Use only data the holder has agreed to have issued."}
+                          rows={10}
+                          value={subjectJson}
+                          onChange={(e) => setSubjectJson(e.target.value)}
+                          spellCheck={false}
+                          mono
+                          required
+                        />
+                      )}
+                    </div>
+                    <div className="col-lg-5">
+                      <TextField label="Recipient DID (optional)" hint="Restricts the offer to this wallet DID." value={recipientDid} onChange={(e) => setRecipientDid(e.target.value)} spellCheck={false} autoComplete="off" />
+                      <TextField label="Offer lifetime (minutes)" type="number" min={1} max={1440} value={ttlMinutes} onChange={(e) => setTtlMinutes(e.target.value)} required />
+                      <TextField label="Transaction code (optional)" hint="4–8 digits. Send it to the holder through a different channel." value={pin} onChange={(e) => setPin(e.target.value)} inputMode="numeric" autoComplete="off" />
+                    </div>
+                  </div>
+                  {error && <Alert tone="danger" live="assertive" title="Check the offer details">{error}</Alert>}
+                </Card>
+              </form>
+            );
+          }
+          if (step === "review" && subject) {
+            return (
+              <Card
+                title="Review before creating"
+                flush
+                footer={(
+                  <div className="btn-list justify-content-end">
+                    <Button variant="secondary" onClick={() => setStep("details")} icon={<IconArrowLeft aria-hidden="true" />} disabled={creating}>Edit</Button>
+                    <Button onClick={onCreate} loading={creating}>Create offer</Button>
+                  </div>
+                )}
+              >
+                <div className="card-body">
+                  <DataGrid items={[
+                    { label: "Credential type", value: humanize(configId) },
+                    { label: "Recipient", value: recipientDid.trim() || "Any wallet holding the offer link" },
+                    { label: "Lifetime", value: `${ttlMinutes} minutes` },
+                    { label: "Transaction code", value: pin ? "Required (not shown)" : "Not required" },
+                  ]} />
+                </div>
+                <Table caption="Subject attributes">
+                  <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th></tr></thead>
+                  <tbody>{Object.entries(subject).map(([k, v]) => <tr key={k}><th scope="row" className="fw-medium">{k}</th><td data-label="Value">{renderClaimValue(v)}</td></tr>)}</tbody>
+                </Table>
+                {error && <div className="card-body"><Alert tone="danger" live="assertive" title="Offer not created">{error}</Alert></div>}
+              </Card>
+            );
+          }
+          if (offer) {
+            return (
+              <Grid cols={2}>
+                <Card
+                  title="Offer created"
+                  subtitle="Share only with the holder: the link works until claimed."
+                  actions={<Badge tone={offerTone(offer.status)}>{humanize(offer.status)}</Badge>}
+                  footer={(
+                    <div className="btn-list">
+                      <Button variant="secondary" size="sm" onClick={() => refresh(offer.offerId)} icon={<IconRefresh aria-hidden="true" />}>Refresh status</Button>
+                      <Button variant="ghost" size="sm" onClick={restart}>Create another offer</Button>
+                    </div>
+                  )}
+                >
+                  <DataGrid items={[
+                    { label: "Credential type", value: offer.credentialConfigurationIds.map(humanize).join(", ") },
+                    { label: "Expires", value: formatDateTime(offer.expiresAt) },
+                    { label: "Status", value: TERMINAL.includes(offer.status.toUpperCase()) ? humanize(offer.status) : "Waiting for the holder (checked every 5 seconds)" },
+                  ]} />
+                  {pollError && <Alert tone="warning" title="Status could not be refreshed" className="mt-3">{pollError}</Alert>}
+                </Card>
+                <Card title="Offer QR code"><QrPanel value={offer.qrPayload || offer.deepLinkUri} label="OID4VCI credential offer" /></Card>
+              </Grid>
+            );
+          }
+          return null;
+        }}
+      </AsyncView>
+    </Page>
   );
 };

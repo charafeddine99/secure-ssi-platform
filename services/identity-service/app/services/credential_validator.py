@@ -13,11 +13,16 @@ VC_V2_CONTEXT = "https://www.w3.org/ns/credentials/v2"
 UNIVERSITY_CONTEXT = (
     "https://secure-ssi.example/contexts/university-affiliation/v1"
 )
-ALLOWED_CONTEXTS = [VC_V2_CONTEXT, UNIVERSITY_CONTEXT]
-ALLOWED_TYPES = [
-    "VerifiableCredential",
-    "UniversityAffiliationCredential",
-]
+QEAA_CONTEXT = "https://secure-ssi.example/contexts/qeaa/v1"
+# These are the credential schemas the prototype can issue and validate. Keep
+# issuer metadata aligned with this map so it never advertises an unvalidated
+# credential type.
+CREDENTIAL_PROFILE_CONTEXTS = {
+    "UniversityAffiliationCredential": UNIVERSITY_CONTEXT,
+    "QualifiedElectronicAttestationCredential": QEAA_CONTEXT,
+}
+ALLOWED_CONTEXTS = [VC_V2_CONTEXT, *CREDENTIAL_PROFILE_CONTEXTS.values()]
+ALLOWED_TYPES = ["VerifiableCredential", *CREDENTIAL_PROFILE_CONTEXTS]
 ALLOWED_AFFILIATIONS = {"student", "faculty", "staff"}
 REQUIRED_CREDENTIAL_FIELDS = {
     "@context",
@@ -170,7 +175,9 @@ class CredentialProfileValidator:
         self._validate_top_level_shape(normalized, require_proof=require_proof)
         self._validate_context_and_type(normalized)
         self._validate_identifiers(normalized)
-        self._validate_subject(normalized["credentialSubject"])
+        self._validate_subject(
+            normalized["credentialSubject"], normalized["type"][1]
+        )
         credential_status = normalized.get("credentialStatus")
         if credential_status is not None:
             self._validate_credential_status(credential_status)
@@ -213,24 +220,22 @@ class CredentialProfileValidator:
             )
 
     def _validate_context_and_type(self, credential: dict[str, Any]) -> None:
-        ctx = credential.get("@context")
-        if ctx not in [
-            ALLOWED_CONTEXTS,
-            [VC_V2_CONTEXT, UNIVERSITY_CONTEXT],
-            [VC_V2_CONTEXT, "https://secure-ssi.example/contexts/qeaa/v1"],
-        ]:
-            self._raise(
-                VerificationReasonCode.UNSUPPORTED_CONTEXT,
-                "Credential contexts do not match the pinned profile.",
-            )
         types = credential.get("type")
-        if types not in [
-            ALLOWED_TYPES,
-            ["VerifiableCredential", "QualifiedElectronicAttestationCredential"],
-        ]:
+        if (
+            not isinstance(types, list)
+            or len(types) != 2
+            or types[0] != "VerifiableCredential"
+            or types[1] not in CREDENTIAL_PROFILE_CONTEXTS
+        ):
             self._raise(
                 VerificationReasonCode.UNSUPPORTED_TYPE,
                 "Credential types do not match the approved profile.",
+            )
+        expected_context = [VC_V2_CONTEXT, CREDENTIAL_PROFILE_CONTEXTS[types[1]]]
+        if credential.get("@context") != expected_context:
+            self._raise(
+                VerificationReasonCode.UNSUPPORTED_CONTEXT,
+                "Credential contexts do not match the pinned profile.",
             )
 
     def _validate_identifiers(self, credential: dict[str, Any]) -> None:
@@ -266,7 +271,7 @@ class CredentialProfileValidator:
                 "Issuer must use an approved did:web identifier.",
             )
 
-    def _validate_subject(self, subject: Any) -> None:
+    def _validate_subject(self, subject: Any, credential_type: str) -> None:
         if not isinstance(subject, dict):
             self._raise(
                 VerificationReasonCode.UNSUPPORTED_CLAIM,
@@ -282,7 +287,7 @@ class CredentialProfileValidator:
                 VerificationReasonCode.INVALID_IDENTIFIER,
                 "Credential subject must use a synthetic did:key identifier.",
             )
-        if "affiliation" in subject and not any(k in subject for k in ("Sertifika Sahibi", "Unvan")):
+        if credential_type == "UniversityAffiliationCredential":
             if not set(subject).issubset(REQUIRED_SUBJECT_FIELDS) or "id" not in subject:
                 self._raise(
                     VerificationReasonCode.UNSUPPORTED_CLAIM,

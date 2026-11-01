@@ -15,6 +15,7 @@ services:
     build: ./services/api-gateway
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
+      GATEWAY_HSTS_ENABLED: ${GATEWAY_HSTS_ENABLED:-false}
       IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
       FRAUD_SERVICE_URL: ${FRAUD_SERVICE_URL:-http://fraud-service:8000}
       RECOVERY_SERVICE_URL: ${RECOVERY_SERVICE_URL:-http://recovery-service:8000}
@@ -26,6 +27,12 @@ services:
       recovery-service:
         condition: service_healthy
     ports: ["127.0.0.1:8000:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -53,6 +60,8 @@ services:
       IDENTITY_AUTH_ACCESS_TOKEN_SECONDS: ${IDENTITY_AUTH_ACCESS_TOKEN_SECONDS:-900}
       IDENTITY_AUTH_JWT_ALGORITHM: ${IDENTITY_AUTH_JWT_ALGORITHM:-HS256}
       IDENTITY_AUTH_JWT_SECRET: ${IDENTITY_AUTH_JWT_SECRET:-}
+      FRAUD_SERVICE_URL: ${FRAUD_SERVICE_URL:-http://fraud-service:8000}
+      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-}
       IDENTITY_AUTH_FIXTURE_USERS_ENABLED: ${IDENTITY_AUTH_FIXTURE_USERS_ENABLED:-true}
       IDENTITY_AUTH_CLOCK_SKEW_SECONDS: ${IDENTITY_AUTH_CLOCK_SKEW_SECONDS:-10}
       IDENTITY_AUTH_USER_PROVIDER: ${IDENTITY_AUTH_USER_PROVIDER:-synthetic}
@@ -118,6 +127,12 @@ services:
       mongodb:
         condition: service_healthy
     ports: ["127.0.0.1:8001:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -130,7 +145,19 @@ services:
     build: ./services/fraud-service
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
+      IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
+      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-}
+      FRAUD_CORS_ORIGINS: ${FRAUD_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5178,http://127.0.0.1:5178}
+    depends_on:
+      identity-service:
+        condition: service_healthy
     ports: ["127.0.0.1:8002:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -151,12 +178,14 @@ services:
       RECOVERY_AUTH_JWT_ISSUER: ${RECOVERY_AUTH_JWT_ISSUER:-secure-ssi-identity-service}
       RECOVERY_AUTH_JWT_AUDIENCE: ${RECOVERY_AUTH_JWT_AUDIENCE:-identity-service}
       RECOVERY_AUTH_JWT_ALGORITHM: ${RECOVERY_AUTH_JWT_ALGORITHM:-HS256}
-      RECOVERY_AUTH_JWT_SECRET: ${RECOVERY_AUTH_JWT_SECRET:-}
+      # Must equal the Identity Service signing secret; one source prevents drift (recovery 401s).
+      RECOVERY_AUTH_JWT_SECRET: ${IDENTITY_AUTH_JWT_SECRET:-}
       RECOVERY_AUTH_CLOCK_SKEW_SECONDS: ${RECOVERY_AUTH_CLOCK_SKEW_SECONDS:-10}
       RECOVERY_IDENTITY_BASE_URL: ${RECOVERY_IDENTITY_BASE_URL:-http://identity-service:8000}
       RECOVERY_IDENTITY_GRANT_ISSUER: ${RECOVERY_IDENTITY_GRANT_ISSUER:-secure-ssi-recovery-service}
       RECOVERY_IDENTITY_GRANT_AUDIENCE: ${RECOVERY_IDENTITY_GRANT_AUDIENCE:-identity-service-recovery}
-      RECOVERY_IDENTITY_GRANT_SECRET: ${RECOVERY_IDENTITY_GRANT_SECRET:-}
+      # Must equal the Identity Service grant secret; one source prevents drift.
+      RECOVERY_IDENTITY_GRANT_SECRET: ${IDENTITY_RECOVERY_GRANT_SECRET:-}
       RECOVERY_IDENTITY_GRANT_LIFETIME_SECONDS: ${RECOVERY_IDENTITY_GRANT_LIFETIME_SECONDS:-60}
       RECOVERY_IDENTITY_TIMEOUT_SECONDS: ${RECOVERY_IDENTITY_TIMEOUT_SECONDS:-5}
       RECOVERY_SHARE_ENVELOPE_KEY_BASE64: ${RECOVERY_SHARE_ENVELOPE_KEY_BASE64:-}
@@ -178,6 +207,12 @@ services:
       mongodb:
         condition: service_healthy
     ports: ["127.0.0.1:8003:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

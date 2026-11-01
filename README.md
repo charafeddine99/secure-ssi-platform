@@ -191,25 +191,27 @@ The UI contains a recommended Issuer → Holder → Verifier walkthrough, but th
 
 ## 9. Verification & Automated Testing
 
-Use the focused commands documented by the relevant service. The latest documented root run was **not green**: 770 passed, 3 failed, 14 skipped; the residuals are recorded in the WP-08 acceptance report. The count is a dated result, not a claim about a future run.
+Use the focused commands documented by the relevant service. On 24 October 2026, branch `besna-dev` at HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73` was revalidated: five current-working-tree application images were rebuilt without cache and recreated; all seven Compose services were healthy; focused WP-08/OID4VP tests passed **52/52**; the full Identity regression passed **708 tests with 12 environment-gated skips**; the Fraud suite passed **21/21**; and the Identity AI-policy matrix passed **8/8**. Web plus four service health routes returned HTTP 200; unauthenticated OID4VP retrieval returned HTTP 401 through both Identity and Gateway. The served Web JavaScript hash matched the local production build. The repository-wide runner was attempted twice in the follow-up but was interrupted without a test summary; its earlier same-HEAD result of 820 passed, 13 skipped, 0 failed, plus 246 subtests remains historical evidence only. WP-08 scoped L3 checks pass; suspension restoration, live authenticated browser flow, L4 interoperability, and production readiness are not claimed. npm's 2 moderate/1 high build advisories remain unassessed; the offline audit could not identify them. WP-09 preserves the exact `[DEMO LAB / SYNTHETIC]` label and remains a disclosed untrained advisory heuristic. WP-10 now restricts on-chain credential revocation to the contract owner; Hardhat 20/20, anchor unit 8/8 and live loopback integration 7/7 passed, but the current-source Golden Path run is environment-blocked and existing contract deployments are unchanged. The current Windows runner and runtime findings are recorded in the [WP-11 report](reports/V2_1_WP11_WINDOWS_TEST_TOOLING.md). See the [WP-08 acceptance report](reports/V2_1_WP08_FINAL_ACCEPTANCE.md), [WP-09 report](reports/V2_1_WP09_AI_RISK_GROUNDING.md), [WP-10 report](reports/V2_1_WP10_BLOCKCHAIN_ANCHOR_SECURITY.md) and [test evidence register](docs/implementation/SECURE_SSI_PLATFORM_TEST_EVIDENCE.md) for scope and exact results.
 
 ```powershell
-# Root runner (known residual failures are documented in the reports)
-.\.venv\Scripts\python.exe run_tests.py
+# Windows Python test runner (replace the path with the checked-out repository root)
+$repo = 'C:\path\to\secure-ssi-platform'
+& "$repo\.venv\Scripts\python.exe" "$repo\run_tests.py"
 
-# 2. Blockchain & Smart Contracts Test Suite (19 tests)
-cd blockchain
-npx hardhat test
-cd ..
+# Optional: select one or more Python test trees
+& "$repo\.venv\Scripts\python.exe" "$repo\run_tests.py" --service services/identity-service --service services/recovery-service
 
-# 3. Frontend Production Build & TypeScript Verification
-cd apps/web
-npm run build
-cd ..
+# In PowerShell, use the .cmd launchers (npm.ps1/npx.ps1 may be restricted by execution policy).
+npm.cmd run lint --prefix apps/web
+npm.cmd test --prefix apps/web
+npm.cmd run build --prefix apps/web
+npm.cmd test --prefix blockchain
 
-# 4. Interactive End-to-End CLI Demo Flow
-.\.venv\Scripts\python.exe scripts/start_demo.py flow
+# Interactive local demo flow (from the repository root; requires backend services)
+& "$repo\.venv\Scripts\python.exe" "$repo\scripts\start_demo.py" flow
 ```
+
+The test runner launches each Python test tree as a separate pytest process, prints each suite's pytest exit status, continues to later suites after a failure, and returns zero only when all selected suites return zero. The frontend's native TypeScript tests require Node.js 22.18 or later; the frontend CI job uses Node.js 24, while the independent Hardhat job retains its separately configured runtime. A selected Python tree still requires its external services when its tests are integration tests; a timeout or interrupted run is not a pass. See the [WP-11 report](reports/V2_1_WP11_WINDOWS_TEST_TOOLING.md) for the current Windows socketpair blocker and the evidence limits.
 
 ---
 

@@ -153,6 +153,13 @@ class VerificationSessionResponse(Oid4ApiModel):
     rejected_claims: list[str] = Field(default_factory=list)
 
 
+class VerificationSessionListResponse(Oid4ApiModel):
+    items: list[VerificationSessionResponse]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class HolderOid4vpRequestResponse(Oid4ApiModel):
     """Protocol request context returned to an authenticated Holder wallet."""
 

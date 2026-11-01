@@ -13,7 +13,7 @@ async function runTests(): Promise<void> {
   const previousLocalStorage = globalThis.localStorage;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.localStorage = {
-    getItem: (key: string) => key === "ssi_access_token" ? "holder-bearer-token" : null,
+    getItem: (key: string) => key === "ssi_session_active" ? "1" : null,
     setItem: () => undefined,
     removeItem: () => undefined,
     clear: () => undefined,
@@ -56,7 +56,8 @@ async function runTests(): Promise<void> {
     const consentCall = calls[1];
     const consentPayload = JSON.parse(String(consentCall?.init?.body)) as Record<string, unknown>;
     assert(consentCall?.url.endsWith("/wallet-consent"), "consent uses the wallet-bound endpoint");
-    assert(new Headers(consentCall?.init?.headers).get("Authorization") === "Bearer holder-bearer-token", "consent includes the holder token");
+    assert(consentCall?.init?.credentials === "include" && !new Headers(consentCall?.init?.headers).has("Authorization"), "consent uses the HttpOnly session cookie, not a JS-held token");
+    assert(new Headers(consentCall?.init?.headers).get("X-SSI-Client") === "web", "consent sends the CSRF client header");
     assert(consentPayload.walletId === "wallet_1234567890123456", "consent binds the selected wallet");
 
     await createWalletOid4vpPresentation({
@@ -68,7 +69,7 @@ async function runTests(): Promise<void> {
     const presentationCall = calls[2];
     const presentationPayload = JSON.parse(String(presentationCall?.init?.body)) as Record<string, unknown>;
     assert(presentationCall?.url.endsWith("/wallet-presentation"), "presentation uses the wallet-bound endpoint");
-    assert(new Headers(presentationCall?.init?.headers).get("Authorization") === "Bearer holder-bearer-token", "presentation includes the holder token");
+    assert(presentationCall?.init?.credentials === "include", "presentation uses the HttpOnly session cookie");
     assert(JSON.stringify(presentationPayload.credentialIds) === JSON.stringify(["urn:vc:one"]), "presentation binds selected credential IDs");
 
     globalThis.localStorage.getItem = () => null;
@@ -79,9 +80,9 @@ async function runTests(): Promise<void> {
     } catch {
       missingTokenFailedClosed = true;
     }
-    assert(missingTokenFailedClosed && calls.length === callsBeforeMissingToken, "missing holder token fails before sending a consent request");
+    assert(missingTokenFailedClosed && calls.length === callsBeforeMissingToken, "a signed-out wallet fails before sending a consent request");
 
-    console.log("OID4VP wallet API contract checks passed (9 assertions).");
+    console.log("OID4VP wallet API contract checks passed (10 assertions).");
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.localStorage = previousLocalStorage;

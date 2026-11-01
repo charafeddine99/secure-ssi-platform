@@ -1,5 +1,209 @@
 # Secure SSI Platform — Test Evidence Register
 
+## Resume verification inventory — 24 October 2026
+
+The task resumed from the existing `besna-dev` tree without source changes. The working tree had no tracked modifications or staged files; the only untracked path was the preserved audit folder `UsersbesnaAppDataLocalTempsecure-ssi-root-audit-0f9c514d1e954437805097268207189e/`. HEAD was `70ae42b522638b6e1174e6bf370c28b5d8ec7701`. `git rev-list --left-right --count origin/besna-dev...HEAD` returned `0 5`: local `HEAD` is five commits ahead of the cached tracking ref, which remains at `a026df83bcb6b43451cb96a7eaed41877b5e198a`; this is not a live remote comparison. `git ls-remote --heads origin` again failed with `Could not resolve host: github.com`. No fetch or push was performed, so GitHub publication of commits after `a026df8` remains **UNVERIFIED**.
+
+| Exact command / working directory | Observed result | Boundary |
+|---|---|---|
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/test_credential_validator.py tests/unit/test_oid4vci_credential_profiles.py` | **30 passed, 0 failed, 0 skipped; 1 SQLite deprecation warning; exit 0.** | Re-confirmed current-source profile/context validation and OID4VCI metadata mapping. |
+| Repo root: `.\.venv\Scripts\python.exe -m pytest -q tests/test_run_tests_runner.py` | **3 passed, 0 failed; exit 0.** | WP-11 runner behavior. A preceding invocation used the wrong relative path `..\.venv\Scripts\python.exe` from repo root and failed to launch (0 tests collected/executed); corrected command above passed. |
+| Repo root: `node apps/web/tests/fraudMonitorLabel.test.mjs` | **3 passed, 0 failed; exit 0.** | SSR markup preserves literal `[DEMO LAB / SYNTHETIC]`; not a browser session. |
+| Repo root: `npm.cmd test --prefix blockchain` | **20 passing, 0 failing; exit 0.** | Includes unauthorized `RevocationRegistry.revokeCredential` rejection. Local Hardhat network, not an independent audit or public deployment. |
+| Repo root: `npm.cmd test --prefix apps/web` | **8 test files passed, 0 failed, 0 skipped; exit 0.** | Node contract/SSR tests; no browser E2E. |
+| Repo root: `npm.cmd run lint --prefix apps/web` | Exit 0; no diagnostics. | Static lint. |
+| Repo root: `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript passed; Vite 6.4.3 transformed 1,831 modules. | Build only; no visual, responsive or accessibility verification. |
+| Repo root: `git diff --check` | Exit 0. | Re-run after these evidence updates; generated build output is ignored. |
+
+The WP-05 HTTP TestClient filter and full Python suite were not retried because prior attempts on this same source stalled in Windows `socketpair`/AnyIO startup without pytest summaries. Docker remains unavailable through its Linux Engine named pipe. WP-08 current-source L3, browser Golden Path, WP-12 visual/accessibility and L4 interoperability therefore remain unverified or blocked as recorded in the final acceptance report.
+
+## Final-source WP-05 credential profile and OID4VCI metadata correction — 24 October 2026
+
+The cross-domain review found that issuer metadata advertised National ID and Driver License credential configurations that the validator did not implement, and issuance used the University context regardless of the credential type. The final-source fix shares a two-entry University/QEAA type-to-context map between validation and issuance, rejects unconfigured National ID/Driver License offers with HTTP 422, and emits OID4VCI `ldp_vc` `credential_definition` metadata with the matching VC v2 `@context` and `type`. The exact scope, standards basis and caveats are in the [WP-05 profile-alignment report](../../reports/V2_1_WP05_CREDENTIAL_PROFILE_ALIGNMENT.md).
+
+| Exact command / observation | Result | Scope and limitation |
+|---|---|---|
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/test_credential_validator.py tests/unit/test_oid4vci_credential_profiles.py` | **30 passed, 0 failed, 0 skipped; 1 SQLite deprecation warning; exit 0.** | Current-source unit/profile tests include metadata keys, exact `credential_definition` context/type pairs, University/QEAA validation shapes, and unsupported-type rejection. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py -k 'metadata_advertises_token_and_nonce_endpoints or offer_rejects_unconfigured_credential_profiles or qeaa_issuance_uses_the_validator_pinned_context'` | **Interrupted after 10 seconds; Ctrl+C; exit 1; no pytest summary.** | Windows TestClient/async loopback startup stalled. Counted as blocked, not as pass, fail, or skip. |
+| CWD `services/identity-service`: `python -m py_compile app\services\credential_validator.py app\application\services\oid4vci_service.py app\api\v1\oid4vci.py tests\test_credential_validator.py tests\unit\test_oid4vci_credential_profiles.py tests\integration\test_wp05_oid4vci_token_and_proof.py` | Exit 0 | Syntax check only; not runtime behavior. |
+| `docker version --format 'Client={{.Client.Version}} Server={{.Server.Version}}'` | Client 29.8.1; Server unavailable; Docker API named-pipe returned `permission denied`. | No final-source image rebuild or service smoke test. |
+| `git ls-remote --heads origin` | Exit 1; `Could not resolve host: github.com`. | Remote `besna-dev` freshness and SHA are unknown; no push was attempted. |
+
+**WP-05 remains PARTIAL** for the final source until the HTTP issuance regression, current full Identity suite and current-source Docker build/runtime can complete. The project's custom `.example` context was not shown to be externally resolvable, and QEAA is only a prototype profile; no external issuer interoperability, public context, government integration or accreditation is claimed.
+
+## Current-source WP-11 / WP-12 checks — 24 October 2026
+
+Branch `besna-dev`, initial HEAD `a026df83bcb6b43451cb96a7eaed41877b5e198a`; WP-11 source changes were present in the working tree. No application API, SSI protocol, credential, or verifier implementation code changed in this checkpoint.
+
+| Exact command / observation | Result | Scope and limitation |
+|---|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/test_run_tests_runner.py -q` | Exit 0; **3 passed, 0 failed** | Runner path resolution, continuation, first non-zero exit propagation, and pytest exit labels. |
+| `npm.cmd test --prefix apps/web` | Exit 0; **8 test files passed, 0 failed, 0 skipped** | Existing Node built-in TypeScript/ESM contract tests; not React browser E2E. |
+| `npm.cmd run lint --prefix apps/web` | Exit 0; no diagnostics | Full Web ESLint. |
+| `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript passed; Vite 6.4.3 transformed **1,831 modules** | Production bundle compilation; not a rendered visual or accessibility check. |
+| `git diff --check` | Exit 0; line-ending conversion notices only | No whitespace errors. |
+| `npm.cmd audit --prefix apps/web --offline --json` | Exit 0; cached local audit data reported **0** vulnerabilities across 264 dependencies | Read-only/offline lockfile audit; no network request or dependency modification. Does not reconcile the earlier Docker image install report of 2 moderate + 1 high advisories because those package paths/details and cache freshness were unavailable. |
+| `Get-NetTCPConnection`/`Test-NetConnection` for 3000, 13000, 18000–18003, 4173, 5173 and 5178 before starting local Vite | No listener reachable | No existing web/Compose screen was available on those ports. |
+| `npm.cmd run dev --prefix apps/web -- --host 127.0.0.1 --port 4173 --strictPort` | Vite started and printed `http://127.0.0.1:4173/`; then stopped by Ctrl+C | Host `Invoke-WebRequest` was denied with a Windows socket permission error. Computer Use ended before visual inspection because it could not determine Chrome's current URL. No rendered-screen claim is made. |
+
+The full Python runner was not counted as passing here. Its current-source attempt and the faulthandler reproduction are recorded in [WP-11 report](../../reports/V2_1_WP11_WINDOWS_TEST_TOOLING.md): the run was interrupted without a pytest summary while Starlette/AnyIO waited in the Windows `socketpair` fallback. It remains **BLOCKED** for this host; no firewall, AppLocker, or execution-policy change was attempted.
+
+WP-12 source review was limited to existing visible disclosures in `TrustBadge.tsx`, `SelectiveDisclosureSheet.tsx`, `NinePointVerificationMatrix.tsx`, `VerifyPresentationPage.tsx`, and the embedded Holder/Issuer/Verifier/Guardian/Admin portals. The review found disclosures that the current profile transmits the full signed credential, embedded portals are simulations, risk is an untrained heuristic, anchoring is optional and receipt-dependent, and no conformance certification is claimed. This was not a browser, accessibility scanner, keyboard, responsive, contrast, or screen-reader test. See [WP-12 report](../../reports/V2_1_WP12_GOLDEN_PATH_UX_TRUTHFULNESS.md).
+
+## Current-source WP-10 / G10 authorization and receipt revalidation — 24 October 2026
+
+The current contract source had left `RevocationRegistry.revokeCredential` public even though the operation records a global, irreversible revocation and the contract already declared an unused `onlyOwner` modifier. It now requires the owner; unauthorized calls revert without changing state. The contract suite was re-run after compiling the current Solidity 0.8.28 source.
+
+| Exact command / observation | Result | Scope / limitation |
+|---|---|---|
+| `npm.cmd test --prefix blockchain` | **20 passing, 0 failing.** Hardhat compiled one Solidity file. | Includes the new non-owner revocation test, owner path and duplicate-revocation path. The required compiler was absent from cache and downloaded by the configured Hardhat command; no project package or lockfile was changed. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/unit/test_blockchain_anchor.py` | **8 passed, 0 failed; 1 existing SQLite deprecation warning.** | Unit behavior for canonical hashing/redaction, anchor state transitions, offline, pending and reverted receipt handling. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_blockchain_anchoring.py`, with process-local `BLOCKCHAIN_ENABLED=true` and the local Hardhat test signer key | **7 passed, 0 failed, 0 skipped; 1 existing SQLite deprecation warning.** | Ephemeral loopback chain 1337; current compiled contracts were deployed at the deterministic local test addresses. The bridge's authorized owner signer received receipts for all tested anchor operations. FakeDatabase only; no public chain or durable Mongo evidence. Node process stopped after the run; no deployment metadata was written. |
+| CWD `services/identity-service`: `..\..\.venv\Scripts\python.exe -m pytest -q tests/integration/test_golden_path.py::test_golden_path_complete_lifecycle` | **BLOCKED / interrupted without a pytest summary.** | The test stalled in the Windows TestClient/asyncio Proactor path. It is not counted as pass or failure. Its source asserts unanchored-but-valid verification remains `ACCEPTED`; current-source execution remains unverified. |
+
+The three completed suites total **35 passed, 0 failed, 0 skipped** with two existing SQLite warnings. G10 is **PARTIAL for the current source** until the unaffected-credential Golden Path can be executed. See the [WP-10 report](../../reports/V2_1_WP10_BLOCKCHAIN_ANCHOR_SECURITY.md) for security scope, source changes, deployment caveat, and standards references.
+
+## Current-source WP-08 Docker L3 verification — 24 October 2026
+
+This entry supersedes the 23 October current-source status below, which predates the successful rebuild. **Repository state:** branch `besna-dev`; HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`. The four tracked documentation changes and pre-existing untracked audit folder were preserved. No source code or Compose file was edited, no paths were staged, and no commit, push, merge, reset, clean, or volume deletion occurred. Local/remote tracking refs were not fetched during this task, so GitHub freshness is unknown.
+
+### Compose configuration and build
+
+`docker compose -p wp08-l3-20261013 config --format json` exited 0. It resolved these exact targets and build inputs:
+
+| Compose service | Build context | Dockerfile |
+|---|---|---|
+| `web` | `apps/web` | `Dockerfile` |
+| `api-gateway` | `services/api-gateway` | `Dockerfile` |
+| `identity-service` | `services/identity-service` | `Dockerfile` |
+| `fraud-service` | `services/fraud-service` | `Dockerfile` |
+| `recovery-service` | `services/recovery-service` | `Dockerfile` |
+
+Exact build command:
+
+```powershell
+docker compose -p wp08-l3-20261013 --progress plain build --no-cache web api-gateway identity-service fraud-service recovery-service
+```
+
+Exit 0. All five images built from the current working-tree contexts. Package downloads occurred as authorized. The Web build ran ESLint and Vite/TypeScript production build, transforming 1,830 modules. npm emitted `3 vulnerabilities (2 moderate, 1 high)` and a deprecated ESLint notice; no dependency/lockfile remediation was attempted. The retained build summary did not include package names, dependency paths, advisory identifiers, affected version ranges, or fix availability.
+
+Safe local advisory check:
+
+```powershell
+npm audit --offline --json --prefix apps/web
+```
+
+Exit 0; the offline report returned an empty `vulnerabilities` object for 264 listed dependencies. It supplied no advisory details and cannot reconcile or clear the three aggregate advisories from the Docker build. No online audit was run, because that would submit dependency metadata to the configured registry. The lockfile SHA-256 remained `00FABE9935085757C1C3731B4C8B5967E1DAA1975630E659F23C743A76FA3E0A`; no dependency version or lockfile change was made. To identify the advisories without an online scan from this workspace, the required safe input is the full npm audit JSON/output captured during the image build, including `via`, `range`, `nodes`, and `fixAvailable`; otherwise the user must explicitly authorize an online registry audit after reviewing what package metadata it submits.
+
+Exact recreation command:
+
+```powershell
+docker compose -p wp08-l3-20261013 up -d --no-build --force-recreate --wait --wait-timeout 180 web api-gateway identity-service fraud-service recovery-service
+```
+
+Exit 0. Only the five application targets were recreated. MongoDB and Redis remained in place; no volume was deleted. The existing volumes `wp08-l3-20261013_mongodb_data` and `wp08-l3-20261013_redis_data` were still present after recreation. `docker compose -p wp08-l3-20261013 ps --all` showed all seven services healthy.
+
+### Rebuilt container evidence
+
+All five containers were `running` and `healthy` when inspected. Creation times are UTC. OCI revision/source labels were empty on all five images, so image metadata alone does not attest a source revision. The Compose build was invoked from this repository at the HEAD recorded above; the served Web asset was independently compared to the local build.
+
+| Service | Container created (UTC) | Image ID | Health | OCI revision/source label |
+|---|---|---|---|---|
+| `web` | `2026-10-24T14:45:24.344874322Z` | `sha256:2b759827baf9c61e57387d1e28714ec7794c69d0d88c8c7c4616c2d30a760c49` | `healthy` | absent |
+| `api-gateway` | `2026-10-24T14:45:23.780530531Z` | `sha256:588d78686ef64bfc0011e66d88e16f91eafc9c040f8b182cc11f85fa3f17bf39` | `healthy` | absent |
+| `identity-service` | `2026-10-24T14:45:21.772351819Z` | `sha256:cb02624dc82bccdfa651515534d0f53f3f9c1f6234030ead8fbcb7c0b33263fe` | `healthy` | absent |
+| `fraud-service` | `2026-10-24T14:45:21.564177586Z` | `sha256:3d32f3ddeb9f08412cd4d4d2a050f6904d3c3c757062546c3ffc037646dc7a83` | `healthy` | absent |
+| `recovery-service` | `2026-10-24T14:45:22.898963193Z` | `sha256:e5019d55dcbc882f7247a3e018c3dd96617fab28f39ed92df76116d49b5cbd75` | `healthy` | absent |
+
+### Tests and live HTTP probes
+
+Exact focused test command, executed in the rebuilt Identity container (working directory `/app`):
+
+```powershell
+docker exec -e PYTHONDONTWRITEBYTECODE=1 wp08-l3-20261013-identity-service-1 python -m pytest -q -rs -p no:cacheprovider tests/integration/test_wp08_remediation_status_security.py tests/integration/test_wp08_policy_evaluation.py tests/integration/test_issuance_interoperability.py tests/integration/test_oid4vp_session_authorization.py
+```
+
+Exit 0: **52 passed, 0 failed, 0 skipped**, 2 deprecation warnings, 2.22 seconds. This runs service integration tests in-process inside the rebuilt image; it is not an authenticated browser/network E2E run. OID4VP tests verify owner polling, unauthenticated rejection, a different verifier receiving the same `404` as a guessed session ID, holder-only request context, and fail-closed access when session ownership is missing. They do not test an organization/tenant claim beyond exact user ownership.
+
+The local frontend checks also passed:
+
+```powershell
+npm.cmd run lint --prefix apps/web
+$env:VITE_API_BASE_URL='http://127.0.0.1:8000'; npm.cmd run build --prefix apps/web
+```
+
+Both exited 0; lint had no diagnostics and Vite 6.4.3 transformed 1,830 modules. The running Web root and bundle were fetched with `Invoke-WebRequest`: `GET http://127.0.0.1:3000/` -> 200 and `GET http://127.0.0.1:3000/assets/index-C7R2dkgq.js` -> 200. Both local and served bundle SHA-256 values were `211B4531725937B891AF637BAB60B1CF5878E669A3FE6A48FE8A40F1874B2259`.
+
+Container metadata was read with `docker compose -p wp08-l3-20261013 ps -q <service>` followed by `docker inspect <container-id>`. Recent logs were checked with `docker compose -p wp08-l3-20261013 logs --since 30m api-gateway identity-service fraud-service recovery-service`; startup was normal and no matched `Traceback`, `ERROR`, or `Exception` entries were present. The volumes were enumerated with `docker volume ls --format '{{.Name}}'`.
+
+The read-only API smoke probes were:
+
+```powershell
+Invoke-WebRequest -Uri http://127.0.0.1:8000/health -UseBasicParsing
+Invoke-WebRequest -Uri http://127.0.0.1:8001/health -UseBasicParsing
+Invoke-WebRequest -Uri http://127.0.0.1:8002/health -UseBasicParsing
+Invoke-WebRequest -Uri http://127.0.0.1:8003/health -UseBasicParsing
+Invoke-WebRequest -Uri 'http://127.0.0.1:8001/api/v1/oid4vp/requests/wp08-live-smoke-random-20261024' -Method Get -UseBasicParsing
+Invoke-WebRequest -Uri 'http://127.0.0.1:8000/api/v1/oid4vp/requests/wp08-live-smoke-random-20261024' -Method Get -UseBasicParsing
+```
+
+Web `/` and the four `/health` routes returned HTTP 200; the two unauthenticated OID4VP retrieval probes returned HTTP 401. The requests did not create, approve, submit, or alter an OID4VP session. Recent backend logs showed normal application startup and no matched `Traceback`, `ERROR`, or `Exception` entries.
+
+**Decision:** the current-source Docker runtime and scoped WP-08/OID4VP L3 checks **PASS**. The follow-up evidence below adds a full Identity regression and targeted WP-09 service/policy tests. No WP-09 code was changed in this verification; G9/WP-09 implementation and its scoped PASS were already recorded on 15 October. This does not claim an authenticated live owner/cross-organization browser journey, suspension restoration, independent L4 interoperability, production readiness, or a resolved npm advisory. The repository-wide runner was attempted twice in the follow-up but was interrupted without a pytest summary; the same-HEAD 820-pass result remains historical evidence only.
+
+## Final scoped regression and WP-09 readiness review — 24 October 2026
+
+These checks extend the current-source evidence above without changing application code, dependencies, test files, Compose configuration, or Git history. Temporary test copies were made only inside disposable, no-network container tmpfs filesystems from a read-only repository mount. The Compose stack and its data volumes were not changed by these test runs.
+
+| Scope | Exact test invocation / environment | Result | Boundary |
+|---|---|---|---|
+| Identity Service full regression | `python -m pytest -q -rs -p no:cacheprovider` from a temporary copy of current `services/identity-service`, inside the existing local Identity image; `IDENTITY_MONGO_ENABLED=false`, blank `IDENTITY_TEST_MONGODB_URI`, `--network none`, repository mounted read-only. | **708 passed, 0 failed, 12 skipped, 3 warnings**, 16.21 s. | Five tests skipped because local Hardhat port 8545 was unavailable; seven live-Mongo tests skipped because no test Mongo URI was configured. The suite includes five `test_golden_path.py` tests, all of which passed; this is service/test-client evidence, not a real browser E2E flow. |
+| Identity container-only full-suite attempt | The same `python -m pytest -q -rs -p no:cacheprovider` invocation run directly in `/app` of the service image, before creating the temporary source copy. | **Collection failed; 0 tests executed.** The image does not include repository-root `ssi_layer3_service` and root layout expected by the current tests. | This packaging/layout limitation was resolved for the test run by using a disposable tmpfs source copy; the image itself and repository were not modified. |
+| Fraud Service targeted regression | `python -m pytest -q -rs -p no:cacheprovider tests/test_fraud_service.py tests/test_event_pipeline_and_dataset.py tests/test_layer2_fraud_detection.py` from a temporary copy of current `services/fraud-service` inside the existing Fraud image; `--network none`, repository mounted read-only. | **21 passed, 0 failed, 0 skipped, 2 warnings**, 1.15 s. | Direct execution in the service image first failed collection because the image does not include the service-root `standalone_fraud_api` module. The temporary source copy supplied the expected layout; it did not change image contents or project files. |
+| Identity AI policy matrix | `python -m pytest -q -rs -p no:cacheprovider tests/integration/test_oid4vp_ai_policy_matrix.py` inside the rebuilt Identity service; Mongo disabled and test URI blank. | **8 passed, 0 failed, 0 skipped, 2 warnings.** | Tests the AI-policy boundary; it is not model-quality, fairness, or independent labeled-data evidence. |
+| Repository-wide runner, attempt 1 | `& .\.venv\Scripts\python.exe run_tests.py` with Mongo disabled, test Mongo URIs blank, `PYTHONDONTWRITEBYTECODE=1`, and `PYTEST_ADDOPTS='-p no:cacheprovider -rs'`. | **Interrupted; no test summary or counts.** The process emitted no output for about one minute and was stopped with Ctrl+C (exit 1). | Not a pass or an assertion failure. No database file was created. |
+| Repository-wide runner, attempt 2 | `& .\.venv\Scripts\python.exe -u run_tests.py` with the same environment. | **Interrupted; no test summary or counts.** It printed `Running tests for services/identity-service`, then stalled; Ctrl+C exit code `-1073741510`. | Not a pass or an assertion failure. The runner's aggregate behavior remains unresolved; the earlier 820/13/0 result is historical only. |
+
+The focused R1–R3/OID4VP tests (52 passed), full Identity regression (708 passed, 12 environment skips), policy matrix (8 passed), frontend contract (8 checks), lint/build, current-source Docker health (7/7), HTTP probes (5×200 and 2×401), and Web bundle digest comparison jointly support **WP-08/G6 PASS for the documented L3 scope**. They do not establish suspension restoration, live authenticated browser/tenant flow, external L4 interoperability, or production readiness. The full repository runner has no fresh aggregate result.
+
+The full-service test runs used these exact disposable-container wrappers (PowerShell CWD was the repository root); the bind mount was read-only, package pulls were disabled, networking was disabled, and all source copies/output remained in the container's temporary filesystem:
+
+```powershell
+docker run --rm --pull=never --network none --tmpfs /tmp:rw,nosuid,nodev,size=1g --mount "type=bind,source=$((Get-Location).Path),target=/source,readonly" --workdir /tmp --entrypoint sh wp08-l3-20261013-identity-service -c "mkdir -p /tmp/secure-ssi-platform/services && cp -a /source/services/identity-service /tmp/secure-ssi-platform/services/identity-service && cp /source/docker-compose.yml /tmp/secure-ssi-platform/docker-compose.yml && cp /source/.env.example /tmp/secure-ssi-platform/.env.example && cd /tmp/secure-ssi-platform/services/identity-service && PYTHONDONTWRITEBYTECODE=1 IDENTITY_MONGO_ENABLED=false IDENTITY_TEST_MONGODB_URI= PYTEST_ADDOPTS='-p no:cacheprovider' python -m pytest -q -rs -p no:cacheprovider"
+
+docker run --rm --pull=never --network none --tmpfs /tmp:rw,nosuid,nodev,size=512m --mount "type=bind,source=$((Get-Location).Path),target=/source,readonly" --workdir /tmp --entrypoint sh wp08-l3-20261013-fraud-service -c "mkdir -p /tmp/secure-ssi-platform/services && cp -a /source/services/fraud-service /tmp/secure-ssi-platform/services/fraud-service && cd /tmp/secure-ssi-platform/services/fraud-service && PYTHONDONTWRITEBYTECODE=1 PYTEST_ADDOPTS='-p no:cacheprovider' python -m pytest -q -rs -p no:cacheprovider tests/test_fraud_service.py tests/test_event_pipeline_and_dataset.py tests/test_layer2_fraud_detection.py"
+```
+
+At final report refresh, a read-only re-query of `docker compose -p wp08-l3-20261013 ps --all` could not connect to Docker Desktop's Linux Engine named pipe (`permission denied while trying to connect to the Docker API at npipe:////./pipe/dockerDesktopLinuxEngine`). Therefore the 7/7 healthy status above is the observed snapshot from the successful rebuild/verification, not a claim that the containers remain running now; current Docker availability is **BLOCKED** by that permission error.
+
+### WP-09 readiness (inspection only)
+
+G9/WP-09 implementation and **scoped L3 PASS** predate this verification and are recorded in the 15 October evidence. No WP-09 implementation was performed here. The targeted Fraud (21/21) and Identity AI-policy (8/8) tests passed. The implementation remains explicitly a deterministic `rule-heuristic-v1`, `NOT_TRAINED`, synthetic-data, advisory-only service with no independent labeled evaluation. One UI acceptance detail remains: `apps/web/src/pages/admin/AiFraudMonitorPage.tsx` passes `stats.dataset_label` through `readableStatus`, which strips the square brackets, so the exact required `[DEMO LAB / SYNTHETIC]` marker is not preserved on that page. This is a static code inspection, not browser verification. WP-09 is **READY AFTER CONDITIONS** for any further delivery that requires the literal marker: preserve the exact label in that UI and add a focused assertion; do not reinterpret the already recorded scoped G9 PASS as model validation.
+
+### Dependency advisory disposition
+
+The retained Web image-build output reports three npm advisories (two moderate, one high), but it contains no package names, dependency paths, advisory identifiers, affected version ranges, or fix availability. `npm.cmd audit --offline --json --prefix apps/web` exited 0 and returned an empty `vulnerabilities` object for the 264 listed dependencies; offline metadata cannot resolve the build-time aggregate. No package data was submitted to an external registry, and no dependency changes were made. To complete triage without an online request, the full audit JSON from the image build (including `via`, `range`, `nodes`, and `fixAvailable`) is required. Alternatively, the user can explicitly authorize a registry audit after reviewing its metadata transmission.
+
+## Current-source revalidation — 23 October 2026 (continued)
+
+This continuation corrects the earlier 23 October checkpoint after safe local branch migration and a second focused test run. Current branch is `besna-dev`, HEAD `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`. The branch was created from local `main` at the same commit; local `origin/main` also points there, but no fetch was performed, so remote freshness is unknown. The source commit did not change. Older 15 October results remain historical evidence.
+
+| ID | Exact command / working directory | Result | Scope and limit |
+|---|---|---|---|
+| CUR-WP08-01 | Initial sandboxed focused pytest run from `services/identity-service`: `& 'C:\Users\besna\OneDrive\Bureau\secure-ssi-platform\.venv\Scripts\python.exe' -m pytest -q -rs -o faulthandler_timeout=15 tests/integration/test_wp08_remediation_status_security.py tests/integration/test_wp08_policy_evaluation.py tests/integration/test_issuance_interoperability.py tests/integration/test_oid4vp_session_authorization.py` | **Interrupted, no pytest summary.** The process hung in Windows asyncio/AnyIO `socketpair` setup and was stopped with Ctrl+C; not counted as a test failure or pass. | Environment permission limitation; no test-scope expansion. |
+| CUR-WP08-02 | Elevated rerun, same CWD and four test files: `$base = Join-Path $env:TEMP ('secure-ssi-wp08-focused-elevated-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $base | Out-Null; & 'C:\Users\besna\OneDrive\Bureau\secure-ssi-platform\.venv\Scripts\python.exe' -m pytest -q -rs -o faulthandler_timeout=15 tests/integration/test_wp08_remediation_status_security.py tests/integration/test_wp08_policy_evaluation.py tests/integration/test_issuance_interoperability.py tests/integration/test_oid4vp_session_authorization.py --basetemp=$base; exit $LASTEXITCODE` | Exit 0; **52 passed, 0 failed, 0 skipped, 2 warnings**. Pytest reported `17863.41s` (about 4 h 57 min); this unusually high reported duration is recorded as emitted, not independently validated wall time. | Current R1–R3, policy/issuance and OID4VP session authorization. In-process TestClient tests; not current-source Docker/API or browser E2E. Warnings: SQLite production-target deprecation and Starlette/httpx TestClient deprecation. |
+| CUR-ROOT-01 | Repo root: `& .\.venv\Scripts\python.exe run_tests.py` | **Previously observed on the same unchanged HEAD:** exit 0; 820 passed, 13 skipped, 0 failed, plus 246 subtests. Not rerun in this continuation. | Runner did not emit skip reasons. Host test evidence, not Docker runtime evidence. |
+| CUR-FE-01 | Repo root: `node --experimental-strip-types apps/web/tests/verifyPresentation_fail_closed.test.ts` | Exit 0; **8 checks passed**. | Fail-closed frontend result-normalization contract. |
+| CUR-FE-02 | Repo root: `npm.cmd run lint --prefix apps/web` | Exit 0; no ESLint diagnostics. | Static lint only. |
+| CUR-FE-03 | Repo root: `npm.cmd run build --prefix apps/web` | Exit 0; TypeScript/Vite 6.4.3; **1,830 modules transformed**. | Current local production build; does not prove the running image contains it. |
+| CUR-DC-01 | Read-only Docker/Compose inspection: `docker compose -p wp08-l3-20261013 ps --all` and image/container metadata | Docker Desktop/Engine 29.8.1 available; existing target project **7/7 containers healthy**. Backend containers were created 18 October, before the 22 October OID4VP security commit; no OCI source-revision labels were present. | Health and image metadata only. No container was recreated. Other project's containers and both named project data volumes were left untouched. |
+| CUR-HTTP-01 | Read-only HTTP probes executed inside the running containers: Web `/`; Gateway, Identity, Fraud and Recovery `/health` | **5/5 HTTP checks returned 200.** | Existing images only, not proof of current source. Host-side `Invoke-WebRequest` probes were blocked by sandbox `HttpRequestException`; no state-changing or authenticated security API smoke test was sent. |
+| CUR-DC-02 | Read-only artifact comparison | Running Web references `index-C7R2dkgq.js`; current local build references `index-B6PGGrvY.js`. Backend images have no revision labels and predate current backend source. | The served runtime does not match the current local frontend bundle; backend source provenance is not established. |
+| CUR-DC-GATE | Exact requested build attempt: `docker compose -p wp08-l3-20261013 --progress plain build --no-cache web api-gateway identity-service fraud-service recovery-service` | **BLOCKED before execution by automatic approval review, on two attempts.** No image was built, package downloaded, cache mutated, or service restarted by these rejected attempts. | The review required direct visible confirmation despite the attached task's build authorization and explicitly prohibited workaround/indirect execution. No alternate build path was attempted. |
+| CUR-GIT-01 | Repo root: `git status --short --branch`; `git rev-parse HEAD`; `git diff --cached --name-only`; `git diff --check` | Branch `besna-dev`; HEAD and local `main`/`origin/main` refs all `9e965bb4de7f5e1bb1cbf0f48f30d53ebfb88b73`; four tracked documentation files modified, one pre-existing untracked audit directory retained, no staged paths; `git diff --check` exit 0 (line-ending notices only). | No fetch was done, so remote freshness is unknown. No code files changed, no commit, push, or merge. |
+
+**Current decision:** R1, R2, R3, and OID4VP session authorization are **PASS in the executed focused-test scope**. Current-source Docker L3 is **BLOCKED**, so overall WP-08 remains **PARTIAL** and WP-09 must not start. Current container health is not current-source provenance. Suspension restoration, L4 interoperability, production readiness, and browser Golden Path are not claimed. No application code changed; no commit, push, or staging occurred.
+
 **Checkpoint:** 15 October 2026 · **Branch/HEAD:** `main` / `59e8933f6e47922ba5a82cb7c9d76632e7edefe1`
 **Important:** The working tree is modified. Results below are labeled current, historical, static-only, or blocked so that old green runs are not mistaken for verification of later changes.
 
@@ -266,3 +470,18 @@ docker run --rm --network none --mount type=bind,source=C:\Users\besna\OneDrive\
 | Web container health check | Initial rebuilt container failed because `localhost` resolved to IPv6 while Nginx listened on IPv4. Changed the Docker health-check target to `127.0.0.1` and rebuilt Web. | This correction addresses the observed local container configuration only. |
 
 The admin directory is available only when `IDENTITY_AUTH_USER_PROVIDER=mongodb`; the Compose default remains synthetic, so this local fixture configuration returns `503` for account management instead of presenting mutable demo identities. No account-creation/initial-admin workflow, authenticated Admin browser screenshot, responsive/accessibility review of the new screen, or live Mongo scope-change trace was executed. G12 and G13 remain **PARTIAL**; this evidence does not change their gate status.
+
+## 25 October 2026 — current verification evidence
+
+Observed on `besna-dev` at `e26da1e49c80c6b157e5f6d5697c43a455bf7542`:
+
+- Root runner command: `& '.\.venv\Scripts\python.exe' '.\run_tests.py'` — exit 0; **834 passed, 13 skipped, 266 passing subtests, 0 failed, 12 warnings**. Skips are environment-gated. Identity 719 passed/12 skipped; Recovery 47/1 skipped; Fraud 23; API Gateway 17; shared 7 + 19 subtests; root 21 + 247 subtests.
+- Targeted current-source WP-05 integration command, from `services/identity-service`: `python -m pytest -q tests/integration/test_wp05_oid4vci_token_and_proof.py` — **22 passed, 0 failed, 0 skipped, 4 warnings**, exit 0.
+- Eight Identity protocol/security files — **125 passed, 0 failed, 0 skipped, 4 warnings**, exit 0. Full Identity suite — **719 passed, 0 failed, 12 skipped, 7 warnings**, exit 0.
+- Inside rebuilt Identity container: targeted WP-05/WP-08/OID4VP authorization set — **74 passed, 0 failed, 0 skipped, 2 warnings**, exit 0.
+- Web: `npm.cmd test --prefix apps/web` (8 test files passed); `npm.cmd run lint --prefix apps/web` (exit 0); `npm.cmd run build --prefix apps/web` (exit 0; TypeScript + Vite, 1,831 modules).
+- One authorized `npm.cmd audit --prefix apps/web --json` completed with exit 1 and reported 3 vulnerable packages (2 moderate, 1 high). It does not mean the test suite failed; dependency remediation is still pending.
+
+The Docker Compose project rebuilt five app images with `--no-cache` from the current working tree, recreated only those app services, preserved MongoDB/Redis and volumes, and observed 7/7 healthy. Web `/` and Gateway, Identity, Fraud, Recovery health endpoints returned HTTP 200; unauthenticated OID4VP retrieval through Gateway and Identity returned HTTP 401.
+
+The host Node 24.19.0 production bundle and the bundle served by the Node 20 Alpine Docker build have different asset names, sizes and SHA-256 digests; byte-identical bundle equivalence is **not established**. The Docker images have no OCI source/revision labels. No rendered browser journey, responsive/keyboard/accessibility sweep or independent L4 interoperability run was performed.

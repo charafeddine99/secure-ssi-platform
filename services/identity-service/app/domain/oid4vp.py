@@ -50,8 +50,8 @@ class NinePointVerificationResult:
     expiration_valid: bool
     revocation_status_clear: bool
     challenge_valid: bool
-    ai_risk_level: str  # "LOW", "MEDIUM", "HIGH"
-    ai_risk_score: int
+    ai_risk_level: str  # "LOW", "MEDIUM", "HIGH", "CRITICAL", or "UNAVAILABLE"
+    ai_risk_score: int | None
     blockchain_anchored: bool
     final_policy_result: str  # "ACCEPTED" or "REJECTED"
     details: Mapping[str, Any] = field(default_factory=dict)

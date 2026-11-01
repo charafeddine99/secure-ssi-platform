@@ -85,3 +85,28 @@ def test_unsafe_auth_settings_are_rejected(
 
     with pytest.raises(AuthConfigurationError):
         AuthSettings(**values)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("environment", ["prd", "Production", "qa", "uat", "docker"])
+def test_unknown_environment_names_fail_closed(environment: str) -> None:
+    # Only explicitly named development/test environments may use fallbacks.
+    with pytest.raises(AuthConfigurationError):
+        load_auth_settings(
+            {
+                "IDENTITY_ENVIRONMENT": environment,
+                "IDENTITY_AUTH_FIXTURE_USERS_ENABLED": "false",
+            }
+        )
+
+
+def test_published_development_secret_is_rejected_in_production() -> None:
+    from app.config.auth_settings import _DEVELOPMENT_ONLY_JWT_SECRET
+
+    with pytest.raises(AuthConfigurationError):
+        load_auth_settings(
+            {
+                "IDENTITY_ENVIRONMENT": "production",
+                "IDENTITY_AUTH_FIXTURE_USERS_ENABLED": "false",
+                "IDENTITY_AUTH_JWT_SECRET": _DEVELOPMENT_ONLY_JWT_SECRET,
+            }
+        )

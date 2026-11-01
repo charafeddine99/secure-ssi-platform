@@ -1,14 +1,19 @@
+from collections.abc import Callable
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, Request, status
 
 from app.api.v1.dependencies import (
     get_credential_api_service,
+    get_credential_repository,
+    get_revocation_anchor_scheduler,
     get_credential_issuance_api_service,
     get_credential_revocation_service,
+    require_any_permission,
     require_permission,
 )
 from app.application.services.credential_api_service import CredentialApiService
+from app.application.ports.repositories import CredentialRepository
 from app.application.services.credential_revocation_service import (
     CredentialRevocationService,
 )
@@ -30,6 +35,8 @@ from app.schemas.credential_api import (
     CredentialStatusEventResponse,
     CredentialStatusHistoryResponse,
     CredentialStatusResponse,
+    IssuedCredentialListResponse,
+    IssuedCredentialSummaryResponse,
     CredentialValidationResponse,
     CredentialVerificationResponse,
     DidMethodsResponse,
@@ -38,6 +45,14 @@ from app.schemas.credential_api import (
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {
+        "model": ApiErrorResponse,
+        "description": "Bearer authentication is missing or invalid.",
+    },
+    403: {
+        "model": ApiErrorResponse,
+        "description": "The authenticated principal lacks the required role or scope.",
+    },
     400: {
         "model": ApiErrorResponse,
         "description": "Malformed or unusable credential input.",
@@ -55,6 +70,56 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         "description": "Safe internal failure without implementation details.",
     },
 }
+
+
+@router.get(
+    "/issued",
+    response_model=IssuedCredentialListResponse,
+    summary="List credentials issued by the authenticated issuer",
+    description=(
+        "Issuer-DID scoped and paginated. Returns credential metadata only; "
+        "raw credential claims are not included. The issuer scope is read from "
+        "the server-authenticated principal, never from query parameters."
+    ),
+    responses={
+        401: ERROR_RESPONSES[401],
+        403: ERROR_RESPONSES[403],
+        422: ERROR_RESPONSES[422],
+        503: {"model": ApiErrorResponse},
+    },
+)
+def list_issued_credentials(
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.CREDENTIALS_VERIFY)
+    ),
+    repository: CredentialRepository = Depends(get_credential_repository),
+) -> IssuedCredentialListResponse:
+    issuer_did = require_issuer_did(principal)
+    records = repository.list_by_issuer(
+        issuer_did,
+        limit=limit + 1,
+        skip=offset,
+    )
+    has_more = len(records) > limit
+    return IssuedCredentialListResponse(
+        items=[
+            IssuedCredentialSummaryResponse(
+                credential_id=record.credential_id,
+                holder_did=record.holder_did,
+                credential_type=list(record.credential_type),
+                issuance_date=record.issuance_date,
+                expiration_date=record.expiration_date,
+                status=record.status,
+                version=record.version,
+            )
+            for record in records[:limit]
+        ],
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+    )
 
 
 @router.post(
@@ -185,11 +250,15 @@ def revoke_credential(
     ],
     payload: CredentialRevocationRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     principal: AuthenticatedPrincipal = Depends(
         require_permission(Permission.CREDENTIALS_REVOKE)
     ),
     service: CredentialRevocationService = Depends(
         get_credential_revocation_service
+    ),
+    anchor_revocation: Callable[[str, str], None] | None = Depends(
+        get_revocation_anchor_scheduler
     ),
 ) -> CredentialStatusResponse:
     caller_issuer_did = issuer_did_for_authorization(principal)
@@ -201,6 +270,11 @@ def revoke_credential(
         caller_roles=principal.roles,
         caller_issuer_did=caller_issuer_did,
     )
+    if anchor_revocation is not None:
+        # Digest-only on-chain record; runs after the response and cannot alter it.
+        background_tasks.add_task(
+            anchor_revocation, result.credential_id, result.revocation_reason or ""
+        )
     return CredentialStatusResponse.from_domain(result)
 
 
@@ -282,8 +356,13 @@ def credential_history(
         Path(min_length=1, max_length=2_048),
     ],
     request: Request,
+    # Read-only audit trail: the issuing authority or a platform operator.
+    # Object-level scope is enforced in CredentialRevocationService.get_history.
     principal: AuthenticatedPrincipal = Depends(
-        require_permission(Permission.CREDENTIALS_REVOKE)
+        require_any_permission(
+            Permission.CREDENTIALS_REVOKE,
+            Permission.ADMIN_OPERATIONS_READ,
+        )
     ),
     service: CredentialRevocationService = Depends(
         get_credential_revocation_service

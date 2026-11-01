@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas.fraud import (
     FraudEvaluationRequest,
     FraudEvaluationResponse,
@@ -14,6 +14,12 @@ from app.schemas.fraud import (
 from app.application.hybrid_detector import detector
 from app.ml.feature_store import feature_store
 from app.ml.synthetic_dataset import generate_synthetic_ssi_dataset, calculate_evaluation_metrics
+from app.core.security import (
+    FraudPrincipal,
+    require_admin,
+    require_authenticated,
+    require_internal_service,
+)
 
 router = APIRouter(prefix="/api/v1/fraud", tags=["Fraud Detection & Security"])
 
@@ -23,7 +29,10 @@ router = APIRouter(prefix="/api/v1/fraud", tags=["Fraud Detection & Security"])
     status_code=status.HTTP_200_OK,
     summary="Synthetic prototype event için advisory heuristic risk değerlendirmesi yapar"
 )
-async def evaluate_transaction(request: FraudEvaluationRequest):
+async def evaluate_transaction(
+    request: FraudEvaluationRequest,
+    _principal: FraudPrincipal = Depends(require_authenticated),
+):
     """
     Applies deterministic rules to synthetic prototype event signals. This is
     not a trained model and does not establish credential validity or trust.
@@ -49,9 +58,13 @@ async def get_model_stats():
     response_model=QuarantineResponse,
     summary="Records an explicit prototype quarantine action"
 )
-async def quarantine_account(request: QuarantineRequest):
+async def quarantine_account(
+    request: QuarantineRequest,
+    _principal: FraudPrincipal = Depends(require_admin),
+):
     """
-    Şüpheli DID'yi karantina havuzuna ekler; tüm doğrulama ve sunum işlemlerini kilitler.
+    Şüpheli DID'yi yalnızca bu Fraud Service sürecinin yerel karantina havuzuna ekler.
+    Bu işlem Identity Service statüsünü veya credential geçerliliğini değiştirmez.
     """
     result = detector.quarantine(request.did, request.reason)
     return QuarantineResponse(
@@ -59,7 +72,8 @@ async def quarantine_account(request: QuarantineRequest):
         is_quarantined=True,
         status="QUARANTINED",
         quarantined_at=result["quarantined_at"],
-        reason=result["reason"]
+        reason=result["reason"],
+        effect_scope="fraud-service-process-local",
     )
 
 @router.get(
@@ -67,28 +81,40 @@ async def quarantine_account(request: QuarantineRequest):
     response_model=QuarantineResponse,
     summary="Bir DID'nin karantina durumunu sorgular"
 )
-async def get_quarantine_status(did: str):
+async def get_quarantine_status(
+    did: str,
+    _principal: FraudPrincipal = Depends(require_admin),
+):
     info = detector.get_quarantine_info(did)
     return QuarantineResponse(
         did=did,
         is_quarantined=info.get("is_quarantined", False),
         status="QUARANTINED" if info.get("is_quarantined") else "ACTIVE",
         quarantined_at=info.get("quarantined_at"),
-        reason=info.get("reason")
+        reason=info.get("reason"),
+        effect_scope="fraud-service-process-local",
     )
 
 @router.delete(
     "/quarantine/{did}",
     summary="Karantinadaki bir hesabın kilidini kaldırır"
 )
-async def release_account_quarantine(did: str):
+async def release_account_quarantine(
+    did: str,
+    _principal: FraudPrincipal = Depends(require_admin),
+):
     released = detector.release_quarantine(did)
     if not released:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{did} tanımlayıcısına sahip aktif bir karantina kaydı bulunamadı."
         )
-    return {"did": did, "status": "RELEASED", "message": "Hesap karantinadan çıkarıldı."}
+    return {
+        "did": did,
+        "status": "RELEASED",
+        "message": "Hesap karantinadan çıkarıldı.",
+        "effect_scope": "fraud-service-process-local",
+    }
 
 
 @router.post(
@@ -97,7 +123,10 @@ async def release_account_quarantine(did: str):
     status_code=status.HTTP_201_CREATED,
     summary="Platform güvenlik olayını (Section 14) Feature Store'a kaydeder"
 )
-async def ingest_security_event(event: PlatformSecurityEvent):
+async def ingest_security_event(
+    event: PlatformSecurityEvent,
+    _principal: FraudPrincipal = Depends(require_internal_service),
+):
     """
     Section 14 olaylarını (LOGIN, LOGIN_FAILED, CREDENTIAL_PRESENTED, vb.) Feature Store'a kaydeder
     ve anlık kayan pencere (sliding-window) davranış özetini döner.
@@ -129,7 +158,10 @@ async def ingest_security_event(event: PlatformSecurityEvent):
     status_code=status.HTTP_201_CREATED,
     summary="Toplu platform güvenlik olaylarını Feature Store'a aktarır"
 )
-async def ingest_batch_security_events(batch: EventBatchIngestionRequest):
+async def ingest_batch_security_events(
+    batch: EventBatchIngestionRequest,
+    _principal: FraudPrincipal = Depends(require_internal_service),
+):
     for event in batch.events:
         summary = feature_store.ingest_event(
             event_id=event.event_id,
@@ -152,7 +184,10 @@ async def ingest_batch_security_events(batch: EventBatchIngestionRequest):
     "/history/{did}",
     summary="Bir DID'nin kayan pencere davranışsal metriklerini döner"
 )
-async def get_did_behavioral_history(did: str):
+async def get_did_behavioral_history(
+    did: str,
+    _principal: FraudPrincipal = Depends(require_admin),
+):
     features = feature_store.get_features(did)
     return {
         "did": did,
@@ -165,7 +200,9 @@ async def get_did_behavioral_history(did: str):
     "/dataset/metrics",
     summary="Computes a deterministic heuristic replay diagnostic on generated synthetic events"
 )
-async def evaluate_synthetic_dataset():
+async def evaluate_synthetic_dataset(
+    _principal: FraudPrincipal = Depends(require_admin),
+):
     """
     Diagnostic only: metrics describe this fixed, generated synthetic replay.
     They are not training metrics or evidence of real-world generalization.

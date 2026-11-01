@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from app.api.v1.dependencies import (
     get_clock,
     get_credential_api_service,
+    get_credential_repository,
+    get_current_principal,
     get_credential_issuance_repository,
     get_holder_wallet_repository,
     get_status_list_entry_repository,
@@ -27,6 +29,9 @@ from app.infrastructure.crypto.local_issuer_key_provider import (
 from app.infrastructure.persistence.issuance_repository import (
     MongoCredentialIssuanceRepository,
 )
+from app.infrastructure.persistence.repositories import MongoCredentialRepository
+from app.domain.auth import AuthenticatedPrincipal, User
+from app.domain.permissions import Role
 from app.infrastructure.persistence.status_list_repositories import (
     MongoCredentialStatusEntryRepository,
 )
@@ -65,6 +70,9 @@ def client() -> TestClient:
         get_credential_issuance_repository
     ] = lambda: MongoCredentialIssuanceRepository(
         database["credentials"]  # type: ignore[arg-type]
+    )
+    app.dependency_overrides[get_credential_repository] = lambda: (
+        MongoCredentialRepository(database["credentials"])  # type: ignore[arg-type]
     )
     app.dependency_overrides[
         get_status_list_entry_repository
@@ -121,6 +129,73 @@ def test_validate_accepts_unsigned_credential_without_signing(
     assert response.json()["cryptographicVerificationPerformed"] is False
     assert "credential" not in response.json()
     assert credential == original
+
+
+def test_issuer_can_list_scoped_credential_metadata_without_raw_claims(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    signed = sign(client)
+    token_response = client.post(
+        "/api/v1/auth/token",
+        json={
+            "username": "issuer@example.test",
+            "password": "Issuer-Prototype-2026!",
+        },
+    )
+    assert token_response.status_code == 200
+    issuer_headers = {
+        "Authorization": f"Bearer {token_response.json()['accessToken']}"
+    }
+
+    response = client.get(
+        "/api/v1/credentials/issued?limit=1&offset=0",
+        headers=issuer_headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["limit"] == 1
+    assert payload["offset"] == 0
+    assert payload["items"][0]["credentialId"] == signed["id"]
+    assert "credential" not in payload["items"][0]
+    assert "credentialSubject" not in payload["items"][0]
+
+    other_issuer = AuthenticatedPrincipal.from_user(
+        User(
+            id="usr_other_issuer",
+            username="other-issuer@example.test",
+            display_name="Other Issuer",
+            roles=(Role.ISSUER,),
+            issuer_did="did:web:other.issuer.example",
+        ),
+        authentication_source="test",
+    )
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_current_principal,
+        lambda: other_issuer,
+    )
+    foreign = client.get("/api/v1/credentials/issued")
+    assert foreign.status_code == 200
+    assert foreign.json()["items"] == []
+
+
+def test_non_issuer_cannot_list_issuer_credentials(client: TestClient) -> None:
+    holder_login = client.post(
+        "/api/v1/auth/token",
+        json={
+            "username": "holder@example.test",
+            "password": "Holder-Prototype-2026!",
+        },
+    )
+    assert holder_login.status_code == 200
+    response = client.get(
+        "/api/v1/credentials/issued",
+        headers={
+            "Authorization": f"Bearer {holder_login.json()['accessToken']}"
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_validate_accepts_signed_profile_without_claiming_verification(

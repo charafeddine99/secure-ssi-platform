@@ -61,6 +61,28 @@ def test_unsigned_synthetic_fixture_matches_the_pinned_profile() -> None:
     DidKeyResolver().resolve(credential["credentialSubject"]["id"])
 
 
+def test_qeaa_profile_requires_its_matching_context_and_scalar_claims() -> None:
+    credential = unsigned_credential()
+    credential["@context"] = [
+        "https://www.w3.org/ns/credentials/v2",
+        "https://secure-ssi.example/contexts/qeaa/v1",
+    ]
+    credential["type"] = [
+        "VerifiableCredential",
+        "QualifiedElectronicAttestationCredential",
+    ]
+    credential["credentialSubject"] = {
+        "id": credential["credentialSubject"]["id"],
+        "attestationName": "Synthetic QEAA profile test",
+        "assuranceLevel": "prototype",
+    }
+
+    validated = CredentialProfileValidator().validate(credential)
+
+    assert validated["@context"][1].endswith("/qeaa/v1")
+    assert validated["type"][1] == "QualifiedElectronicAttestationCredential"
+
+
 def test_unsigned_fixture_contains_no_private_or_secret_material() -> None:
     raw = FIXTURE_PATH.read_text(encoding="utf-8").lower()
 
@@ -103,6 +125,16 @@ def test_valid_proof_shape_is_accepted_without_claiming_signature_validity() -> 
         (
             "type",
             ["VerifiableCredential", "UnknownCredential"],
+            VerificationReasonCode.UNSUPPORTED_TYPE,
+        ),
+        (
+            "type",
+            ["VerifiableCredential", "NationalIdCredential"],
+            VerificationReasonCode.UNSUPPORTED_TYPE,
+        ),
+        (
+            "type",
+            ["VerifiableCredential", "DriverLicenseCredential"],
             VerificationReasonCode.UNSUPPORTED_TYPE,
         ),
         (

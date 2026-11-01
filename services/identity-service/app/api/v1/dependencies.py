@@ -87,7 +87,7 @@ from app.config.status_list_settings import (
     load_status_list_settings,
 )
 from app.domain.auth import AuthenticatedPrincipal
-from app.domain.exceptions import AuthenticationRequiredError
+from app.domain.exceptions import AuthenticationRequiredError, PermissionDeniedError
 from app.domain.permissions import Permission
 from app.domain.persistence import PersistenceConfigurationError
 from app.infrastructure.auth.argon2_password_hasher import Argon2PasswordHasher
@@ -190,7 +190,9 @@ from app.services.did_resolver import (
     CompositeDidResolver,
     DidKeyResolver,
     DidWebResolver,
+    PinnedDidWebResolver,
 )
+from app.config.did_resolution_settings import load_did_resolution_settings
 
 
 Clock = Callable[[], datetime]
@@ -205,9 +207,18 @@ _SIGNER = Ed25519CredentialSigner()
 _KEY_PROVIDER = LocalIssuerKeyProvider()
 _HOLDER_KEY_PROVIDER = LocalHolderKeyProvider()
 _HOLDER_SIGNER = LocalDevelopmentHolderSigner(_HOLDER_KEY_PROVIDER)
+_DID_RESOLUTION_SETTINGS = load_did_resolution_settings()
+# The platform's own issuer DID is pinned to its local document; only other
+# did:web identifiers use the network resolver (HTTPS, SSRF-checked, pinned IP).
 _DID_RESOLVER = CompositeDidResolver(
     {
-        "web": DidWebResolver(allow_insecure_http=True)
+        "web": PinnedDidWebResolver(
+            {SYNTHETIC_ISSUER_DID: _ISSUER_DID_FIXTURE},
+            fallback=DidWebResolver(
+                allow_insecure_http=_DID_RESOLUTION_SETTINGS.allow_insecure_http,
+                insecure_http_hosts=_DID_RESOLUTION_SETTINGS.insecure_http_hosts,
+            ),
+        )
     }
 )
 _HOLDER_DID_RESOLVER = CompositeDidResolver({"key": DidKeyResolver()})
@@ -810,6 +821,23 @@ def require_permission(
     return authorize
 
 
+def require_any_permission(
+    *permissions: Permission,
+) -> Callable[..., AuthenticatedPrincipal]:
+    """Allow the call when the principal holds at least one of ``permissions``."""
+
+    def authorize(
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> AuthenticatedPrincipal:
+        if not any(permission in principal.permissions for permission in permissions):
+            raise PermissionDeniedError(
+                "The authenticated principal lacks the required permission."
+            )
+        return principal
+
+    return authorize
+
+
 def get_credential_api_service(
     clock: Clock = Depends(get_clock),
 ) -> CredentialApiService:
@@ -1180,6 +1208,39 @@ def get_blockchain_anchor_repository(
     return MongoBlockchainAnchorRepository(
         manager.database[BLOCKCHAIN_ANCHORS_COLLECTION]
     )
+
+
+def get_revocation_anchor_scheduler(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+) -> Callable[[str, str], None] | None:
+    """Return a callable that anchors a revocation digest, or None when anchoring is off.
+
+    Anchoring is optional integrity evidence: it runs after the response, its
+    outcome (CONFIRMED / FAILED / OFFLINE) is persisted as an anchor record, and
+    it never changes the revocation or any verification decision.
+    """
+    from app.config.blockchain_settings import load_blockchain_settings
+
+    settings = load_blockchain_settings()
+    if not settings.enabled:
+        return None
+
+    def anchor(credential_id: str, reason: str) -> None:
+        import logging
+
+        try:
+            repository = MongoBlockchainAnchorRepository(
+                manager.database[BLOCKCHAIN_ANCHORS_COLLECTION]
+            )
+            BlockchainBridge(settings=settings, repository=repository).anchor_credential_revocation(
+                credential_id, reason
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "Optional revocation anchoring failed (%s)", type(exc).__name__
+            )
+
+    return anchor
 
 
 def get_blockchain_bridge(

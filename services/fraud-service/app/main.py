@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.health import router as health_router
 from app.api.routes.fraud import router as fraud_router
 from app.api.routes.fraud_detection import router as fraud_detection_router
-from app.core.config import APP_VERSION, SERVICE_NAME
+from app.core.config import APP_VERSION, CORS_ORIGINS, SERVICE_NAME
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,13 +18,13 @@ app = FastAPI(
     description="Deterministic, advisory risk heuristics for synthetic SSI prototype events; no trained model is deployed."
 )
 
-# Enable CORS for frontend & API gateway access
+# Browser access is limited to explicitly configured local frontend origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
 )
 
 # Register routes

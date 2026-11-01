@@ -1,270 +1,110 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { fetchAuditLogs, BackendAuditLog } from "../../services/api";
-import { 
-  Search, 
-  RefreshCw, 
-  Download, 
-  ChevronDown, 
-  ChevronUp, 
-  FileText 
-} from "lucide-react";
+import React from "react";
+import { IconDownload, IconRefresh } from "@tabler/icons-react";
+import { fetchAuditLogs, type AuditLogEntry } from "../../api/admin.ts";
+import { Page } from "../../components/ui/PageHeader.tsx";
+import { Card, Table } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { SelectField, TextField } from "../../components/ui/Field.tsx";
+import { AsyncView } from "../../components/ui/AsyncView.tsx";
+import { Badge, type BadgeTone } from "../../components/ui/StatusBadge.tsx";
+import { EmptyState } from "../../components/ui/States.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { formatDateTime, humanize, shortenIdentifier } from "../../lib/format.ts";
+import { auditCsv } from "./auditCsv.ts";
+
+const EVENT_FILTERS = ["ALL", "CREDENTIAL", "PRESENTATION", "WALLET", "RECOVERY", "TRUST", "AUTH", "QUARANTINE"];
+
+/** The Identity Service reports an integer advisory score (0–100). */
+function riskTone(score: number | null): BadgeTone {
+  if (score === null) return "neutral";
+  if (score >= 70) return "danger";
+  if (score >= 40) return "warning";
+  return "success";
+}
 
 export const AuditExplorerPage: React.FC = () => {
-  const [logs, setLogs] = useState<BackendAuditLog[]>([]);
-  const [filterType, setFilterType] = useState<string>("ALL");
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<number | string | null>(null);
+  const [filter, setFilter] = React.useState("ALL");
+  const [search, setSearch] = React.useState("");
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  // Categories are filtered locally: the service only accepts exact event-type values.
+  const logs = useAsync(() => fetchAuditLogs(undefined, 150), []);
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await fetchAuditLogs(filterType, 150);
-      setLogs(data || []);
-    } catch (error) {
-      setLogs([]);
-      setLoadError(error instanceof Error ? error.message : "Audit events are unavailable.");
-    } finally {
-      setLoading(false);
-    }
-  }, [filterType]);
-
-  useEffect(() => {
-    loadLogs();
-  }, [loadLogs]);
-
-  const handleExportCsv = () => {
-    const headers = ["ID", "Event Type", "Actor DID", "Target Wallet", "Risk Score", "Timestamp"];
-    const rows = logs.map(l => [
-      l.id,
-      `"${l.event_type}"`,
-      `"${l.actor_did || ""}"`,
-      `"${l.target_wallet || ""}"`,
-      l.risk_score,
-      `"${l.created_at}"`
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `audit_trail_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  const visible = (rows: AuditLogEntry[]) => {
+    const term = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesFilter = filter === "ALL" || row.eventType.toUpperCase().includes(filter);
+      const matchesSearch = !term || [row.eventType, row.actorDid, row.targetWallet ?? ""].some((v) => v.toLowerCase().includes(term));
+      return matchesFilter && matchesSearch;
+    });
   };
 
-  const filteredLogs = logs.filter((l) => {
-    const matchesFilter = filterType === "ALL" || l.event_type.toUpperCase().includes(filterType);
-    const matchesSearch = !searchTerm || 
-      (l.actor_did && l.actor_did.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (l.target_wallet && l.target_wallet.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (l.event_type && l.event_type.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesFilter && matchesSearch;
-  });
+  const exportCsv = (rows: AuditLogEntry[]) => {
+    const blob = new Blob([auditCsv(rows)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audit-events-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Top Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <p className="workspace-eyebrow">Administration</p>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-            Audit Event Explorer
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "4px 0 0 0" }}>
-            Events returned by the Identity Service. Anchoring is optional; an event is anchored only when a confirmed receipt is available.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <button
-            onClick={handleExportCsv}
-            style={{
-              padding: "8px 14px",
-              borderRadius: "8px",
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              color: "#e2e8f0",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <Download size={14} />
-            Export CSV
-          </button>
-          <button
-            onClick={loadLogs}
-            disabled={loading}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              backgroundColor: "#2563eb",
-              border: "none",
-              color: "#ffffff",
-              fontSize: "0.82rem",
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <RefreshCw size={14} className={loading ? "spin" : ""} />
-            Sync Logs
-          </button>
-        </div>
-      </div>
-
-      {loadError && <div className="workspace-error" role="alert">{loadError}</div>}
-
-      {/* Filter and Search Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-        <div style={{ display: "flex", gap: "6px", overflowX: "auto" }}>
-          {["ALL", "CREDENTIAL", "GUARDIAN", "QUARANTINE", "FRAUD", "CONSENT", "ANCHOR"].map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "8px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: filterType === type ? "#2563eb" : "#111827",
-                color: filterType === type ? "#ffffff" : "#94a3b8"
-              }}
-            >
-              {type === "ALL" ? "All Events" : `${type}`}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "260px" }}>
-          <div style={{ position: "relative", width: "100%" }}>
-            <Search size={14} style={{ position: "absolute", left: "10px", top: "11px", color: "#64748b" }} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by DID or Wallet..."
-              style={{
-                width: "100%",
-                padding: "8px 12px 8px 32px",
-                borderRadius: "8px",
-                backgroundColor: "#111827",
-                border: "1px solid #1f2937",
-                color: "#ffffff",
-                fontSize: "0.78rem"
-              }}
-            />
+    <Page
+        eyebrow="Administration"
+        title="Audit log"
+        description="Security events. Risk scores are advisory."
+        breadcrumbs={[{ label: "Administration", to: "/admin" }, { label: "Audit log" }]}
+        actions={<Button variant="secondary" onClick={logs.reload} icon={<IconRefresh aria-hidden="true" />}>Refresh</Button>}
+    >
+      <Card
+        title="Events"
+        actions={logs.status === "success" && logs.data.length > 0
+          ? <Button size="sm" variant="secondary" onClick={() => exportCsv(visible(logs.data))} icon={<IconDownload aria-hidden="true" />}>Export shown rows (CSV)</Button>
+          : undefined}
+        flush
+      >
+        <div className="card-body border-bottom py-3">
+          <div className="row g-3">
+            <SelectField groupClassName="col-md-4 mb-0" label="Event category" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              {EVENT_FILTERS.map((f) => <option key={f} value={f}>{f === "ALL" ? "All events" : humanize(f)}</option>)}
+            </SelectField>
+            <TextField groupClassName="col-md-8 mb-0" label="Search in loaded events" type="search" value={search} onChange={(e) => setSearch(e.target.value)} hint="Matches event type, actor DID or wallet." />
           </div>
         </div>
-      </div>
-
-      {/* Audit Logs Table */}
-      <div
-        style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid #1f2937",
-          padding: "20px"
-        }}
-      >
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", textAlign: "left" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #1f2937", color: "#94a3b8" }}>
-                <th style={{ padding: "10px 12px" }}>#ID</th>
-                <th style={{ padding: "10px 12px" }}>Event Type</th>
-                <th style={{ padding: "10px 12px" }}>Actor DID</th>
-                <th style={{ padding: "10px 12px" }}>Target Wallet</th>
-                <th style={{ padding: "10px 12px" }}>Risk signal</th>
-                <th style={{ padding: "10px 12px" }}>Timestamp</th>
-                <th style={{ padding: "10px 12px", textAlign: "right" }}>Inspect</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLogs.map((l) => {
-                const isExpanded = expandedId === l.id;
-                return (
-                  <React.Fragment key={l.id}>
-                    <tr 
-                      onClick={() => setExpandedId(isExpanded ? null : l.id)}
-                      style={{ 
-                        borderBottom: "1px solid #1f2937", 
-                        cursor: "pointer",
-                        backgroundColor: isExpanded ? "rgba(37, 99, 235, 0.05)" : "transparent"
-                      }}
-                    >
-                      <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#60a5fa" }}>
-                        #{l.id}
-                      </td>
-                      <td style={{ padding: "12px", fontWeight: 700, color: l.event_type.includes("QUARANTINE") ? "#f87171" : l.event_type.includes("ANCHOR") ? "#c084fc" : "#f8fafc" }}>
-                        {l.event_type}
-                      </td>
-                      <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#94a3b8" }}>
-                        {l.actor_did ? `${l.actor_did.slice(0, 20)}...` : "system"}
-                      </td>
-                      <td style={{ padding: "12px", fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>
-                        {l.target_wallet ? `${l.target_wallet.slice(0, 16)}...` : "N/A"}
-                      </td>
-                      <td style={{ padding: "12px", fontWeight: 600, color: "#94a3b8" }}>
-                        {Number.isFinite(l.risk_score) ? `${l.risk_score} (advisory)` : "Not supplied"}
-                      </td>
-                      <td style={{ padding: "12px", color: "#64748b" }}>
-                        {l.created_at ? new Date(l.created_at).toLocaleTimeString() : "Not supplied"}
-                      </td>
-                      <td style={{ padding: "12px", textAlign: "right", color: "#60a5fa" }}>
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </td>
-                    </tr>
-
-                    {/* Expandable JSON Detail Row */}
-                    {isExpanded && (
-                      <tr style={{ backgroundColor: "#0d131f", borderBottom: "1px solid #1f2937" }}>
-                        <td colSpan={7} style={{ padding: "14px 20px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#60a5fa", fontSize: "0.75rem", fontWeight: 700 }}>
-                              <FileText size={14} />
-                              Event Details:
-                            </div>
-                            <span style={{ fontSize: "0.7rem", color: "#94a3b8", padding: "2px 8px" }}>
-                              Chain receipt is not asserted by this view
-                            </span>
-                          </div>
-                          <pre style={{ margin: 0, padding: "10px", backgroundColor: "#060911", borderRadius: "6px", border: "1px solid #1f2937", color: "#e2e8f0", fontSize: "0.72rem", fontFamily: "var(--font-mono)", overflowX: "auto" }}>
-                            {JSON.stringify({
-                              event_id: l.id,
-                              event_type: l.event_type,
-                              actor_did: l.actor_did,
-                              target_wallet: l.target_wallet,
-                              risk_score: l.risk_score,
-                              details: l.details,
-                              timestamp: l.created_at
-                            }, null, 2)}
-                          </pre>
+        <AsyncView state={logs} onRetry={logs.reload} loadingLabel="Loading audit events" errorTitle="Audit events are unavailable">
+          {(rows) => {
+            const shown = visible(rows);
+            if (shown.length === 0) return <EmptyState title="No matching events" description={rows.length ? "Change the filter or search term." : "The audit store returned no events."} />;
+            return (
+              <Table caption="Audit events, newest first" stackBelow="md">
+                <thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Actor</th><th scope="col">Risk</th><th scope="col"><span className="visually-hidden">Details</span></th></tr></thead>
+                <tbody>
+                  {shown.map((row) => (
+                    <React.Fragment key={row.id}>
+                      <tr>
+                        <td data-label="Time" className="text-secondary text-nowrap">{formatDateTime(row.createdAt)}</td>
+                        <td data-label="Event" className="fw-medium">{humanize(row.eventType)}</td>
+                        <td data-label="Actor"><code title={row.actorDid}>{row.actorDid ? shortenIdentifier(row.actorDid) : "—"}</code></td>
+                        <td data-label="Risk"><Badge tone={riskTone(row.riskScore)}>{row.riskScore === null ? "Not scored" : `${Math.round(row.riskScore)} / 100`}</Badge></td>
+                        <td data-label="Details" className="text-end">
+                          <Button size="sm" variant="ghost" aria-expanded={expanded === row.id} aria-controls={`audit-${row.id}`} onClick={() => setExpanded(expanded === row.id ? null : row.id)}>
+                            {expanded === row.id ? "Hide" : "Details"}
+                          </Button>
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-              {!loading && filteredLogs.length === 0 && (
-                <tr><td colSpan={7} style={{ padding: "24px 12px", color: "#94a3b8", textAlign: "center" }}>
-                  No audit events are available for this filter.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+                      {expanded === row.id && (
+                        <tr id={`audit-${row.id}`}>
+                          <td colSpan={5}><pre className="code-pane" tabIndex={0}>{JSON.stringify({ targetWallet: row.targetWallet, details: row.details }, null, 2)}</pre></td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </Table>
+            );
+          }}
+        </AsyncView>
+      </Card>
+    </Page>
   );
 };

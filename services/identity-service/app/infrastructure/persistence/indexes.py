@@ -85,6 +85,14 @@ AUDIT_EVENT_INDEXES = (
         name="ix_audit_events_created_at",
     ),
     IndexModel(
+        [("actorId", ASCENDING), ("createdAt", DESCENDING)],
+        name="ix_audit_events_actor_created_at",
+    ),
+    IndexModel(
+        [("subjectId", ASCENDING), ("createdAt", DESCENDING)],
+        name="ix_audit_events_subject_created_at",
+    ),
+    IndexModel(
         [("eventType", ASCENDING), ("createdAt", DESCENDING)],
         name="ix_audit_events_type_created_at",
     ),

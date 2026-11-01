@@ -1,57 +1,61 @@
 import React from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import type { IdentityPermission } from "../context/AuthContext";
-import { roleHomePath } from "./roleNavigation";
+import { Navigate, useLocation } from "react-router-dom";
+import { IconLock } from "@tabler/icons-react";
+import { useAuth } from "../context/AuthContext.ts";
+import type { AppRole, IdentityPermission } from "../api/session.ts";
+import { roleHomePath } from "./navigation.ts";
+import { ButtonLink } from "../components/ui/Button.tsx";
+import { LoadingState } from "../components/ui/States.tsx";
+import { Alert } from "../components/ui/Alert.tsx";
 
-export type AllowedRole = "HOLDER" | "ISSUER" | "VERIFIER" | "ADMIN";
-
-interface RoleGuardProps {
-  children: React.ReactNode;
-  allowedRole?: AllowedRole | AllowedRole[];
-  requiredPermission?: IdentityPermission;
-  requireAuth?: boolean;
-}
+const Centered: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="page-body">
+    <div className="container-tight py-4">{children}</div>
+  </div>
+);
 
 /**
- * Enterprise Role Guard
- * Enforces Role-Based Access Control (RBAC).
- * Supports both production-ready session/JWT context and thesis evaluation demo mode.
+ * Client-side routing guard. It improves UX only; every API call is still
+ * authorised by the backend, which remains the security boundary.
  */
-export const RoleGuard: React.FC<RoleGuardProps> = ({
-  children,
-  allowedRole,
-  requiredPermission,
-  requireAuth = true
-}) => {
-  const { user, isAuthenticated, isAuthLoading } = useAuth();
+export const RoleGuard: React.FC<{
+  children: React.ReactNode;
+  allowedRole?: AppRole | AppRole[];
+  requiredPermission?: IdentityPermission;
+}> = ({ children, allowedRole, requiredPermission }) => {
+  const { user, status } = useAuth();
   const location = useLocation();
 
-  if (requireAuth && isAuthLoading) {
-    return <div role="status" aria-live="polite">Checking your signed-in account…</div>;
+  if (status === "checking") {
+    return <Centered><div className="card"><LoadingState label="Checking your session" /></div></Centered>;
   }
-
-  if ((requireAuth || allowedRole || requiredPermission) && (!isAuthenticated || !user)) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  // If specific roles are restricted
-  if (allowedRole && user) {
-    const roles = Array.isArray(allowedRole) ? allowedRole : [allowedRole];
-    if (!roles.includes(user.role)) {
-      return <Navigate to={roleHomePath(user.role)} replace />;
-    }
-  }
-
-  if (requiredPermission && (!user || !user.permissions.includes(requiredPermission))) {
+  if (status === "unavailable") {
     return (
-      <section className="access-denied" role="alert" aria-labelledby="access-denied-title">
-        <h1 id="access-denied-title">Access denied</h1>
-        <p>Your account does not have permission to open this page.</p>
-        <Link to={user ? roleHomePath(user.role) : "/login"}>Return to your workspace</Link>
-      </section>
+      <Centered>
+        <Alert tone="danger" title="The sign-in service is unavailable" live="assertive">
+          Your session could not be checked. No protected data is shown. Try again shortly.
+        </Alert>
+      </Centered>
     );
   }
-
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
+  if (allowedRole) {
+    const roles = Array.isArray(allowedRole) ? allowedRole : [allowedRole];
+    if (!roles.includes(user.role)) return <Navigate to={roleHomePath(user.role)} replace />;
+  }
+  if (requiredPermission && !user.permissions.includes(requiredPermission)) {
+    return (
+      <Centered>
+        <section className="empty" role="alert" aria-labelledby="access-denied-title">
+          <div className="empty-icon text-danger"><IconLock size={48} stroke={1.5} aria-hidden="true" /></div>
+          <h1 id="access-denied-title" className="empty-title">Access denied</h1>
+          <p className="empty-subtitle text-secondary">Your account does not have the permission required for this page.</p>
+          <div className="empty-action"><ButtonLink to={roleHomePath(user.role)} variant="secondary">Return to your workspace</ButtonLink></div>
+        </section>
+      </Centered>
+    );
+  }
   return <>{children}</>;
 };

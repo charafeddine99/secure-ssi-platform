@@ -32,10 +32,10 @@ export function parseOid4vpRequestSessionId(rawUri: string): string {
       throw new Error("Inline OID4VP request is missing required project-profile parameters.");
     }
     if (url.searchParams.get("response_type") !== "vp_token") {
-      throw new Error("This prototype supports the OID4VP vp_token response type only.");
+      throw new Error("This wallet supports the OID4VP vp_token response type only.");
     }
     if (url.searchParams.get("response_mode") !== "direct_post") {
-      throw new Error("This prototype supports the OID4VP direct_post response mode only.");
+      throw new Error("This wallet supports the OID4VP direct_post response mode only.");
     }
 
     try {

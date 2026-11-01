@@ -38,14 +38,22 @@ class BlockchainAnchorClient:
     Supports optional Hardhat anchoring and explicit in-memory demo state.
     A locally requested anchor is never represented as a confirmed receipt.
     """
-    def __init__(self, rpc_url: str = "http://127.0.0.1:8545"):
+    def __init__(self, rpc_url: str | None = None):
         self.rpc_url = rpc_url
         self._anchored_events: list = []
         self._quarantined_subjects: set[str] = set()
         try:
             from app.config.blockchain_settings import load_blockchain_settings
             from app.infrastructure.blockchain.web3_bridge import BlockchainBridge
-            settings = load_blockchain_settings({"BLOCKCHAIN_RPC_URL": rpc_url})
+            import os
+
+            # Environment settings carry BLOCKCHAIN_ENABLED, the signer key and the
+            # RPC URL; an explicit rpc_url only overrides the endpoint.
+            environ = dict(os.environ)
+            if rpc_url is not None:
+                environ["BLOCKCHAIN_RPC_URL"] = rpc_url
+            settings = load_blockchain_settings(environ)
+            self.rpc_url = settings.rpc_url
             self._bridge = BlockchainBridge(settings=settings)
         except Exception:
             self._bridge = None

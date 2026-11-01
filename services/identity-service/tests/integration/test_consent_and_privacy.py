@@ -174,7 +174,9 @@ def test_holder_consent_and_full_credential_disclosure_flow(auth_headers_fn):
             nonce=nonce,
             domain="http://testserver/verifier",
         )
+        from tests.support.consent import record_holder_approval
 
+        record_holder_approval(session_id, signed_vc, SYNTHETIC_HOLDER_DID)
 
         # Legacy selection metadata does not alter the signed credential.
         disclosed_claims = {

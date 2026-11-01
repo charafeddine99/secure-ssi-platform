@@ -66,7 +66,7 @@ async function runTests(): Promise<void> {
     allowCancellation: true,
   };
   globalThis.localStorage = {
-    getItem: () => "test-bearer-token",
+    getItem: (key: string) => key === "ssi_session_active" ? "1" : null,
     setItem: () => undefined,
     removeItem: () => undefined,
     clear: () => undefined,

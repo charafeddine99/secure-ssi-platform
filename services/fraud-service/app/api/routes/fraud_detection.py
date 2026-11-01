@@ -1,8 +1,9 @@
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas.detection import FraudDetectionRequest, FraudDetectionResponse
 from app.ml.pipeline import FeaturePipeline
 from app.ml.hybrid_engine import HybridFraudDetector
+from app.core.security import FraudPrincipal, require_authenticated
 
 logger = logging.getLogger("fraud_detection_api")
 
@@ -18,7 +19,10 @@ detector = HybridFraudDetector()
     status_code=status.HTTP_200_OK,
     summary="Evaluate synthetic prototype signals with advisory rules"
 )
-async def evaluate_fraud_risk(payload: FraudDetectionRequest):
+async def evaluate_fraud_risk(
+    payload: FraudDetectionRequest,
+    _principal: FraudPrincipal = Depends(require_authenticated),
+):
     """
     Evaluates synthetic prototype signals with deterministic rules. This is not
     a trained model and does not determine credential validity or issuer trust.
@@ -54,8 +58,9 @@ async def evaluate_fraud_risk(payload: FraudDetectionRequest):
         result = detector.evaluate(normalized_features)
 
         logger.info(
-            f"Evaluated DID: {payload.did_id} -> Risk Score: {result['risk_score']} | "
-            f"Fraudulent: {result['is_fraudulent']}"
+            "Advisory fraud evaluation completed: risk_score=%s fraudulent=%s",
+            result["risk_score"],
+            result["is_fraudulent"],
         )
 
         return FraudDetectionResponse(

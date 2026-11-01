@@ -1,72 +1,44 @@
-import React, { useEffect, useState } from "react";
-import { AlertTriangle, Cpu, RefreshCw } from "lucide-react";
-import { fetchFraudStats, FraudModelStats } from "../../services/api";
-
-function readableStatus(value: string | undefined): string {
-  if (!value) return "Not reported";
-  return value
-    .replace(/^\[|\]$/g, "")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .replace(/(^|[\s/])[a-z]/g, (part) => part.toUpperCase());
-}
+import React from "react";
+import { IconCpu, IconDatabase, IconRefresh, IconShieldCheck } from "@tabler/icons-react";
+import { fetchFraudStats } from "../../api/admin.ts";
+import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { Card, Stat } from "../../components/ui/Card.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { AsyncView } from "../../components/ui/AsyncView.tsx";
+import { EmptyState } from "../../components/ui/States.tsx";
+import { useAsync } from "../../lib/useAsync.ts";
+import { RiskStatusValue } from "./RiskStatusValue.tsx";
 
 export const AiFraudMonitorPage: React.FC = () => {
-  const [stats, setStats] = useState<FraudModelStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadStats = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setStats(await fetchFraudStats());
-    } catch (cause) {
-      setStats(null);
-      setError(cause instanceof Error ? cause.message : "Risk service status is unavailable.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void loadStats(); }, []);
-
+  const stats = useAsync(() => fetchFraudStats(), []);
   return (
-    <main className="workspace-page">
-      <header className="workspace-page-header">
-        <div>
-          <p className="workspace-eyebrow">Platform operations</p>
-          <h1>Risk evaluation service</h1>
-          <p>Risk service status and configured inputs.</p>
-        </div>
-        <button type="button" className="workspace-secondary-action" onClick={() => void loadStats()} disabled={loading}>
-          <RefreshCw size={16} className={loading ? "spin" : ""} /> Refresh
-        </button>
-      </header>
-
-      {error && <div className="workspace-error" role="alert"><AlertTriangle size={17} /> {error}</div>}
-      {loading ? <section className="workspace-empty-panel" role="status">Loading risk service metadata…</section> : !stats ? (
-        <section className="workspace-empty-panel"><p>Risk service metadata is unavailable.</p></section>
-      ) : (
-        <>
-          <section className="workspace-grid workspace-grid--metrics" aria-label="Risk service details">
-            <article className="workspace-panel workspace-metric-card"><span>Engine</span><strong>{readableStatus(stats.model_type)}</strong><small>Version: {stats.model_version || "Not reported"}</small></article>
-            <article className="workspace-panel workspace-metric-card"><span>Model status</span><strong>{readableStatus(stats.model_status)}</strong><small>Evaluation: {readableStatus(stats.evaluation_status)}</small></article>
-            <article className="workspace-panel workspace-metric-card"><span>Data scope</span><strong>{readableStatus(stats.dataset_label)}</strong><small>Advisory only: {stats.advisory_only ? "Yes" : "Not confirmed"}</small></article>
-          </section>
-          <section className="workspace-panel">
-            <div className="workspace-section-heading"><div><p className="workspace-eyebrow"><Cpu size={14} /> Risk service</p><h2>Reported signals</h2></div></div>
-            {stats.risk_signals.length ? (
-              <ul className="workspace-signal-list">{stats.risk_signals.map((signal) => <li key={signal}>{readableStatus(signal)}</li>)}</ul>
-            ) : <p className="workspace-footnote">No signals were reported by the service.</p>}
-            <p className="workspace-footnote">Risk output cannot establish issuer trust, credential validity, or active status-list state.</p>
-          </section>
-        </>
-      )}
-      <aside className="workspace-notice">
-        <strong>Advisory service</strong>
-        <span>Risk output does not replace credential or status checks.</span>
-      </aside>
-    </main>
+    <Page
+      eyebrow="Administration"
+      title="Risk engine"
+      description="Advisory risk service status."
+      breadcrumbs={[{ label: "Administration", to: "/admin" }, { label: "Risk engine" }]}
+      actions={<Button variant="secondary" onClick={stats.reload} icon={<IconRefresh aria-hidden="true" />}>Refresh</Button>}
+    >
+      <Alert tone="warning" title="Advisory only">
+        Never replaces trust, validity or revocation checks.
+      </Alert>
+      <AsyncView state={stats} onRetry={stats.reload} loadingLabel="Loading risk service status" errorTitle="Risk service status is unavailable">
+        {(s) => (
+          <>
+            <Grid cols={3}>
+              <Stat label="Engine" value={<RiskStatusValue as="strong" value={s.model_type} />} hint={`Version ${s.model_version || "not reported"}`} icon={<IconCpu size={20} />} tone="secondary" />
+              <Stat label="Model status" value={<RiskStatusValue as="strong" value={s.model_status} />} hint={<>Evaluation: <RiskStatusValue value={s.evaluation_status} /></>} icon={<IconShieldCheck size={20} />} tone="secondary" />
+              <Stat label="Data scope" value={<RiskStatusValue as="strong" value={s.dataset_label} />} hint={`Advisory only: ${s.advisory_only ? "yes" : "not confirmed"}`} icon={<IconDatabase size={20} />} tone="secondary" />
+            </Grid>
+            <Card title="Reported signals" flush>
+              {s.risk_signals.length === 0 ? <EmptyState title="No signals reported" description="The risk service responded and reported no signals." /> : (
+                <ul className="list-group list-group-flush">{s.risk_signals.map((signal) => <li key={signal} className="list-group-item"><RiskStatusValue value={signal} /></li>)}</ul>
+              )}
+            </Card>
+          </>
+        )}
+      </AsyncView>
+    </Page>
   );
 };

@@ -1,143 +1,87 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { ArrowRight, Building2, KeyRound, Search, ShieldCheck, UserRound } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
-import { roleHomePath } from "../../routes/roleNavigation";
-import { ButtonLink } from "../../components/ui/Button";
+import { IconArrowRight, IconBuildingBank, IconKey, IconUserCheck, IconUserSearch } from "@tabler/icons-react";
+import { ButtonLink } from "../../components/ui/Button.tsx";
+import { Grid } from "../../components/ui/PageHeader.tsx";
+import { useAuth } from "../../context/AuthContext.ts";
+import { roleHomePath } from "../../routes/navigation.ts";
+import { TrustTriangle } from "../../components/ssi/TrustTriangle.tsx";
 
-const workflows = [
-  {
-    step: "01",
-    title: "Issue",
-    description: "Create offers from configured credential metadata.",
-    icon: Building2
-  },
-  {
-    step: "02",
-    title: "Manage",
-    description: "Review received credentials and approve requests.",
-    icon: KeyRound
-  },
-  {
-    step: "03",
-    title: "Verify",
-    description: "Create requests and review returned results.",
-    icon: Search
-  }
+const ROLES = [
+  { icon: <IconUserCheck size={22} aria-hidden="true" />, tone: "bg-primary-lt", title: "Holder", text: "Store credentials and decide what to share." },
+  { icon: <IconBuildingBank size={22} aria-hidden="true" />, tone: "bg-indigo-lt", title: "Issuer", text: "Issue credentials and manage revocation." },
+  { icon: <IconUserSearch size={22} aria-hidden="true" />, tone: "bg-teal-lt", title: "Verifier", text: "Request presentations and check each result." },
+  { icon: <IconKey size={22} aria-hidden="true" />, tone: "bg-orange-lt", title: "Guardian", text: "Approve wallet recovery for people you trust." },
 ];
 
-const workspaceEntries = [
-  {
-    profile: "holder",
-    title: "Holder / Individual user",
-    description: "View your credentials and approve presentation requests.",
-    icon: UserRound
-  },
-  {
-    profile: "issuer",
-    title: "Issuer institution",
-    role: "Issuer",
-    description: "Create credential offers and review credential status.",
-    icon: Building2
-  },
-  {
-    profile: "verifier",
-    title: "Verifier institution",
-    role: "Verifier",
-    description: "Create requests and review returned verification results.",
-    icon: Search
-  },
-  {
-    profile: "admin",
-    title: "Platform administration",
-    role: "Admin",
-    description: "Review service health and permitted platform operations.",
-    icon: ShieldCheck
-  }
-] as const;
+const LIFECYCLE = ["Issue", "Store", "Request", "Consent", "Verify"];
 
 export const LandingPage: React.FC = () => {
-  const { isAuthenticated, user } = useAuth();
-  const primaryPath = isAuthenticated && user ? roleHomePath(user.role) : "/login";
-  // The profile query only selects the sign-in context. AuthPage still redirects
-  // an authenticated account to its server-derived workspace.
-  const entryPath = (profile: string) => `/login?profile=${profile}`;
-
+  const { user } = useAuth();
+  React.useEffect(() => { document.title = "Secure SSI Platform"; }, []);
   return (
-    <div className="landing-page">
-      <section className="landing-hero" aria-labelledby="landing-title">
-        <div className="landing-hero-backdrop" aria-hidden="true" />
-        <div className="landing-hero-copy">
-          <p className="landing-eyebrow">
-            <ShieldCheck size={16} aria-hidden="true" />
-            Secure identity workflows
-          </p>
-          <h1 id="landing-title" className="landing-hero-title">
-            A clearer way to issue, hold and verify credentials.
-          </h1>
-          <p className="landing-hero-description">
-            One workspace for credential offers, wallet consent and presentation verification.
-          </p>
-          <div className="landing-hero-actions">
-            <ButtonLink className="landing-primary-action" to={primaryPath} size="large">
-              {isAuthenticated ? "Open your workspace" : "Sign in"}
-              <ArrowRight size={17} aria-hidden="true" />
-            </ButtonLink>
-            <ButtonLink className="landing-secondary-action" to="/ecosystem" variant="secondary">
-              Explore the platform
-            </ButtonLink>
-          </div>
-        </div>
-
-        <section className="landing-workflow-card" aria-labelledby="landing-workflow-title">
-          <div className="landing-workflow-heading">
-            <div>
-              <span className="landing-workflow-kicker">Credential lifecycle</span>
-              <h2 id="landing-workflow-title">From offer to verification</h2>
+    <>
+      <section className="ssi-band ssi-hero" aria-labelledby="hero-title">
+        <div className="ssi-band-art" aria-hidden="true" />
+        <div className="container-xl">
+          <div className="row">
+            <div className="col-lg-7">
+              <div className="page-pretitle mb-3">Self-sovereign identity</div>
+              <h1 id="hero-title" className="display-5 fw-bold mb-3">Verifiable credentials <span className="ssi-gradient-text">you can trust.</span></h1>
+              <p className="lead fs-2 mb-4">Issue, hold and verify W3C credentials with OpenID4VCI and OpenID4VP.</p>
+              <div className="btn-list">
+                {user
+                  ? <ButtonLink to={roleHomePath(user.role)} icon={<IconArrowRight aria-hidden="true" />}>Open workspace</ButtonLink>
+                  : <ButtonLink to="/login" icon={<IconArrowRight aria-hidden="true" />}>Sign in</ButtonLink>}
+                <ButtonLink to="/docs" variant="secondary">How it works</ButtonLink>
+              </div>
             </div>
-            <span className="landing-workflow-mark" aria-hidden="true">
-              <ShieldCheck size={21} />
-            </span>
           </div>
-          <ol className="landing-workflow-list">
-            {workflows.map(({ step, title, description, icon: Icon }) => (
-              <li key={step}>
-                <span className="landing-workflow-step">{step}</span>
-                <span className="landing-workflow-icon" aria-hidden="true"><Icon size={18} /></span>
-                <span className="landing-workflow-text">
-                  <strong>{title}</strong>
-                  <span>{description}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        </div>
       </section>
 
-      <section className="landing-entry-section" id="workspace-entry-points" aria-labelledby="workspace-entry-title">
-        <div className="landing-entry-heading">
-          <div>
-            <p className="landing-eyebrow">Workspaces</p>
-            <h2 id="workspace-entry-title">Choose where to sign in</h2>
+      <div className="page-body ssi-band-body">
+        <div className="container-xl">
+          <div className="vstack gap-4">
+            <Grid cols={4}>
+              {ROLES.map((role) => (
+                <article key={role.title} className="card">
+                  <div className="card-body">
+                    <span className={`avatar avatar-md ${role.tone} mb-3`} aria-hidden="true">{role.icon}</span>
+                    <h2 className="card-title mb-1">{role.title}</h2>
+                    <p className="text-secondary mb-0">{role.text}</p>
+                  </div>
+                </article>
+              ))}
+            </Grid>
+
+            <section className="card ssi-triangle-card" aria-labelledby="triangle-heading">
+              <div className="card-body p-4 p-lg-5">
+                <div className="row g-4 align-items-center">
+                  <div className="col-lg-5">
+                    <div className="page-pretitle mb-2">How trust works</div>
+                    <h2 id="triangle-heading" className="h1 mb-3">Three roles, one verifiable chain.</h2>
+                    <ul className="list-unstyled vstack gap-3 mb-0">
+                      <li className="d-flex gap-3"><span className="ssi-dot" />The issuer signs a credential with its key.</li>
+                      <li className="d-flex gap-3"><span className="ssi-dot" />The holder keeps it and decides when to share.</li>
+                      <li className="d-flex gap-3"><span className="ssi-dot" />The verifier checks the signature and the issuer in the Trust Registry.</li>
+                    </ul>
+                  </div>
+                  <div className="col-lg-7"><TrustTriangle /></div>
+                </div>
+              </div>
+            </section>
+
+            <section className="card" aria-labelledby="lifecycle-title">
+              <div className="card-body">
+                <h2 id="lifecycle-title" className="subheader mb-3">Credential lifecycle</h2>
+                <ol className="steps steps-counter steps-blue mb-0">
+                  {LIFECYCLE.map((step) => <li key={step} className="step-item">{step}</li>)}
+                </ol>
+              </div>
+            </section>
           </div>
-          <p>Your account’s assigned access determines the workspace you can use.</p>
         </div>
-        <div className="landing-entry-grid">
-          {workspaceEntries.map(({ profile, title, description, icon: Icon }) => (
-            <Link className="landing-entry-card" key={profile} to={entryPath(profile)}>
-              <span className="landing-entry-card-icon" aria-hidden="true"><Icon size={19} /></span>
-              <span className="landing-entry-card-copy">
-                <strong>{title}</strong>
-                <span>{description}</span>
-              </span>
-              <ArrowRight className="landing-entry-arrow" size={17} aria-hidden="true" />
-            </Link>
-          ))}
-        </div>
-        <p className="landing-entry-security-note">
-          Selecting an entry only opens sign-in. The server verifies your role and permissions.
-        </p>
-      </section>
-    </div>
+      </div>
+    </>
   );
 };

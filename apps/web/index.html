@@ -1,38 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark" data-bs-theme-base="slate" data-bs-theme-primary="indigo" data-ssi-backdrop="aurora" data-ssi-radius="default">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Secure SSI credential issuance, wallet consent, and verification platform." />
-    <meta name="theme-color" content="#0a1220" />
+    <meta name="description" content="Secure SSI credential issuance, wallet consent and verification platform." />
+    <meta name="theme-color" content="#0b1020" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Secure SSI Platform</title>
-    <!-- Tailwind utilities are still used by existing screens. -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
-            },
-            colors: {
-              brand: {
-                50: '#eff6ff',
-                100: '#dbeafe',
-                500: '#4f83ff',
-                600: '#2d6ae8',
-                700: '#245acb',
-                800: '#1d4ba8',
-                900: '#163d85',
-              }
-            }
-          }
-        }
-      }
-    </script>
   </head>
-  <body class="min-h-screen font-sans antialiased selection:bg-teal-300 selection:text-slate-950">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

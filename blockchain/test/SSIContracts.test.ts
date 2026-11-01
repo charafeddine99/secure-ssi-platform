@@ -85,6 +85,16 @@ describe("Secure SSI Platform - Smart Contracts Suite", function () {
         revocationRegistry.connect(owner).revokeCredential(credHash, reasonHash)
       ).to.be.revertedWith("RevocationRegistry: Zaten iptal edilmis");
     });
+
+    it("should reject credential revocation from a non-owner", async function () {
+      const credHash = ethers.keccak256(ethers.toUtf8Bytes("Credential-Unauthorized-Revocation"));
+      const reasonHash = ethers.keccak256(ethers.toUtf8Bytes("Unauthorized"));
+
+      await expect(
+        revocationRegistry.connect(user).revokeCredential(credHash, reasonHash)
+      ).to.be.revertedWith("RevocationRegistry: Yalnizca yetkili yonetici");
+      expect(await revocationRegistry.isCredentialRevoked(credHash)).to.be.false;
+    });
   });
 
   describe("EmergencyRecovery (2-out-of-3 Multi-Sig Guardian Recovery)", function () {

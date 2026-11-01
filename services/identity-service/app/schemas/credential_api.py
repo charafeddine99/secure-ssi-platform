@@ -135,6 +135,25 @@ class CredentialStatusHistoryResponse(ApiModel):
     total_events: int = 0
 
 
+class IssuedCredentialSummaryResponse(ApiModel):
+    """Issuer-owned credential metadata without returning the full VC claims."""
+
+    credential_id: str
+    holder_did: str
+    credential_type: list[str]
+    issuance_date: datetime
+    expiration_date: datetime | None
+    status: CredentialStatus
+    version: int
+
+
+class IssuedCredentialListResponse(ApiModel):
+    items: list[IssuedCredentialSummaryResponse]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class CredentialVerificationChecksResponse(ApiModel):
     profile_valid: bool
     issuer_resolved: bool

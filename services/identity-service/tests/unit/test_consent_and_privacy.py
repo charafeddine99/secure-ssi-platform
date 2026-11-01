@@ -213,7 +213,7 @@ def test_oid4vp_service_reject_session_records_audit_event():
     assert event.actor_id == "did:key:z6MkuHolder123"
 
 
-def test_oid4vp_service_direct_post_calculates_data_minimization():
+def test_oid4vp_service_direct_post_calculates_data_minimization(monkeypatch):
     collection = FakeCollection(unique_fields=("sessionId",))
     session_repo = MongoVerificationSessionRepository(cast(Any, collection))
     audit_repo = FakeAuditRepository()
@@ -265,17 +265,34 @@ def test_oid4vp_service_direct_post_calculates_data_minimization():
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 
+    from tests.support.consent import record_holder_approval
+
+    record_holder_approval(session.session_id, signed_vc, SYNTHETIC_HOLDER_DID, repository=session_repo)
+
     # Legacy selection metadata cannot hide claims from a signed VC.
     disclosed_claims = {
         "affiliation": "student",
         "degree": "Bachelor of Science",
     }
 
+    from app.application.services.oid4vp_service import fraud_client
+
+    monkeypatch.setattr(
+        fraud_client,
+        "evaluate_presentation_risk",
+        lambda **_kwargs: {
+            "risk_score": 10,
+            "reasons": [],
+            "model_version": "test-rule-heuristic-v1",
+            "risk_signals": ["synthetic_test_signal"],
+            "advisory_only": True,
+            "source": "fraud_service",
+        },
+    )
     result = service.process_direct_post(
         session_id="session_dp_minimization_0001",
         vp_token=signed_vp,
         disclosed_claims=disclosed_claims,
-        ai_risk_score=10,
     )
 
 

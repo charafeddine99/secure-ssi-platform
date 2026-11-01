@@ -4,13 +4,37 @@ from typing import Any
 from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter, Request, Response, status
-from app.core.config import IDENTITY_SERVICE_URL, FRAUD_SERVICE_URL, RECOVERY_SERVICE_URL
+from app.core.config import CORS_ORIGINS, IDENTITY_SERVICE_URL, FRAUD_SERVICE_URL, RECOVERY_SERVICE_URL
+from app.core.session import (
+    CLIENT_HEADER,
+    clear_session_cookie,
+    csrf_rejection,
+    is_web_client,
+    session_token,
+    set_session_cookie,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["API Gateway Facade & Proxy"])
 
 MAX_PAYLOAD_BYTES = 1024 * 1024  # 1 MB
 MAX_JSON_DEPTH = 16
 HTTP_413 = getattr(status, "HTTP_413_CONTENT_TOO_LARGE", getattr(status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413))
+
+
+def error_response(code: str, message: str, status_code: int, correlation_id: str) -> Response:
+    return Response(
+        content=json.dumps({
+            "error": {
+                "code": code,
+                "message": message,
+                "correlation_id": correlation_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }).encode(),
+        status_code=status_code,
+        media_type="application/json",
+        headers={"X-Correlation-ID": correlation_id}
+    )
 
 
 def compute_json_depth(val: Any, current_depth: int = 1) -> int:
@@ -90,19 +114,35 @@ async def forward_request(target_url: str, request: Request) -> Response:
             pass
 
     # 2. Context propagation headers
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
+    # These headers are never trusted as identity assertions. Downstream
+    # services authenticate the forwarded Bearer token with Identity Service.
+    forbidden_context_headers = (
+        "x-user-",
+        "x-role",
+        "x-organization-",
+        "x-org-",
+        "x-issuer-",
+        "x-tenant-",
+        "x-authenticated",
+        "x-internal-",
+    )
+    # The browser session cookie never leaves the gateway; it becomes a Bearer
+    # header only when the client did not send its own Authorization header.
+    headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() not in {"host", "content-length", "cookie", CLIENT_HEADER}
+        and not name.lower().startswith(forbidden_context_headers)
+    }
     headers["x-correlation-id"] = correlation_id
-
-    # Propagate authorization and identity context if present
-    user_did = request.headers.get("x-user-did")
-    if user_did:
-        headers["x-user-did"] = user_did
-
-    user_role = request.headers.get("x-user-role")
-    if user_role:
-        headers["x-user-role"] = user_role
+    cookie_token = session_token(request)
+    used_cookie = False
+    if cookie_token and "authorization" not in {name.lower() for name in headers}:
+        reason = csrf_rejection(request, CORS_ORIGINS)
+        if reason:
+            return error_response("CSRF_REJECTED", reason, status.HTTP_403_FORBIDDEN, correlation_id)
+        headers["authorization"] = f"Bearer {cookie_token}"
+        used_cookie = True
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -120,12 +160,15 @@ async def forward_request(target_url: str, request: Request) -> Response:
             }
             forward_headers["X-Correlation-ID"] = correlation_id
 
-            return Response(
+            response = Response(
                 content=resp.content,
                 status_code=resp.status_code,
                 headers=forward_headers,
                 media_type=resp.headers.get("content-type")
             )
+            if used_cookie and resp.status_code == status.HTTP_401_UNAUTHORIZED:
+                clear_session_cookie(response)
+            return response
         except httpx.ConnectError:
             return Response(
                 content=json.dumps({
@@ -140,24 +183,40 @@ async def forward_request(target_url: str, request: Request) -> Response:
                 media_type="application/json",
                 headers={"X-Correlation-ID": correlation_id}
             )
-        except Exception as exc:
-            safe_msg = str(exc)
-            if "://" in safe_msg and "@" in safe_msg:
-                import re
-                safe_msg = re.sub(r"://([^:@]+):([^@]+)@", r"://\1:***REDACTED***@", safe_msg)
-            return Response(
-                content=json.dumps({
-                    "error": {
-                        "code": "BAD_GATEWAY",
-                        "message": f"Proxy forwarding error: {safe_msg}",
-                        "correlation_id": correlation_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    }
-                }).encode(),
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                media_type="application/json",
-                headers={"X-Correlation-ID": correlation_id}
+        except Exception:
+            # Never echo exception text: it can carry internal hostnames or URLs.
+            return error_response(
+                "BAD_GATEWAY",
+                "The gateway could not forward the request.",
+                status.HTTP_502_BAD_GATEWAY,
+                correlation_id,
             )
+
+
+def move_token_to_cookie(resp: Response) -> Response:
+    """Sign-in for the web app: the token goes into the HttpOnly cookie only."""
+    try:
+        data = json.loads(resp.body)
+    except (ValueError, TypeError):
+        return resp
+    if not isinstance(data, dict):
+        return resp
+    token = data.pop("accessToken", None) or data.pop("access_token", None)
+    data.pop("access_token", None)
+    if not isinstance(token, str) or not token:
+        return resp
+    expires_in = data.get("expiresIn", data.get("expires_in"))
+    headers = {k: v for k, v in resp.headers.items() if k.lower() not in {"content-length", "content-type"}}
+    response = Response(
+        content=json.dumps(data).encode(),
+        status_code=resp.status_code,
+        headers=headers,
+        media_type="application/json",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    set_session_cookie(response, token, expires_in)
+    return response
+
 
 @router.get("/system/status", summary="Tüm mikroservislerin birleşik sağlık ve çalışma durumunu döner")
 async def get_system_status():
@@ -236,6 +295,12 @@ async def proxy_identity(path: str, request: Request):
     normalized = path.lstrip("/")
     target = f"{IDENTITY_SERVICE_URL}/api/v1/{normalized}"
     resp = await forward_request(target, request)
+    if request.method == "POST" and is_web_client(request):
+        if normalized == "auth/token" and resp.status_code == status.HTTP_200_OK:
+            return move_token_to_cookie(resp)
+        if normalized == "auth/revoke":
+            clear_session_cookie(resp)
+            return resp
     if resp.status_code == 404 and not normalized.startswith("v1/"):
         fallback_target = f"{IDENTITY_SERVICE_URL}/api/{normalized}"
         fallback_resp = await forward_request(fallback_target, request)

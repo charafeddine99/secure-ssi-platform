@@ -589,3 +589,24 @@ def test_golden_path_revoked_credential_rejection():
         assert session_body["status"] == "REJECTED"
         assert session_body["verificationResult"]["finalPolicyResult"] == "REJECTED"
         assert session_body["verificationResult"]["revocationStatusClear"] is False
+
+
+def test_owner_scoped_wallet_listing_returns_only_own_wallets():
+    """HOL-03: a new browser finds the account's existing wallet instead of creating one."""
+    with TestClient(app) as client:
+        holder = _get_headers(client, "holder")
+        first = _create_wallet(client, holder)
+        second = _create_wallet(client, holder)
+
+        listed = client.get("/api/v1/wallets", headers=holder)
+        assert listed.status_code == 200, listed.text
+        ids = [item["walletId"] for item in listed.json()["items"]]
+        assert first["walletId"] in ids and second["walletId"] in ids
+        assert all(item["ownerUserId"] == first["ownerUserId"] for item in listed.json()["items"])
+
+        # Another account sees none of them; anonymous callers are rejected.
+        verifier_items = client.get("/api/v1/wallets", headers=_get_headers(client, "verifier"))
+        assert verifier_items.status_code in (200, 403)
+        if verifier_items.status_code == 200:
+            assert not {item["walletId"] for item in verifier_items.json()["items"]} & set(ids)
+        assert client.get("/api/v1/wallets").status_code == 401
