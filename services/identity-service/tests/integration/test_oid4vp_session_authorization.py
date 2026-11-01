@@ -86,6 +86,44 @@ def test_verifier_result_poll_requires_authentication_and_exact_owner(
         )
 
 
+def test_verifier_history_is_paginated_and_owner_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with TestClient(app) as client:
+        owner_headers = _headers(client, "verifier")
+        session_id = _new_session(client, owner_headers)
+
+        own_history = client.get(
+            "/api/v1/oid4vp/requests?limit=1&offset=0",
+            headers=owner_headers,
+        )
+        assert own_history.status_code == 200, own_history.text
+        payload = own_history.json()
+        assert payload["limit"] == 1
+        assert payload["offset"] == 0
+        assert any(
+            item["sessionId"] == session_id for item in payload["items"]
+        )
+
+        other_verifier = AuthenticatedPrincipal.from_user(
+            User(
+                id="usr_unrelated_verifier",
+                username="unrelated-verifier@example.test",
+                display_name="Unrelated Verifier",
+                roles=(Role.VERIFIER,),
+            ),
+            authentication_source="test",
+        )
+        monkeypatch.setitem(
+            app.dependency_overrides,
+            get_current_principal,
+            lambda: other_verifier,
+        )
+        foreign_history = client.get("/api/v1/oid4vp/requests?limit=10")
+        assert foreign_history.status_code == 200
+        assert foreign_history.json()["items"] == []
+
+
 def test_holder_gets_only_authenticated_protocol_request_context() -> None:
     with TestClient(app) as client:
         verifier_headers = _headers(client, "verifier")

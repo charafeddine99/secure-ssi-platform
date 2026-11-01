@@ -72,6 +72,7 @@ class CredentialRepository(Protocol):
         issuer_did: str,
         *,
         limit: int = 100,
+        skip: int = 0,
     ) -> tuple[PersistedCredential, ...]: ...
 
     def list_by_holder(
@@ -141,4 +142,13 @@ class AuditEventRepository(Protocol):
         subject_id: str,
         *,
         limit: int = 100,
+    ) -> tuple[AuditEvent, ...]: ...
+
+    def list_by_actor_or_subject(
+        self,
+        *,
+        actor_ids: tuple[str, ...],
+        subject_ids: tuple[str, ...],
+        limit: int = 100,
+        skip: int = 0,
     ) -> tuple[AuditEvent, ...]: ...

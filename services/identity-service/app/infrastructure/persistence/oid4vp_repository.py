@@ -321,3 +321,28 @@ class MongoVerificationSessionRepository(VerificationSessionRepository):
             return tuple(VerificationSessionDocumentMapper.from_document(d) for d in cursor)
         except PyMongoError as e:
             raise PersistenceUnavailableError("Failed to list verification sessions.") from e
+
+    def list_by_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 50,
+        skip: int = 0,
+    ) -> tuple[VerificationSession, ...]:
+        if not owner_user_id or len(owner_user_id) > 200:
+            raise ValueError("Session owner is invalid.")
+        if not 1 <= limit <= 501 or not 0 <= skip <= 100_000:
+            raise ValueError("Session list pagination is out of range.")
+        try:
+            cursor = self._collection.find(
+                {"ownerUserId": owner_user_id}
+            ).sort("createdAt", DESCENDING)
+            if skip:
+                cursor = cursor.skip(skip)
+            cursor = cursor.limit(limit)
+            return tuple(
+                VerificationSessionDocumentMapper.from_document(document)
+                for document in cursor
+            )
+        except PyMongoError as e:
+            raise PersistenceUnavailableError("Failed to list owned verification sessions.") from e

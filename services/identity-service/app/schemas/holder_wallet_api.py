@@ -98,6 +98,22 @@ class WalletCredentialInventoryResponse(ApiModel):
     credentials: list[WalletCredentialResponse]
 
 
+class HolderActivityEventResponse(ApiModel):
+    event_id: str
+    event_type: str
+    subject_id: str | None
+    correlation_id: str | None
+    created_at: datetime
+
+
+class HolderActivityResponse(ApiModel):
+    wallet_id: str
+    items: list[HolderActivityEventResponse]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class PresentationChallengeCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -43,6 +43,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Injects enterprise defensive HTTP security headers according to OWASP guidelines.
     """
+    def __init__(self, app, *, hsts_enabled: bool = False):
+        super().__init__(app)
+        self.hsts_enabled = hsts_enabled
+
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -51,7 +55,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        # HSTS is an operator opt-in: only enable it when a verified HTTPS
+        # reverse-proxy boundary serves the public application. Do not emit
+        # preload/includeSubDomains policy for localhost or unknown domains.
+        if self.hsts_enabled:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
 
 

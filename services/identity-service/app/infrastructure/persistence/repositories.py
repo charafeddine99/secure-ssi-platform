@@ -302,8 +302,13 @@ class MongoCredentialRepository:
         issuer_did: str,
         *,
         limit: int = 100,
+        skip: int = 0,
     ) -> tuple[PersistedCredential, ...]:
-        return self._list({"issuerDid": issuer_did}, limit=limit)
+        return self._list(
+            {"issuerDid": issuer_did},
+            limit=limit,
+            skip=skip,
+        )
 
     def list_by_holder(
         self,
@@ -344,14 +349,16 @@ class MongoCredentialRepository:
         filters: dict[str, Any],
         *,
         limit: int,
+        skip: int = 0,
     ) -> tuple[PersistedCredential, ...]:
+        if not 0 <= skip <= 100_000:
+            raise ValueError("Credential list offset must be between 0 and 100000.")
         filters["deletedAt"] = None
         try:
-            cursor = (
-                self._collection.find(filters)
-                .sort("createdAt", DESCENDING)
-                .limit(_bounded_limit(limit))
-            )
+            cursor = self._collection.find(filters).sort("createdAt", DESCENDING)
+            if skip:
+                cursor = cursor.skip(skip)
+            cursor = cursor.limit(_bounded_limit(limit))
             return tuple(
                 CredentialDocumentMapper.from_document(document)
                 for document in cursor
@@ -433,6 +440,39 @@ class MongoAuditEventRepository:
             )
         except PyMongoError as error:
             raise _unavailable("audit event listing by subject") from error
+
+    def list_by_actor_or_subject(
+        self,
+        *,
+        actor_ids: tuple[str, ...],
+        subject_ids: tuple[str, ...],
+        limit: int = 100,
+        skip: int = 0,
+    ) -> tuple[AuditEvent, ...]:
+        normalized_actors = tuple(dict.fromkeys(actor_ids))
+        normalized_subjects = tuple(dict.fromkeys(subject_ids))
+        if not normalized_actors and not normalized_subjects:
+            return ()
+        if not 0 <= skip <= 100_000:
+            raise ValueError("Audit list offset must be between 0 and 100000.")
+        alternatives: list[dict[str, Any]] = []
+        if normalized_actors:
+            alternatives.append({"actorId": {"$in": list(normalized_actors)}})
+        if normalized_subjects:
+            alternatives.append({"subjectId": {"$in": list(normalized_subjects)}})
+        try:
+            cursor = self._collection.find({"$or": alternatives}).sort(
+                "createdAt", DESCENDING
+            )
+            if skip:
+                cursor = cursor.skip(skip)
+            cursor = cursor.limit(_bounded_limit(limit))
+            return tuple(
+                AuditEventDocumentMapper.from_document(document)
+                for document in cursor
+            )
+        except PyMongoError as error:
+            raise _unavailable("scoped audit event listing") from error
 
 
 class MongoRevocationRepository:

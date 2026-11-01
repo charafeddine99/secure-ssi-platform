@@ -103,7 +103,7 @@ class VerificationPolicyEvaluator:
         session_nonce: PolicyCheckResult,
         dcql_satisfaction: PolicyCheckResult,
         consent_compliance: PolicyCheckResult,
-        ai_risk_score: int,
+        ai_risk_score: int | None,
     ) -> VerificationPolicyResult:
         """Evaluate the nine-gate + AI policy and return an immutable result.
 
@@ -121,15 +121,22 @@ class VerificationPolicyEvaluator:
             session_nonce: Gate 7 — Nonce/challenge bound to the session.
             dcql_satisfaction: Gate 8 — DCQL query criteria are met.
             consent_compliance: Gate 9 — Holder consent is honoured.
-            ai_risk_score: 0 – 100 risk score from the fraud engine.
+            ai_risk_score: 0 – 100 risk score from the fraud engine, or ``None``
+                when the authoritative risk service is unavailable.
 
         Returns:
             :class:`~app.domain.verification_policy.VerificationPolicyResult` —
             always succeeds; never raises.
         """
-        # Normalise score to valid range (defensive; callers should validate)
-        safe_score = max(0, min(100, ai_risk_score))
-        ai_level = cls.ai_risk_level_from_score(safe_score)
+        # Absence of an authoritative risk response is not a zero/LOW score.
+        safe_score = (
+            max(0, min(100, ai_risk_score)) if ai_risk_score is not None else None
+        )
+        ai_level = (
+            cls.ai_risk_level_from_score(safe_score)
+            if safe_score is not None
+            else AiRiskLevel.UNAVAILABLE
+        )
 
         # Ordered crypto-gate tuple (canonical ordering)
         gate_map: dict[PolicyCheckName, PolicyCheckResult] = {
@@ -162,7 +169,19 @@ class VerificationPolicyEvaluator:
                 first_failure=first_failure,
             )
 
-        # --- Gate 2: adaptive AI risk (only reachable when all crypto pass) ---
+        # --- Gate 2: authoritative risk result (only reachable when all crypto pass) ---
+        if safe_score is None:
+            return VerificationPolicyResult(
+                decision=PolicyDecision.REJECTED,
+                crypto_checks=ordered_checks,
+                ai_risk_level=AiRiskLevel.UNAVAILABLE,
+                ai_risk_score=None,
+                details={
+                    "riskAssessmentStatus": "UNAVAILABLE",
+                    "reason": "RISK_UNAVAILABLE; automatic acceptance is denied.",
+                },
+            )
+
         quarantine_triggered = False
         quarantine_reason: str | None = None
 

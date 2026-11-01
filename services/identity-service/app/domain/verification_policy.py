@@ -55,6 +55,7 @@ class AiRiskLevel(StrEnum):
     MEDIUM = "MEDIUM"    # 40 – 69 → policy REJECTED (step-up required)
     HIGH = "HIGH"        # 70 – 84 → policy REJECTED
     CRITICAL = "CRITICAL"  # 85 – 100 → policy REJECTED + quarantine
+    UNAVAILABLE = "UNAVAILABLE"  # no authoritative risk result → policy REJECTED
 
 
 # ---------------------------------------------------------------------------
@@ -126,17 +127,21 @@ class VerificationPolicyResult:
     decision: PolicyDecision
     crypto_checks: tuple[PolicyCheckResult, ...]
     ai_risk_level: AiRiskLevel
-    ai_risk_score: int
+    ai_risk_score: int | None
     quarantine_triggered: bool = False
     quarantine_reason: str | None = None
     first_failure: PolicyCheckResult | None = None
     details: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if not 0 <= self.ai_risk_score <= 100:
+        if self.ai_risk_score is None and self.ai_risk_level is not AiRiskLevel.UNAVAILABLE:
+            raise ValueError("A missing risk score requires ai_risk_level=UNAVAILABLE.")
+        if self.ai_risk_score is not None and not 0 <= self.ai_risk_score <= 100:
             raise ValueError(
                 f"ai_risk_score must be in [0, 100], got {self.ai_risk_score}."
             )
+        if self.ai_risk_score is not None and self.ai_risk_level is AiRiskLevel.UNAVAILABLE:
+            raise ValueError("ai_risk_level=UNAVAILABLE cannot carry a risk score.")
         if self.quarantine_triggered and not self.quarantine_reason:
             raise ValueError(
                 "quarantine_triggered=True requires a quarantine_reason."
@@ -174,6 +179,9 @@ class VerificationPolicyResult:
             "allCryptoPassed": self.all_crypto_passed,
             "aiRiskLevel": self.ai_risk_level.value,
             "aiRiskScore": self.ai_risk_score,
+            "riskAssessmentStatus": (
+                "AVAILABLE" if self.ai_risk_score is not None else "UNAVAILABLE"
+            ),
             "quarantineTriggered": self.quarantine_triggered,
             "quarantineReason": self.quarantine_reason,
             "firstFailure": (

@@ -163,7 +163,7 @@ def _set_server_risk_score(monkeypatch: pytest.MonkeyPatch, score: int) -> None:
             "model_version": "test-server-heuristic-v1",
             "risk_signals": ["test_server_signal"],
             "advisory_only": True,
-            "source": "identity_fallback_heuristic",
+            "source": "fraud_service",
         },
     )
 
@@ -385,13 +385,15 @@ def test_adaptive_policy_critical_risk_triggers_auto_quarantine_and_lockout(monk
     assert "quarantine" in res2["details"]["evaluations"]["revocation"].lower()
 
 
-def test_dynamic_ai_risk_evaluation_fallback_heuristic(monkeypatch):
-    """Server risk evaluation retains truthful heuristic provenance and signals."""
+def test_dynamic_ai_risk_service_outage_is_explicit_and_fail_closed(monkeypatch):
+    """An unavailable risk dependency never becomes a synthetic LOW decision."""
     from app.application.services.oid4vp_service import fraud_client
+    from app.infrastructure.clients.fraud_client import FraudRiskUnavailableError
 
-    # Keep this fallback case deterministic even when a stale local Fraud
-    # container is running on the default port.
-    monkeypatch.setattr(fraud_client, "base_url", "http://127.0.0.1:1")
+    def unavailable(**_kwargs):
+        raise FraudRiskUnavailableError("RISK_UNAVAILABLE")
+
+    monkeypatch.setattr(fraud_client, "evaluate_presentation_risk", unavailable)
     verifier_hdrs = _get_headers(client, "verifier")
     req_res = client.post("/api/v1/oid4vp/requests", json={
         "purpose": "Dynamic Evaluation Test",
@@ -416,20 +418,19 @@ def test_dynamic_ai_risk_evaluation_fallback_heuristic(monkeypatch):
     assert post_res.status_code == 200
     res = post_res.json()["result"]
 
-    # The offline fallback receives neutral server-side context, not forged values.
-    assert res["aiRiskScore"] == 10
-    assert res["aiRiskLevel"] == "LOW"
-    assert res["finalPolicyResult"] == "ACCEPTED"
+    assert res["credentialValid"] is True
+    assert res["signatureValid"] is True
+    assert res["aiRiskScore"] is None
+    assert res["aiRiskLevel"] == "UNAVAILABLE"
+    assert res["finalPolicyResult"] == "REJECTED"
     risk_evidence = res["details"]["aiRisk"]
-    assert risk_evidence["source"] in {
-        "fraud_service",
-        "identity_fallback_heuristic",
-    }
-    assert risk_evidence["modelVersion"] in {
-        "rule-heuristic-v1",
-        "identity-fallback-heuristic-v1",
-    }
-    assert risk_evidence["riskSignals"]
+    assert risk_evidence["source"] == "fraud_service"
+    assert risk_evidence["status"] == "UNAVAILABLE"
+    assert risk_evidence["reason"] == "RISK_UNAVAILABLE"
+    assert risk_evidence["score"] is None
+    assert res["details"]["evaluations"]["ai_fraud"].startswith(
+        "Risk assessment unavailable"
+    )
     assert risk_evidence["advisoryOnly"] is True
 
 
@@ -445,7 +446,7 @@ def test_client_supplied_risk_score_and_telemetry_are_ignored(monkeypatch):
             "model_version": "test-server-heuristic-v1",
             "risk_signals": ["server_signal"],
             "advisory_only": True,
-            "source": "identity_fallback_heuristic",
+            "source": "fraud_service",
         }
 
     monkeypatch.setattr(fraud_client, "evaluate_presentation_risk", evaluate)

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from app.infrastructure.clients import fraud_client as fraud_client_module
-from app.infrastructure.clients.fraud_client import FraudRiskClient
+from app.infrastructure.clients.fraud_client import (
+    FraudRiskClient,
+    FraudRiskUnavailableError,
+)
 
 
 def test_identity_fraud_client_uses_internal_service_credential(monkeypatch):
@@ -80,8 +85,44 @@ def test_identity_fraud_client_omits_unconfigured_internal_credential(monkeypatc
     monkeypatch.setattr(fraud_client_module.httpx, "Client", FakeHttpClient)
     client = FraudRiskClient(base_url="http://fraud-service:8000")
 
-    result = client.evaluate_presentation_risk(did="did:key:holder")
+    with pytest.raises(FraudRiskUnavailableError) as exc_info:
+        client.evaluate_presentation_risk(did="did:key:holder")
 
-    assert result["source"] == "identity_fallback_heuristic"
+    assert exc_info.value.code == "RISK_UNAVAILABLE"
     assert requests
     assert all("X-Internal-Service-Token" not in headers for _, headers in requests)
+
+
+def test_identity_fraud_client_rejects_malformed_or_non_advisory_response(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "risk_score": 0.2,
+                "risk_level": "LOW",
+                "reasons": [],
+                "risk_signals": [],
+                "model_version": "rule-heuristic-v1",
+                "advisory_only": False,
+            }
+
+    class FakeHttpClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(fraud_client_module.httpx, "Client", FakeHttpClient)
+    client = FraudRiskClient(base_url="http://fraud-service:8000")
+
+    with pytest.raises(FraudRiskUnavailableError, match="RISK_UNAVAILABLE"):
+        client.evaluate_presentation_risk(did="did:key:holder")

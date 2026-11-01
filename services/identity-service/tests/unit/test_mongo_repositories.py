@@ -455,6 +455,8 @@ def test_index_manager_creates_stable_named_indexes() -> None:
     assert audit_names == {
         "ix_audit_events_created_at",
         "ix_audit_events_type_created_at",
+        "ix_audit_events_actor_created_at",
+        "ix_audit_events_subject_created_at",
     }
     assert {
         index.document["name"]

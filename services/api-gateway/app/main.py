@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.health import router as health_router
 from app.api.routes.proxy import router as proxy_router
-from app.core.config import APP_VERSION, SERVICE_NAME, CORS_ORIGINS
+from app.core.config import APP_VERSION, SERVICE_NAME, CORS_ORIGINS, HSTS_ENABLED
 from app.core.middleware import (
     CorrelationIdMiddleware,
     PathSafetyMiddleware,
@@ -17,7 +17,7 @@ app = FastAPI(
 )
 
 # 1. Defensive Security Headers
-app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=HSTS_ENABLED)
 
 # 2. Distributed Tracing & Correlation ID
 app.add_middleware(CorrelationIdMiddleware)

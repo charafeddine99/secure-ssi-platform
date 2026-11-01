@@ -41,9 +41,79 @@ from app.schemas.oid4_api import (
     WalletOid4vpConsentRequest,
     CreateWalletOid4vpPresentationRequest,
     HolderOid4vpRequestResponse,
+    VerificationSessionListResponse,
 )
 
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
+
+
+@router.get(
+    "/requests",
+    response_model=VerificationSessionListResponse,
+    summary="List the authenticated verifier's own request history",
+    description=(
+        "Owner-scoped history with bounded offset pagination. The authenticated "
+        "user ID is the persistence filter; client-provided owner or organization "
+        "identifiers are not accepted."
+    ),
+)
+def list_verification_sessions(
+    limit: int = 50,
+    offset: int = 0,
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.PRESENTATIONS_VERIFY)
+    ),
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> VerificationSessionListResponse:
+    if not 1 <= limit <= 100 or not 0 <= offset <= 10_000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Verification session pagination is out of range.",
+        )
+    sessions = service.list_sessions_for_owner(
+        owner_user_id=principal.id,
+        limit=limit + 1,
+        offset=offset,
+    )
+    has_more = len(sessions) > limit
+    items = []
+    for session in sessions[:limit]:
+        auth_uri = session.to_authorization_request_uri()
+        items.append(
+            VerificationSessionResponse(
+                session_id=session.session_id,
+                verifier_did=session.verifier_did,
+                client_id=session.client_id,
+                response_uri=session.response_uri,
+                nonce=session.nonce,
+                dcql_query=dict(session.dcql_query),
+                presentation_definition=dict(session.presentation_definition),
+                status=session.status.value,
+                deep_link_uri=auth_uri,
+                qr_payload=auth_uri,
+                expires_at=session.expires_at,
+                purpose=session.purpose,
+                consent_status=session.consent_status,
+                rejection_reason=session.rejection_reason,
+                requested_fields=list(session.requested_fields),
+                verification_result=(
+                    session.verification_result.to_dict()
+                    if session.verification_result
+                    else None
+                ),
+                disclosed_claims=(
+                    dict(session.disclosed_claims)
+                    if session.disclosed_claims
+                    else None
+                ),
+            )
+        )
+    return VerificationSessionListResponse(
+        items=items,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+    )
 
 @router.post(
     "/requests",
@@ -276,7 +346,6 @@ def submit_direct_post(
             # Risk scores and behavioral telemetry are server-owned. Keep the
             # legacy request fields parseable for older clients, but never let
             # a holder choose the score or claim trusted risk signals.
-            ai_risk_score=None,
             client_ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )

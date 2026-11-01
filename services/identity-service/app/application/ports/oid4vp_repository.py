@@ -49,3 +49,12 @@ class VerificationSessionRepository(Protocol):
         limit: int = 50,
     ) -> tuple[VerificationSession, ...]:
         ...
+
+    def list_by_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 50,
+        skip: int = 0,
+    ) -> tuple[VerificationSession, ...]:
+        ...

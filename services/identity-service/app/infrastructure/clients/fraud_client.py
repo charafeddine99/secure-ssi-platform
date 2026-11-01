@@ -4,12 +4,13 @@ Connects the OID4VP Verifier to the AI Fraud Detection microservice (Sprint 13-1
 Provides:
 1. Dynamic presentation risk evaluation via POST /api/v1/fraud/evaluate
 2. Event ingestion reporting via POST /api/v1/fraud/events
-3. Resilient fallback with cryptographic failure protection
+3. Explicit risk-unavailable failure; no synthetic LOW fallback
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from typing import Any, Dict, Optional
@@ -20,14 +21,10 @@ logger = logging.getLogger(__name__)
 
 FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://127.0.0.1:8002").rstrip("/")
 FRAUD_INTERNAL_SERVICE_TOKEN = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", "")
-FALLBACK_MODEL_VERSION = "identity-fallback-heuristic-v1"
-FALLBACK_RISK_SIGNALS = [
-    "failed_attempt_velocity",
-    "presentation_frequency",
-    "device_fingerprint_mismatch",
-    "tor_or_proxy_indicator",
-    "geo_distance",
-]
+class FraudRiskUnavailableError(RuntimeError):
+    """Risk could not be obtained from the authoritative Fraud Service."""
+
+    code = "RISK_UNAVAILABLE"
 
 
 class FraudRiskClient:
@@ -59,7 +56,7 @@ class FraudRiskClient:
         """
         Synchronously queries Fraud Service for advisory heuristic risk.
         Returns the score together with its engine version and signal names.
-        Falls back to local heuristic if Fraud Service is unreachable.
+        Risk unavailability is explicit; this client never fabricates a score.
         """
         payload = {
             "did": did,
@@ -82,32 +79,48 @@ class FraudRiskClient:
                     json=payload,
                     headers=self._internal_headers(),
                 )
-                if res.status_code == 200:
-                    data = res.json()
-                    float_score = float(data.get("risk_score", 0.15))
-                    int_score = int(round(float_score * 100))
-                    return {
-                        "risk_score": int_score,
-                        "risk_level": data.get("risk_level", "LOW"),
-                        "is_anomaly": bool(data.get("is_anomaly", False)),
-                        "recommended_action": data.get("recommended_action", "ALLOW"),
-                        "reasons": data.get("reasons", []),
-                        "model_version": data.get("model_version", "unknown"),
-                        "risk_signals": data.get("risk_signals", []),
-                        "advisory_only": data.get("advisory_only") is True,
-                        "source": "fraud_service",
-                    }
+                if res.status_code != 200:
+                    raise FraudRiskUnavailableError(
+                        f"Fraud Service returned HTTP {res.status_code}"
+                    )
+                data = res.json()
+                float_score = float(data["risk_score"])
+                if not math.isfinite(float_score) or not 0 <= float_score <= 1:
+                    raise ValueError("risk_score is outside the configured [0, 1] range")
+                if data.get("advisory_only") is not True:
+                    raise ValueError("Fraud Service response is missing advisory_only=true")
+                reasons = data.get("reasons")
+                risk_signals = data.get("risk_signals")
+                if not isinstance(reasons, list) or not all(isinstance(v, str) for v in reasons):
+                    raise ValueError("Fraud Service response has invalid reasons")
+                if not isinstance(risk_signals, list) or not all(
+                    isinstance(v, str) for v in risk_signals
+                ):
+                    raise ValueError("Fraud Service response has invalid risk_signals")
+                model_version = data.get("model_version")
+                risk_level = data.get("risk_level")
+                if not isinstance(model_version, str) or not model_version.strip():
+                    raise ValueError("Fraud Service response has no model version")
+                if risk_level not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
+                    raise ValueError("Fraud Service response has an invalid risk level")
+                return {
+                    "risk_score": int(round(float_score * 100)),
+                    "risk_level": risk_level,
+                    "is_anomaly": bool(data.get("is_anomaly", False)),
+                    "recommended_action": data.get("recommended_action", "ALLOW"),
+                    "reasons": reasons,
+                    "model_version": model_version,
+                    "risk_signals": risk_signals,
+                    "advisory_only": True,
+                    "source": "fraud_service",
+                }
+        except FraudRiskUnavailableError:
+            raise
         except Exception as exc:
-            logger.debug("Fraud Service evaluate unreachable (%s), applying heuristic", exc)
-
-        # Fallback heuristic calculation
-        return self._heuristic_fallback(
-            failed_attempts=failed_attempts,
-            is_tor_or_proxy=is_tor_or_proxy,
-            device_fingerprint_match=device_fingerprint_match,
-            presentation_frequency_10m=presentation_frequency_10m,
-            geo_distance_km=geo_distance_km,
-        )
+            logger.warning(
+                "Fraud Service evaluation unavailable (%s)", type(exc).__name__
+            )
+            raise FraudRiskUnavailableError("RISK_UNAVAILABLE") from exc
 
     def report_event(
         self,
@@ -139,69 +152,5 @@ class FraudRiskClient:
                 )
         except Exception:
             pass  # Best effort, never block identity operations on telemetry failure
-
-    def _heuristic_fallback(
-        self,
-        *,
-        failed_attempts: int,
-        is_tor_or_proxy: bool,
-        device_fingerprint_match: bool,
-        presentation_frequency_10m: int,
-        geo_distance_km: float,
-    ) -> Dict[str, Any]:
-        """Local heuristic if AI Fraud microservice is offline."""
-        score = 10
-        reasons = []
-
-        if failed_attempts >= 5:
-            score += 75
-            reasons.append(f"Kritik sayıda başarısız oturum denemesi ({failed_attempts} kez).")
-        elif failed_attempts >= 3:
-            score += 35
-            reasons.append(f"Şüpheli başarısız deneme ({failed_attempts} kez).")
-
-        if is_tor_or_proxy:
-            score += 45
-            reasons.append("Tor/Anonim proxy çıkış noktası tespit edildi.")
-
-        if not device_fingerprint_match:
-            score += 30
-            reasons.append("Bilinmeyen cihaz parmak izi.")
-
-        if presentation_frequency_10m > 15:
-            score += 50
-            reasons.append("Aşırı sunum sıklığı patlaması.")
-
-        if geo_distance_km > 1000.0:
-            score += 60
-            reasons.append("Olağan dışı coğrafi mesafe sıçraması.")
-
-        score = min(max(score, 0), 100)
-
-        if score >= 85:
-            risk_level = "CRITICAL"
-            action = "QUARANTINE_ACCOUNT"
-        elif score >= 70:
-            risk_level = "HIGH"
-            action = "MANUAL_REVIEW"
-        elif score >= 40:
-            risk_level = "MEDIUM"
-            action = "REQUIRE_STEP_UP_AUTH"
-        else:
-            risk_level = "LOW"
-            action = "ALLOW"
-
-        return {
-            "risk_score": score,
-            "risk_level": risk_level,
-            "is_anomaly": score >= 40,
-            "recommended_action": action,
-            "reasons": reasons or ["Tüm parametreler normal profil ile uyumlu."],
-            "model_version": FALLBACK_MODEL_VERSION,
-            "risk_signals": list(FALLBACK_RISK_SIGNALS),
-            "advisory_only": True,
-            "source": "identity_fallback_heuristic",
-        }
-
 
 fraud_client = FraudRiskClient()

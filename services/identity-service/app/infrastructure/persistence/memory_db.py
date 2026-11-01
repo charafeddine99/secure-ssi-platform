@@ -39,6 +39,10 @@ class _Cursor:
         self._documents = self._documents[:value]
         return self
 
+    def skip(self, value: int) -> "_Cursor":
+        self._documents = self._documents[value:]
+        return self
+
     def __iter__(self):
         return iter(deepcopy(self._documents))
 

@@ -42,7 +42,10 @@ from app.domain.persistence import (
 )
 from app.infrastructure.persistence.repositories import MongoAuditEventRepository
 from app.infrastructure.persistence.mappers import new_object_id
-from app.infrastructure.clients.fraud_client import fraud_client
+from app.infrastructure.clients.fraud_client import (
+    FraudRiskUnavailableError,
+    fraud_client,
+)
 from app.application.services.trust_registry_service import TrustRegistryService
 # WP-08: Verification Policy Integration
 from app.domain.verification_policy import PolicyCheckName, PolicyCheckResult
@@ -226,6 +229,24 @@ class Oid4vpService:
         if session.status == VerificationSessionStatus.PENDING and session.is_expired(now):
             raise SessionExpiredError(f"Verification session {session_id} has expired.")
         return session
+
+    def list_sessions_for_owner(
+        self,
+        *,
+        owner_user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[VerificationSession, ...]:
+        """List only sessions created by the authenticated verifier principal."""
+        if not owner_user_id or len(owner_user_id) > 200:
+            raise ValueError("Verification session owner is invalid.")
+        if not 1 <= limit <= 101 or not 0 <= offset <= 10_000:
+            raise ValueError("Verification session pagination is out of range.")
+        return self._sessions.list_by_owner(
+            owner_user_id,
+            limit=limit,
+            skip=offset,
+        )
 
     def evaluate_wallet_credentials(
         self,
@@ -1069,7 +1090,6 @@ class Oid4vpService:
         session_id: str,
         vp_token: dict[str, Any],
         disclosed_claims: dict[str, Any] | None = None,
-        ai_risk_score: int | None = None,
         client_ip: str | None = None,
         user_agent: str | None = None,
         device_fingerprint: str | None = None,
@@ -1380,13 +1400,16 @@ class Oid4vpService:
 
         # Dynamic AI Fraud Threat Engine Evaluation (Section 13, 14, 15)
         ai_reasons: list[str] = []
+        ai_risk_score: int | None = None
         ai_risk_evidence: dict[str, Any] = {
-            "source": "request_score_override",
-            "modelVersion": "unverified-score-override",
+            "source": "fraud_service",
+            "modelVersion": None,
             "riskSignals": [],
             "advisoryOnly": True,
+            "status": "UNAVAILABLE",
+            "reason": "RISK_UNAVAILABLE",
         }
-        if ai_risk_score is None:
+        try:
             eval_res = fraud_client.evaluate_presentation_risk(
                 did=subject_id or session.verifier_did,
                 client_ip=client_ip,
@@ -1406,14 +1429,20 @@ class Oid4vpService:
                 "modelVersion": eval_res.get("model_version", "unknown"),
                 "riskSignals": list(eval_res.get("risk_signals", [])),
                 "advisoryOnly": eval_res.get("advisory_only") is True,
+                "status": "AVAILABLE",
+                "reason": None,
             }
+        except FraudRiskUnavailableError:
+            logger.warning("OID4VP decision denied because risk evaluation is unavailable")
 
         # AI Risk Level Mapping
         # 0-39: LOW (Allow)
         # 40-69: MEDIUM (Step-Up Authentication Required)
         # 70-84: HIGH (Manual Review / Rejected)
         # 85-100: CRITICAL (Auto-Quarantine Triggered)
-        if ai_risk_score >= 85:
+        if ai_risk_score is None:
+            ai_risk_level = "UNAVAILABLE"
+        elif ai_risk_score >= 85:
             ai_risk_level = "CRITICAL"
         elif ai_risk_score >= 70:
             ai_risk_level = "HIGH"
@@ -1747,7 +1776,15 @@ class Oid4vpService:
                     "challenge": "Nonce match confirmed" if challenge_valid else ("Nonce missing from presentation proof" if not challenge_nonce else "Nonce mismatch"),
                     "dcql": "DCQL query criteria fully satisfied" if dcql_satisfied else (dcql_reason or "DCQL satisfaction failed"),
                     "consent": "Authorized by holder consent" if not consent_violation else (consent_violation_reason or "Consent violation"),
-                    "ai_fraud": "Low fraud risk profile" if policy_result.ai_risk_level.value == "LOW" else f"Elevated threat detected: {policy_result.ai_risk_level.value} ({ai_risk_score}/100)",
+                    "ai_fraud": (
+                        "Risk assessment unavailable; automatic acceptance denied (RISK_UNAVAILABLE)"
+                        if ai_risk_score is None
+                        else (
+                            "Low fraud risk profile"
+                            if policy_result.ai_risk_level.value == "LOW"
+                            else f"Elevated threat detected: {policy_result.ai_risk_level.value} ({ai_risk_score}/100)"
+                        )
+                    ),
                     "quarantine": (
                         f"Process-local policy lockout; optional digest anchor status: {quarantine_anchor['status']}"
                         if (quarantine_triggered or is_already_quarantined)
@@ -1856,7 +1893,11 @@ class Oid4vpService:
                     metadata={
                         "session_id": session.session_id,
                         "reason": quarantine_reason or "AI threat auto-quarantine triggered",
-                        "ai_risk_score": str(ai_risk_score),
+                        "ai_risk_score": (
+                            str(ai_risk_score)
+                            if ai_risk_score is not None
+                            else "UNAVAILABLE"
+                        ),
                         "risk_level": ai_risk_level,
                         "protocol": "OID4VP-1.0",
                     },
@@ -1878,10 +1919,16 @@ class Oid4vpService:
                 metadata={
                     "session_id": session.session_id,
                     "policy_result": final_policy,
-                    "ai_risk_score": str(ai_risk_score),
+                    "ai_risk_score": (
+                        str(ai_risk_score)
+                        if ai_risk_score is not None
+                        else "UNAVAILABLE"
+                    ),
                     "ai_risk_level": ai_risk_level,
                     "ai_risk_source": ai_risk_evidence["source"],
-                    "ai_risk_model_version": ai_risk_evidence["modelVersion"],
+                    "ai_risk_model_version": (
+                        ai_risk_evidence["modelVersion"] or "UNAVAILABLE"
+                    ),
                     "quarantine_triggered": str(quarantine_triggered),
                     "protocol": "OID4VP-1.0",
                     "issuer_trusted": str(issuer_trusted),
@@ -1906,7 +1953,9 @@ class Oid4vpService:
                 metadata={
                     "session_id": session.session_id,
                     "policy_result": final_policy,
-                    "ai_risk_score": ai_risk_score,
+                    "ai_risk_score": (
+                        ai_risk_score if ai_risk_score is not None else "UNAVAILABLE"
+                    ),
                 },
             )
         except Exception:

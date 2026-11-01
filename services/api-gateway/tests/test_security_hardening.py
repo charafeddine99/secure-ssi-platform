@@ -7,10 +7,11 @@ JSON nesting depth limits, payload size bounds, and CORS lockdown.
 
 from typing import Any
 import json
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from app.main import app
-from app.core.config import CORS_ORIGINS
-from app.core.middleware import RateLimiterMiddleware
+from app.core.config import CORS_ORIGINS, parse_boolean
+from app.core.middleware import RateLimiterMiddleware, SecurityHeadersMiddleware
 
 
 client = TestClient(app)
@@ -27,7 +28,30 @@ def test_defensive_security_headers():
     assert headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
     assert "camera=()" in headers.get("Permissions-Policy", "")
     assert "default-src 'self'" in headers.get("Content-Security-Policy", "")
-    assert "max-age=31536000" in headers.get("Strict-Transport-Security", "")
+    assert "Strict-Transport-Security" not in headers
+
+
+def test_hsts_is_opt_in_for_verified_tls_termination():
+    tls_edge_app = FastAPI()
+    tls_edge_app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=True)
+
+    @tls_edge_app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    response = TestClient(tls_edge_app).get("/health")
+    assert response.headers.get("Strict-Transport-Security") == "max-age=31536000"
+
+
+def test_hsts_setting_rejects_ambiguous_values():
+    assert parse_boolean("false", name="GATEWAY_HSTS_ENABLED") is False
+    assert parse_boolean("TRUE", name="GATEWAY_HSTS_ENABLED") is True
+    try:
+        parse_boolean("yes", name="GATEWAY_HSTS_ENABLED")
+    except RuntimeError as error:
+        assert "GATEWAY_HSTS_ENABLED" in str(error)
+    else:
+        raise AssertionError("Ambiguous HSTS configuration must fail closed.")
 
 
 def test_cors_origins_lockdown():

@@ -1,7 +1,18 @@
 import os
 
+
+def parse_boolean(value: str, *, name: str) -> bool:
+    normalized = value.strip().casefold()
+    if normalized not in {"true", "false"}:
+        raise RuntimeError(f"{name} must be true or false.")
+    return normalized == "true"
+
 SERVICE_NAME = "api-gateway"
 APP_VERSION = os.getenv("APP_VERSION", "0.2.0")
+HSTS_ENABLED = parse_boolean(
+    os.getenv("GATEWAY_HSTS_ENABLED", "false"),
+    name="GATEWAY_HSTS_ENABLED",
+)
 
 # Alt mikroservislerin adresleri (Docker içi veya yerel)
 IDENTITY_SERVICE_URL = os.getenv("IDENTITY_SERVICE_URL", "http://127.0.0.1:8001")

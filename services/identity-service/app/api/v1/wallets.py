@@ -4,15 +4,17 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 
 from app.api.v1.dependencies import (
     get_holder_wallet_service,
+    get_audit_event_repository,
     get_managed_key_repository,
     require_permission,
     _provider_aware_holder_signer,
 )
 from app.application.ports.key_management import ManagedKeyRepository
+from app.application.ports.repositories import AuditEventRepository
 from app.application.services.holder_wallet_service import (
     HolderWalletService,
 )
@@ -25,6 +27,8 @@ from app.schemas.holder_wallet_api import (
     HolderWalletResponse,
     WalletCredentialInventoryResponse,
     WalletCredentialResponse,
+    HolderActivityResponse,
+    HolderActivityEventResponse,
     GuardianRecoveryProofRequest,
     GuardianRecoveryProofResponse,
 )
@@ -210,4 +214,59 @@ def list_wallet_credentials(
             WalletCredentialResponse.from_domain(record)
             for record in records
         ],
+    )
+
+
+@router.get(
+    "/{wallet_id}/activity",
+    response_model=HolderActivityResponse,
+    summary="List activity for an owned Holder wallet",
+    description=(
+        "Returns a minimal event feed scoped to the authenticated wallet owner, "
+        "its Holder DID, and credentials stored in that wallet. Event metadata "
+        "and raw credential claims are intentionally omitted."
+    ),
+    responses=_ERRORS,
+)
+def list_wallet_activity(
+    wallet_id: Annotated[str, Path(pattern=_WALLET_ID_PATTERN)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.WALLETS_READ)
+    ),
+    service: HolderWalletService = Depends(get_holder_wallet_service),
+    audit_events: AuditEventRepository = Depends(get_audit_event_repository),
+) -> HolderActivityResponse:
+    wallet = service.get_owned(wallet_id, owner_user_id=principal.id)
+    credentials = service.list_credentials(
+        wallet_id,
+        owner_user_id=principal.id,
+        limit=500,
+    )
+    events = audit_events.list_by_actor_or_subject(
+        actor_ids=(wallet.holder_did,),
+        subject_ids=(
+            wallet.wallet_id,
+            *(record.credential_id for record in credentials),
+        ),
+        limit=limit + 1,
+        skip=offset,
+    )
+    has_more = len(events) > limit
+    return HolderActivityResponse(
+        wallet_id=wallet.wallet_id,
+        items=[
+            HolderActivityEventResponse(
+                event_id=event.id,
+                event_type=event.event_type.value,
+                subject_id=event.subject_id,
+                correlation_id=event.correlation_id,
+                created_at=event.created_at,
+            )
+            for event in events[:limit]
+        ],
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
     )

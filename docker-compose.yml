@@ -15,6 +15,7 @@ services:
     build: ./services/api-gateway
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
+      GATEWAY_HSTS_ENABLED: ${GATEWAY_HSTS_ENABLED:-false}
       IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
       FRAUD_SERVICE_URL: ${FRAUD_SERVICE_URL:-http://fraud-service:8000}
       RECOVERY_SERVICE_URL: ${RECOVERY_SERVICE_URL:-http://recovery-service:8000}
@@ -26,6 +27,12 @@ services:
       recovery-service:
         condition: service_healthy
     ports: ["127.0.0.1:8000:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -120,6 +127,12 @@ services:
       mongodb:
         condition: service_healthy
     ports: ["127.0.0.1:8001:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -139,6 +152,12 @@ services:
       identity-service:
         condition: service_healthy
     ports: ["127.0.0.1:8002:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -188,6 +207,12 @@ services:
       mongodb:
         condition: service_healthy
     ports: ["127.0.0.1:8003:8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
