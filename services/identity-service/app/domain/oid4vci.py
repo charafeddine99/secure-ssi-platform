@@ -146,17 +146,22 @@ class CredentialOffer:
 
     def to_standard_offer_payload(self, base_issuer_url: str) -> dict[str, Any]:
         """
-        Formats according to OID4VCI draft 13 / EUDI specification.
+        Formats according to OpenID4VCI 1.0 (section 4.1.1, pre-authorized code grant).
+
+        A required transaction code is announced with a ``tx_code`` object and never
+        includes the code itself; without one the member is omitted.
         """
+        grant: dict[str, Any] = {"pre-authorized_code": self.pre_authorized_code}
+        if self.user_pin is not None:
+            grant["tx_code"] = {
+                "input_mode": "numeric" if self.user_pin.isdigit() else "text",
+                "length": len(self.user_pin),
+                "description": "Enter the transaction code the issuer sent you through a separate channel.",
+            }
         payload = {
             "credential_issuer": base_issuer_url.rstrip("/"),
             "credential_configuration_ids": list(self.credential_configuration_ids),
-            "grants": {
-                "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-                    "pre-authorized_code": self.pre_authorized_code,
-                    "user_pin_required": self.user_pin is not None,
-                }
-            }
+            "grants": {"urn:ietf:params:oauth:grant-type:pre-authorized_code": grant},
         }
         return payload
 

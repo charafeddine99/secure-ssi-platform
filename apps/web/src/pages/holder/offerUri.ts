@@ -18,7 +18,7 @@ export function parseCredentialOfferUri(uri: string): ParsedOffer {
   let parsed: {
     credential_issuer?: unknown;
     credential_configuration_ids?: unknown;
-    grants?: Record<string, { "pre-authorized_code"?: unknown; tx_code?: { description?: unknown } } | undefined>;
+    grants?: Record<string, { "pre-authorized_code"?: unknown; tx_code?: { description?: unknown }; user_pin_required?: unknown } | undefined>;
   };
   try {
     parsed = JSON.parse(rawOffer);
@@ -36,7 +36,9 @@ export function parseCredentialOfferUri(uri: string): ParsedOffer {
     preAuthorizedCode: code,
     configurationId: ids[0],
     issuer: typeof parsed.credential_issuer === "string" ? parsed.credential_issuer : null,
-    requiresTxCode: Boolean(grant?.tx_code),
+    // OpenID4VCI 1.0 announces a transaction code with tx_code; earlier drafts used
+    // user_pin_required, which offers created before this fix still carry.
+    requiresTxCode: Boolean(grant?.tx_code) || grant?.user_pin_required === true,
     txCodeDescription: typeof grant?.tx_code?.description === "string" ? grant.tx_code.description : null,
   };
 }
