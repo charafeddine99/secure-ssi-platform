@@ -9,6 +9,7 @@ from app.api.v1.dependencies import (
     build_audit_outbox_delivery_service,
     build_presentation_reconciliation_service,
     get_audit_outbox_settings,
+    get_auth_settings,
     get_clock,
     get_mongo_connection_manager,
     get_mongo_settings,
@@ -27,6 +28,7 @@ from app.application.services.managed_key_service import (
 )
 from app.infrastructure.persistence.indexes import ensure_mongo_indexes
 from app.infrastructure.persistence.demo_seeder import seed_offline_demo_fixtures
+from app.infrastructure.persistence.local_user_seed import seed_on_startup
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +49,9 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             manager.connect()
             ensure_mongo_indexes(manager.database)
+            seeded = seed_on_startup(manager.database, get_auth_settings())
+            if seeded:
+                _logger.info("Seeded development accounts: %s", ", ".join(seeded))
             if (
                 outbox_settings.enabled
                 or wallet_settings.reconciliation_enabled

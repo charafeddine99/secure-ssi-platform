@@ -17,10 +17,16 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from app.config.auth_settings import is_production_like
+
 logger = logging.getLogger(__name__)
 
 FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://127.0.0.1:8002").rstrip("/")
 FRAUD_INTERNAL_SERVICE_TOKEN = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", "")
+# Published docker-compose default for local development only.
+DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN = "local-dev-fraud-service-token-not-for-production"
+
+
 class FraudRiskUnavailableError(RuntimeError):
     """Risk could not be obtained from the authoritative Fraud Service."""
 
@@ -37,6 +43,12 @@ class FraudRiskClient:
     @staticmethod
     def _internal_headers() -> Dict[str, str]:
         token = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", FRAUD_INTERNAL_SERVICE_TOKEN)
+        if token == DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN and is_production_like(
+            os.getenv("IDENTITY_ENVIRONMENT", "development")
+        ):
+            # Fail closed: risk becomes unavailable instead of trusting a published secret.
+            logger.error("The published development fraud service token is refused in production-like mode.")
+            return {}
         return {"X-Internal-Service-Token": token} if token else {}
 
     def evaluate_presentation_risk(

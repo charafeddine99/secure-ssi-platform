@@ -146,16 +146,23 @@ cd services/api-gateway
 
 # Terminal 3 - Identity Service (Port 8001)
 cd services/identity-service
+$env:FRAUD_INTERNAL_SERVICE_TOKEN = "local-dev-fraud-service-token-not-for-production"
 ..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 # Terminal 4 - AI Fraud Engine (Port 8002)
 cd services/fraud-service
+$env:FRAUD_INTERNAL_SERVICE_TOKEN = "local-dev-fraud-service-token-not-for-production"
 ..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 
 # Terminal 5 - Recovery Service (Port 8003)
 cd services/recovery-service
 ..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8003
 ```
+
+Identity and Fraud must share the same `FRAUD_INTERNAL_SERVICE_TOKEN`;
+without it the risk check is unavailable and every presentation is rejected
+(fail closed). The value above is the published development-only default that
+`docker-compose.yml` also uses; Identity refuses it in production-like mode.
 
 Open `http://localhost:5173` and sign in with a synthetic local account, for
 example `holder@example.test` (the other `*@example.test` test accounts and their passwords are listed in
