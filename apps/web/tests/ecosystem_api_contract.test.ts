@@ -43,7 +43,7 @@ async function runTests(): Promise<void> {
     const controller = new AbortController();
     const metadata = await fetchOid4vciIssuerMetadata(controller.signal);
     equal(metadata.credential_issuer, "https://issuer.example.test", "Issuer metadata is mapped from the service response");
-    equal(requests[0]?.url, "http://127.0.0.1:8000/api/v1/oid4vci/.well-known/openid-credential-issuer", "Metadata uses the gateway route");
+    equal(requests[0]?.url, "/api/v1/oid4vci/.well-known/openid-credential-issuer", "Metadata uses the same-origin gateway route");
     ok(requests[0]?.signal instanceof AbortSignal, "Metadata requests have an abortable timeout signal");
 
     response = [{
@@ -60,7 +60,7 @@ async function runTests(): Promise<void> {
     equal(issuers[0]?.issuerDid, "did:web:issuer.example.test", "Camel-case Trust Registry DID is mapped");
     equal(issuers[0]?.organizationName, "Example Institution", "Camel-case Trust Registry name is mapped");
     equal(issuers[0]?.permittedCredentialTypes[0], "UniversityDegree", "Camel-case permitted types are mapped");
-    equal(requests[1]?.url, "http://127.0.0.1:8000/api/v1/identity/trust-registry/issuers?limit=100", "Issuer directory uses the gateway route");
+    equal(requests[1]?.url, "/api/v1/identity/trust-registry/issuers?limit=100", "Issuer directory uses the same-origin gateway route");
     ok(requests[1]?.signal instanceof AbortSignal, "Trust registry requests have an abortable timeout signal");
 
     response = [{

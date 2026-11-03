@@ -3,13 +3,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ARG VITE_API_BASE_URL=http://127.0.0.1:8000
+# Empty = same-origin /api through this image's nginx proxy (recommended).
+ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run lint
 RUN npm run build
 
 FROM nginx:1.27-alpine
-ARG VITE_API_BASE_URL=http://127.0.0.1:8000
+ARG VITE_API_BASE_URL=
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Allow the browser to call only this origin besides itself (CSP connect-src).
 RUN API_ORIGIN="$(echo "$VITE_API_BASE_URL" | sed -E 's#^(https?://[^/]+).*#\1#')" \

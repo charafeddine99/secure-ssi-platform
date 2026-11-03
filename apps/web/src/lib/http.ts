@@ -17,10 +17,13 @@ const viteEnvironment = (import.meta as ImportMeta & {
   env?: { VITE_API_BASE_URL?: string; DEV?: boolean };
 }).env;
 
-// The Vite dev server proxies /api to the gateway (vite.config.ts), so development
-// requests stay same-origin. Builds use VITE_API_BASE_URL.
+// Requests stay same-origin by default: the Vite dev server (vite.config.ts) and the
+// web container's nginx proxy /api to the gateway. Same origin keeps the SameSite=Strict
+// session cookie and the gateway's Sec-Fetch-Site check working whether the app is
+// opened on localhost or 127.0.0.1. A build may still set VITE_API_BASE_URL to call a
+// separate gateway origin; development always uses the proxy.
 export const GATEWAY_BASE_URL: string =
-  (viteEnvironment?.VITE_API_BASE_URL || (viteEnvironment?.DEV ? "" : "http://127.0.0.1:8000")).replace(/\/+$/, "");
+  (viteEnvironment?.DEV ? "" : viteEnvironment?.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 
 export const SESSION_EXPIRED_EVENT = "ssi:session-expired";
 export const DEFAULT_TIMEOUT_MS = 15_000;

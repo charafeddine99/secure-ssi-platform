@@ -141,17 +141,28 @@ cd apps/web
 npm run dev
 
 # Terminal 2 - API Gateway (Port 8000)
-.\.venv\Scripts\python.exe -m uvicorn services.api_gateway.app.main:app --port 8000
+cd services/api-gateway
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # Terminal 3 - Identity Service (Port 8001)
-.\.venv\Scripts\python.exe -m uvicorn services.identity_service.app.main:app --port 8001
+cd services/identity-service
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 # Terminal 4 - AI Fraud Engine (Port 8002)
-.\.venv\Scripts\python.exe -m uvicorn services.fraud_service.app.main:app --port 8002
+cd services/fraud-service
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 
 # Terminal 5 - Recovery Service (Port 8003)
-.\.venv\Scripts\python.exe -m uvicorn services.recovery_service.app.main:app --port 8003
+cd services/recovery-service
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8003
 ```
+
+Open `http://localhost:5173` and sign in with a synthetic local account, for
+example `holder@example.test` (the other `*@example.test` test accounts and their passwords are listed in
+[`docs/authentication-and-rbac.md`](docs/authentication-and-rbac.md)). The
+Vite dev server forwards `/api` to the gateway on port 8000; set
+`VITE_DEV_API_TARGET` in `apps/web/.env.local` only if your gateway runs on
+another port.
 
 ### Option B: Containerized Docker Compose Startup
 
@@ -174,10 +185,14 @@ containers communicate over the private Compose network. This is not a
 production exposure pattern. Use an explicitly secured edge proxy for remote
 access, and do not publish MongoDB or Redis publicly.
 
-The static Web bundle receives its Gateway URL through the VITE_API_BASE_URL
-Docker build argument (default: http://localhost:8000). If Compose host ports
-are remapped, rebuild the Web image with that Gateway URL; changing a
-container's runtime environment does not rewrite an already-built SPA bundle.
+The Web app calls `/api` on its own origin, so the HttpOnly `SameSite=Strict`
+session cookie works whether you open it on `localhost` or `127.0.0.1`. In
+Docker, the web container's nginx forwards `/api` to `api-gateway`; with
+`npm run dev`, the Vite dev server forwards it to `VITE_DEV_API_TARGET`
+(default `http://127.0.0.1:8000`). Open the UI at `http://localhost:3000`
+(Docker) or `http://localhost:5173` (Vite). Do not point the browser at the
+gateway port directly from another origin: the gateway rejects cross-site
+cookie requests by design.
 
 Demo credentials are included in the web client only when it is a Vite development build and `VITE_ENABLE_DEMO_AUTH=true` is explicitly set. A normal production build does not embed them. The backend's `.test` accounts remain synthetic local fixtures, not production identities. OID4VP consent and presentation writes require a current backend token, holder role, and wallet ownership checks. Logout revokes the current token in the Identity Service process; revocation is not shared across workers or durable across restarts. The API Gateway applies process-local request limits; Identity and Recovery have no independent limiter, and Gateway limits are not distributed across workers. This prototype still has no production identity provider or MFA.
 

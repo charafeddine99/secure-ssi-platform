@@ -3,7 +3,8 @@ services:
     build:
       context: ./apps/web
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:8000}
+        # Empty = same-origin /api, proxied by the web container's nginx to api-gateway.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     # Development ports are local-only; remote access must go through an explicitly secured edge.
     ports: ["127.0.0.1:3000:80"]
     depends_on:
