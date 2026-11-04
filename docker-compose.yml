@@ -62,10 +62,12 @@ services:
       IDENTITY_AUTH_JWT_ALGORITHM: ${IDENTITY_AUTH_JWT_ALGORITHM:-HS256}
       IDENTITY_AUTH_JWT_SECRET: ${IDENTITY_AUTH_JWT_SECRET:-}
       FRAUD_SERVICE_URL: ${FRAUD_SERVICE_URL:-http://fraud-service:8000}
-      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-}
+      # Development-only default so a fresh `docker compose up` can score presentations;
+      # Identity refuses this published value in production-like environments.
+      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-local-dev-fraud-service-token-not-for-production}
       IDENTITY_AUTH_FIXTURE_USERS_ENABLED: ${IDENTITY_AUTH_FIXTURE_USERS_ENABLED:-true}
       IDENTITY_AUTH_CLOCK_SKEW_SECONDS: ${IDENTITY_AUTH_CLOCK_SKEW_SECONDS:-10}
-      IDENTITY_AUTH_USER_PROVIDER: ${IDENTITY_AUTH_USER_PROVIDER:-synthetic}
+      IDENTITY_AUTH_USER_PROVIDER: ${IDENTITY_AUTH_USER_PROVIDER:-mongodb}
       IDENTITY_MONGO_ENABLED: ${IDENTITY_MONGO_ENABLED:-true}
       IDENTITY_MONGO_URI: ${IDENTITY_MONGO_URI:-mongodb://identity_app:change-me-app@mongodb:27017/secure_identity?authSource=secure_identity}
       IDENTITY_MONGO_DATABASE: ${IDENTITY_MONGO_DATABASE:-secure_identity}
@@ -147,7 +149,7 @@ services:
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
-      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-}
+      FRAUD_INTERNAL_SERVICE_TOKEN: ${FRAUD_INTERNAL_SERVICE_TOKEN:-local-dev-fraud-service-token-not-for-production}
       FRAUD_CORS_ORIGINS: ${FRAUD_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5178,http://127.0.0.1:5178}
     depends_on:
       identity-service:

@@ -126,3 +126,19 @@ def test_identity_fraud_client_rejects_malformed_or_non_advisory_response(monkey
 
     with pytest.raises(FraudRiskUnavailableError, match="RISK_UNAVAILABLE"):
         client.evaluate_presentation_risk(did="did:key:holder")
+
+
+def test_development_fraud_token_is_sent_in_development(monkeypatch):
+    monkeypatch.setenv("FRAUD_INTERNAL_SERVICE_TOKEN", fraud_client_module.DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN)
+    monkeypatch.setenv("IDENTITY_ENVIRONMENT", "development")
+
+    assert FraudRiskClient._internal_headers() == {
+        "X-Internal-Service-Token": fraud_client_module.DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN
+    }
+
+
+def test_development_fraud_token_is_refused_in_production_like_mode(monkeypatch):
+    monkeypatch.setenv("FRAUD_INTERNAL_SERVICE_TOKEN", fraud_client_module.DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN)
+    monkeypatch.setenv("IDENTITY_ENVIRONMENT", "production")
+
+    assert FraudRiskClient._internal_headers() == {}

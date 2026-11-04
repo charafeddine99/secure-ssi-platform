@@ -52,6 +52,25 @@ def seed(repository) -> list[str]:
     return created
 
 
+def seed_on_startup(database, auth_settings) -> list[str]:
+    """Seed the development accounts at startup when MongoDB is the user store.
+
+    Runs only in a development environment with synthetic fixture users enabled
+    and IDENTITY_AUTH_USER_PROVIDER=mongodb, so a fresh `docker compose up` can
+    sign in and use user administration without a manual seeding step.
+    """
+    if (
+        auth_settings.user_provider != "mongodb"
+        or not auth_settings.local_fixture_users_enabled
+        or is_production_like(auth_settings.environment)
+    ):
+        return []
+    from app.infrastructure.persistence.indexes import USERS_COLLECTION
+    from app.infrastructure.persistence.repositories import MongoUserRepository
+
+    return seed(MongoUserRepository(database[USERS_COLLECTION]))
+
+
 def main() -> int:
     environment = os.environ.get("IDENTITY_ENVIRONMENT", "development")
     if is_production_like(environment):
