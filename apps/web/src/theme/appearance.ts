@@ -9,7 +9,7 @@ export type ColorMode = "dark" | "light";
 export type PrimaryColor = "indigo" | "blue" | "azure" | "teal" | "purple" | "green" | "orange" | "red";
 export type BasePalette = "slate" | "zinc" | "gray" | "neutral" | "stone";
 export type Radius = "sharp" | "default" | "round";
-export type Backdrop = "aurora" | "network" | "grid" | "plain";
+export type Backdrop = "video" | "aurora" | "network" | "grid" | "plain";
 
 export interface Appearance {
   mode: ColorMode;
@@ -24,7 +24,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   primary: "indigo",
   base: "slate",
   radius: "default",
-  backdrop: "aurora",
+  backdrop: "video",
 };
 
 export const PRIMARY_OPTIONS: PrimaryColor[] = ["indigo", "blue", "azure", "teal", "purple", "green", "orange", "red"];
@@ -35,14 +35,15 @@ export const RADIUS_OPTIONS: Array<{ value: Radius; label: string }> = [
   { value: "round", label: "Round" },
 ];
 export const BACKDROP_OPTIONS: Array<{ value: Backdrop; label: string }> = [
+  { value: "video", label: "Video" },
   { value: "aurora", label: "Aurora" },
   { value: "network", label: "Trust network" },
   { value: "grid", label: "Grid" },
   { value: "plain", label: "Plain" },
 ];
 
-// v2: the cinematic dark default applies once to everyone after the redesign.
-const STORAGE_KEY = "ssi_appearance_v2";
+// v3: the ambient video background applies once to everyone as the default backdrop.
+const STORAGE_KEY = "ssi_appearance_v3";
 
 function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
   return typeof value === "string" && (options as readonly string[]).includes(value);
