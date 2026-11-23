@@ -1,0 +1,62 @@
+[
+ {
+  "tag": "A",
+  "label": "Secure SSI Platform home",
+  "visible": true
+ },
+ {
+  "tag": "BUTTON",
+  "label": "Switch to light mode",
+  "visible": true
+ },
+ {
+  "tag": "BUTTON",
+  "label": "Appearance",
+  "visible": true
+ },
+ {
+  "tag": "INPUT",
+  "label": "username",
+  "visible": true
+ },
+ {
+  "tag": "INPUT",
+  "label": "password",
+  "visible": true
+ },
+ {
+  "tag": "BUTTON",
+  "label": "Sign in",
+  "visible": true
+ },
+ {
+  "tag": "A",
+  "label": "Create an account",
+  "visible": true
+ },
+ {
+  "tag": "A",
+  "label": "Back to overview",
+  "visible": true
+ },
+ {
+  "tag": "BODY",
+  "label": "Secure SSISign inAccess your Secure SSI ",
+  "visible": false
+ },
+ {
+  "tag": "A",
+  "label": "Secure SSI Platform home",
+  "visible": true
+ },
+ {
+  "tag": "BUTTON",
+  "label": "Switch to light mode",
+  "visible": true
+ },
+ {
+  "tag": "BUTTON",
+  "label": "Appearance",
+  "visible": true
+ }
+]

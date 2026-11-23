@@ -1,0 +1,57 @@
+[
+ {
+  "name": "the same-device link carries request_uri and client_id only",
+  "pass": true,
+  "note": "client_id,request_uri"
+ },
+ {
+  "name": "request_uri serves a signed request object",
+  "pass": true,
+  "note": "200 application/oauth-authz-req+jwt oauth-authz-req+jwt EdDSA"
+ },
+ {
+  "name": "a request_uri on an unknown host does not open consent",
+  "pass": true,
+  "note": "cannot be resolved."
+ },
+ {
+  "name": "a request_uri for an unknown request does not open consent",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the scan page has no axe issue",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the pasted request_uri link opens consent",
+  "pass": true,
+  "note": "/wallet/consent"
+ },
+ {
+  "name": "consent shows the verifier purpose and requested field",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the holder can approve",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the verifier accepts the presentation after its checks",
+  "pass": true,
+  "note": "VERIFIED"
+ },
+ {
+  "name": "the used request cannot be opened again",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "no console exception",
+  "pass": true,
+  "note": "0"
+ }
+]

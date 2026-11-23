@@ -1,0 +1,42 @@
+[
+ {
+  "label": "1440 /wallet/security",
+  "violations": []
+ },
+ {
+  "label": "1440 /wallet/backup",
+  "violations": []
+ },
+ {
+  "label": "1440 /guardian",
+  "violations": []
+ },
+ {
+  "label": "1440 /admin/backups",
+  "violations": []
+ },
+ {
+  "label": "1440 /admin/recovery",
+  "violations": []
+ },
+ {
+  "label": "390 /wallet/security",
+  "violations": []
+ },
+ {
+  "label": "390 /wallet/backup",
+  "violations": []
+ },
+ {
+  "label": "390 /guardian",
+  "violations": []
+ },
+ {
+  "label": "390 /admin/backups",
+  "violations": []
+ },
+ {
+  "label": "390 /admin/recovery",
+  "violations": []
+ }
+]
