@@ -1,0 +1,13 @@
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/scenarios_rerun: PASS 41 FAIL 0 exit=0 secs=399
+closeout/ui_rerun: PASS 41 FAIL 0 exit=0 secs=57
+IDENTITY_PUBLIC_ORIGIN inside the audit identity: ''
+TOTAL pass=7 fail=0
+exit=0
+IDENTITY_PUBLIC_ORIGIN restored: yes
+temporary env deleted: yes
+fix1_default_origin: PASS 7 FAIL 0 exit=0
+tail done 2026-11-23T20:18:53+03:00
