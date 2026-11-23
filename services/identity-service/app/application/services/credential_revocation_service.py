@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from typing import Any
@@ -9,6 +10,9 @@ from app.application.ports.repositories import (
 )
 from app.application.services.audit_outbox_service import (
     AuditOutboxDeliveryService,
+)
+from app.application.services.revocation_ledger_service import (
+    RevocationLedgerService,
 )
 from app.application.services.status_list_service import StatusListService
 from app.domain.audit_outbox import (
@@ -53,7 +57,9 @@ class CredentialRevocationService:
         clock: Clock,
         event_id_generator: EventIdGenerator,
         audit_repository: AuditEventRepository | None = None,
+        revocation_ledger: RevocationLedgerService | None = None,
     ) -> None:
+        self._ledger = revocation_ledger
         self._revocation_repository = revocation_repository
         self._status_lists = status_list_service
         self._audit_delivery = audit_delivery_service
@@ -104,6 +110,20 @@ class CredentialRevocationService:
             aggregate_id=credential.credential_id,
             source=AuditOutboxSource.CREDENTIAL,
         )
+        # The ledger goes first: if it is down nothing is revoked and the caller
+        # sees an error. If the record update then fails, the bit is still
+        # revoked, which is the safe direction, and a retry is idempotent.
+        if self._ledger is not None:
+            self._ledger.record_revocation(
+                credential_id=credential.credential_id,
+                issuer_did=credential.issuer_did,
+                status_list_id=status_entry.status_list_id,
+                status_list_index=status_entry.status_list_index,
+                status_purpose=status_entry.status_purpose.value,
+                reason=normalized_reason,
+                actor=revoked_by,
+                correlation_id=correlation_id,
+            )
         revoked = self._revocation_repository.revoke(
             credential.credential_id,
             revoked_at=revoked_at,
@@ -126,6 +146,17 @@ class CredentialRevocationService:
         credential = self._require_credential(credential_id)
         checked_at = self._clock()
         status = _domain_status(credential.status)
+        if self._ledger is not None and status is not CredentialStatus.REVOKED:
+            event = self._ledger.revocation_of(credential.credential_id)
+            if event is not None:
+                # A restored older record cannot outvote the ledger.
+                return replace(
+                    self._snapshot(credential),
+                    status=CredentialStatus.REVOKED,
+                    revoked_at=datetime.fromisoformat(event.occurred_at),
+                    revoked_by=event.actor,
+                    revocation_reason="Recorded in the revocation ledger.",
+                )
         effective_status = RevocationPolicy.effective_status(
             stored_status=status,
             expiration_date=credential.expiration_date,
