@@ -1,17 +1,34 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import QRCode from "qrcode";
-import { IconArrowBackUp, IconArrowRight, IconRotate2, IconShieldCheck } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowRight, IconRotate2, IconSend, IconShieldCheck } from "@tabler/icons-react";
 import type { WalletCredential } from "../../api/wallet.ts";
-import { formatDate, humanize, isExpired, renderClaimValue, shortenIdentifier } from "../../lib/format.ts";
+import { fetchCredentialStatus } from "../../api/status.ts";
+import { useAsync } from "../../lib/useAsync.ts";
+import { formatDate, humanize, renderClaimValue, shortenIdentifier } from "../../lib/format.ts";
+import { cardStatus, type CardStatus, type LiveCheck } from "../../utils/cardStatus.ts";
 
-const STATUS_TEXT: Record<WalletCredential["status"], string> = {
-  ACTIVE: "Active · stored",
-  SUSPENDED: "Suspended",
-  REVOKED: "Revoked",
-  EXPIRED: "Expired",
-  UNKNOWN: "Status unknown",
+/** Issuer trust comes from the trust registry, separately from credential status. */
+export interface IssuerTrust {
+  name: string | null;
+  state: "TRUSTED" | "SUSPENDED" | "REVOKED" | "NOT_LISTED" | "UNKNOWN";
+}
+
+const TRUST_TEXT: Record<IssuerTrust["state"], string> = {
+  TRUSTED: "Trusted issuer",
+  SUSPENDED: "Issuer suspended",
+  REVOKED: "Issuer revoked",
+  NOT_LISTED: "Issuer not in registry",
+  UNKNOWN: "Issuer trust unknown",
 };
+
+/**
+ * The issuer's current answer, not the copy kept in the wallet. The mapping
+ * itself lives in cardStatus so every state is unit tested.
+ */
+function useLiveStatus(credential: WalletCredential): CardStatus {
+  const live = useAsync(() => fetchCredentialStatus(credential.id), [credential.id]);
+  return cardStatus(credential.validUntil, live as LiveCheck, Date.now(), credential.validFrom);
+}
 
 /** Stable hue per credential type so the same type always gets the same pass colour. */
 function hueFor(type: string): number {
@@ -20,28 +37,16 @@ function hueFor(type: string): number {
   return hash;
 }
 
-function useQrDataUrl(value: string): string | null {
-  const [url, setUrl] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let alive = true;
-    QRCode.toDataURL(value, { margin: 0, width: 160, color: { dark: "#0b1222", light: "#ffffff" } })
-      .then((data) => { if (alive) setUrl(data); })
-      .catch(() => { if (alive) setUrl(null); });
-    return () => { alive = false; };
-  }, [value]);
-  return url;
-}
-
 /**
  * Wallet-pass style credential. The front shows identity and validity; the
  * back lists the signed attributes. Stored status is shown as stored, never
  * as "verified": only a verifier's policy decides that.
  */
-export const CredentialCard: React.FC<{ credential: WalletCredential }> = ({ credential }) => {
+export const CredentialCard: React.FC<{ credential: WalletCredential; trust?: IssuerTrust }> = ({ credential, trust }) => {
   const [flipped, setFlipped] = React.useState(false);
-  const qr = useQrDataUrl(credential.id);
-  const expiredByDate = credential.status === "ACTIVE" && isExpired(credential.validUntil);
-  const inactive = credential.status !== "ACTIVE" || expiredByDate;
+  const status = useLiveStatus(credential);
+  const trustState = trust?.state ?? "UNKNOWN";
+  const inactive = status.inactive;
   const claims = Object.entries(credential.claims).slice(0, 6);
   const titleId = `cred-${credential.id}`;
   const detailsHref = `/wallet/credentials/${encodeURIComponent(credential.id)}`;
@@ -61,7 +66,9 @@ export const CredentialCard: React.FC<{ credential: WalletCredential }> = ({ cre
 
           <div className="ssi-pass-issuer">
             <span className="ssi-pass-label">Issuer</span>
+            {trust?.name && <span className="ssi-pass-issuer-name">{trust.name}</span>}
             <span className="ssi-pass-mono" title={credential.issuer}>{shortenIdentifier(credential.issuer)}</span>
+            <span className={`ssi-pass-trust ssi-pass-trust-${trustState.toLowerCase()}`}>{TRUST_TEXT[trustState]}</span>
           </div>
 
           <div className="d-flex align-items-end justify-content-between gap-3 mt-auto">
@@ -69,14 +76,23 @@ export const CredentialCard: React.FC<{ credential: WalletCredential }> = ({ cre
               <div><dt>Valid from</dt><dd>{formatDate(credential.validFrom)}</dd></div>
               <div><dt>Valid until</dt><dd>{credential.validUntil ? formatDate(credential.validUntil) : "No expiry"}</dd></div>
               <div>
-                <dt>Status</dt>
-                <dd><span className={`ssi-pass-status ssi-pass-status-${credential.status.toLowerCase()}`}>{expiredByDate ? "Past validUntil" : STATUS_TEXT[credential.status]}</span></dd>
+                <dt>Credential status</dt>
+                <dd><span className={`ssi-pass-status ssi-pass-status-${status.key}`} aria-live="polite">{status.text}</span></dd>
               </div>
             </dl>
-            {qr && <img className="ssi-pass-qr" src={qr} alt={`QR code of credential ID ${credential.id}`} width={72} height={72} />}
           </div>
 
+          {status.blocked && <p className="ssi-pass-note mb-0" id={`${titleId}-blocked`}>{status.blocked} It cannot be presented.</p>}
           <div className="ssi-pass-actions">
+            {status.blocked ? (
+              <button type="button" className="ssi-pass-btn" disabled aria-describedby={`${titleId}-blocked`} tabIndex={flipped ? -1 : 0}>
+                <IconSend size={16} aria-hidden="true" /> Present<span className="visually-hidden"> {humanize(credential.type)}</span>
+              </button>
+            ) : (
+              <Link className="ssi-pass-btn" to="/wallet/scan" state={{ present: true }} tabIndex={flipped ? -1 : 0}>
+                <IconSend size={16} aria-hidden="true" /> Present<span className="visually-hidden"> {humanize(credential.type)}</span>
+              </Link>
+            )}
             <button type="button" className="ssi-pass-btn" onClick={() => setFlipped(true)} tabIndex={flipped ? -1 : 0} aria-label={`Show attributes of ${humanize(credential.type)}`}>
               <IconRotate2 size={16} aria-hidden="true" /> Attributes
             </button>
