@@ -29,6 +29,7 @@ from app.domain.persistence import (
     PersistedUser,
     PersistenceUnavailableError,
 )
+from app.infrastructure.persistence.audit_chain import AuditChain, AuditChainReport
 from app.infrastructure.persistence.mappers import (
     AuditEventDocumentMapper,
     CredentialDocumentMapper,
@@ -371,14 +372,23 @@ class MongoAuditEventRepository:
     def __init__(
         self,
         collection: Collection[dict[str, Any]],
+        chain: AuditChain | None = None,
     ) -> None:
         self._collection = collection
+        self._chain = chain
+
+    def verify_chain(self) -> AuditChainReport:
+        if self._chain is None:
+            return AuditChainReport("NOT_CONFIGURED", 0, 0)
+        return self._chain.verify()
 
     def append(self, event: AuditEvent) -> AuditEvent:
+        document = AuditEventDocumentMapper.to_document(event)
         try:
-            self._collection.insert_one(
-                AuditEventDocumentMapper.to_document(event)
-            )
+            if self._chain is None:
+                self._collection.insert_one(document)
+            else:
+                self._chain.insert(document)
         except DuplicateKeyError as error:
             raise DuplicateEntityError(
                 "An audit event with the same id already exists."

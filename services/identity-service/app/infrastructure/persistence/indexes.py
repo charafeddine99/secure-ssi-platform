@@ -21,6 +21,9 @@ CREDENTIAL_OFFERS_COLLECTION = "credential_offers"
 VERIFICATION_SESSIONS_COLLECTION = "verification_sessions"
 BLOCKCHAIN_ANCHORS_COLLECTION = "blockchain_anchors"
 TRUST_REGISTRY_COLLECTION = "trust_registry"
+WALLET_BACKUPS_COLLECTION = "wallet_backups"
+WALLET_RESTORE_JOBS_COLLECTION = "wallet_restore_jobs"
+PLATFORM_BACKUPS_COLLECTION = "platform_backups"
 
 USER_INDEXES = (
     IndexModel(
@@ -80,6 +83,12 @@ CREDENTIAL_INDEXES = (
 )
 
 AUDIT_EVENT_INDEXES = (
+    IndexModel(
+        [("chainSeq", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"chainSeq": {"$exists": True}},
+        name="uq_audit_events_chain_seq",
+    ),
     IndexModel(
         [("createdAt", DESCENDING)],
         name="ix_audit_events_created_at",
@@ -409,6 +418,28 @@ TRUST_REGISTRY_INDEXES = (
 )
 
 
+WALLET_BACKUP_INDEXES = (
+    IndexModel([("backupId", ASCENDING)], unique=True, name="uq_wallet_backups_backup_id"),
+    IndexModel(
+        [("walletId", ASCENDING), ("ownerUserId", ASCENDING), ("createdAt", DESCENDING)],
+        name="ix_wallet_backups_wallet_owner_created",
+    ),
+)
+WALLET_RESTORE_JOB_INDEXES = (
+    IndexModel([("restoreId", ASCENDING)], unique=True, name="uq_wallet_restore_jobs_restore_id"),
+    IndexModel(
+        [("walletId", ASCENDING), ("idempotencyKeyHash", ASCENDING)],
+        unique=True,
+        name="uq_wallet_restore_jobs_wallet_idempotency",
+    ),
+)
+PLATFORM_BACKUP_INDEXES = (
+    IndexModel([("backupId", ASCENDING)], unique=True, name="uq_platform_backups_backup_id"),
+    IndexModel([("createdAt", DESCENDING)], name="ix_platform_backups_created"),
+    IndexModel([("status", ASCENDING), ("expiresAt", ASCENDING)], name="ix_platform_backups_retention"),
+)
+
+
 def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
     try:
         _drop_deprecated_index(
@@ -455,6 +486,11 @@ def ensure_mongo_indexes(database: Database[dict[str, Any]]) -> None:
         database[TRUST_REGISTRY_COLLECTION].create_indexes(
             list(TRUST_REGISTRY_INDEXES)
         )
+        database[WALLET_BACKUPS_COLLECTION].create_indexes(list(WALLET_BACKUP_INDEXES))
+        database[WALLET_RESTORE_JOBS_COLLECTION].create_indexes(
+            list(WALLET_RESTORE_JOB_INDEXES)
+        )
+        database[PLATFORM_BACKUPS_COLLECTION].create_indexes(list(PLATFORM_BACKUP_INDEXES))
     except PyMongoError as error:
         raise PersistenceUnavailableError(
             "MongoDB indexes could not be ensured."

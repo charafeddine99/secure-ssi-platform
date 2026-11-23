@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.domain.audit_outbox import AuditOutboxRecord
 from app.domain.bitstring_status_list import CredentialStatusEntry
@@ -127,6 +127,8 @@ class RevocationRepository(Protocol):
 
 class AuditEventRepository(Protocol):
     def append(self, event: AuditEvent) -> AuditEvent: ...
+
+    def verify_chain(self) -> Any: ...
 
     def get_by_id(self, event_id: str) -> AuditEvent | None: ...
 
