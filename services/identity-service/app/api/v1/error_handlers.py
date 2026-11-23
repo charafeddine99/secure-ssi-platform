@@ -598,7 +598,22 @@ async def unexpected_error_handler(
     )
 
 
+async def coded_backup_error_handler(request: Request, error: Exception) -> JSONResponse:
+    """WP-28 backup/restore errors carry a safe code, status and message."""
+    return build_error_response(
+        request_id=_request_id(request),
+        status_code=int(getattr(error, "status_code", 400)),
+        code=str(getattr(error, "code", "BACKUP_ERROR")),
+        message=str(error) or "The backup operation could not be completed.",
+    )
+
+
 def install_exception_handlers(app: FastAPI) -> None:
+    from app.application.services.platform_backup_service import PlatformBackupError
+    from app.application.services.wallet_backup_service import WalletBackupError
+
+    app.add_exception_handler(WalletBackupError, cast(Any, coded_backup_error_handler))
+    app.add_exception_handler(PlatformBackupError, cast(Any, coded_backup_error_handler))
     app.add_exception_handler(
         RequestValidationError,
         cast(Any, request_validation_error_handler),

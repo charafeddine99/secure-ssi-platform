@@ -12,10 +12,19 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.dependencies import (
+    get_authentication_service,
     get_holder_wallet_repository,
+    get_managed_key_repository,
     get_managed_key_service,
+)
+from app.application.ports.key_management import ManagedKeyRepository
+from app.application.services.authentication_service import (
+    AuthenticationService,
 )
 from app.application.ports.holder_wallet import HolderWalletRepository
 from app.application.services.managed_key_service import ManagedKeyService
@@ -45,6 +54,68 @@ def _token(
     if credentials is None or credentials.scheme.casefold() != "bearer":
         raise HTTPException(status_code=401, detail="Recovery grant is required.")
     return credentials.credentials
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class SessionCheckRequest(_Strict):
+    session_id: str = Field(alias="sessionId", min_length=1, max_length=256)
+    issued_at: int = Field(alias="issuedAt", ge=0)
+
+
+class DidCustodyRequest(_Strict):
+    did: str = Field(min_length=8, max_length=2048)
+
+
+def _subject_of(token: str, *, scope: str) -> str:
+    """Reads the grant's subject, then verifies the grant for that subject."""
+    try:
+        subject = str(
+            jwt.decode(token, options={"verify_signature": False})["sub"]
+        )
+        _verifier.verify(
+            token,
+            scope=scope,
+            wallet_id="",
+            owner_user_id=subject,
+            checked_at=datetime.now(UTC),
+        )
+    except (KeyError, jwt.PyJWTError, RecoveryGrantError) as error:
+        raise HTTPException(
+            status_code=401, detail="Recovery grant is invalid."
+        ) from error
+    return subject
+
+
+@router.post("/sessions/check", include_in_schema=False)
+def check_session(
+    payload: SessionCheckRequest,
+    token: str = Depends(_token),
+    authentication: AuthenticationService = Depends(
+        get_authentication_service
+    ),
+) -> dict[str, bool]:
+    return {
+        "active": authentication.is_session_active(
+            user_id=_subject_of(token, scope="session:read"),
+            session_id=payload.session_id,
+            issued_at=datetime.fromtimestamp(payload.issued_at, UTC),
+        )
+    }
+
+
+@router.post("/dids/custody", include_in_schema=False)
+def did_custody(
+    payload: DidCustodyRequest,
+    token: str = Depends(_token),
+    keys: ManagedKeyRepository = Depends(get_managed_key_repository),
+) -> dict[str, bool]:
+    _subject_of(token, scope="did:custody:read")
+    multibase = payload.did.removeprefix("did:key:")
+    method = f"{payload.did}#{multibase}"
+    return {"managed": keys.get_by_verification_method(method) is not None}
 
 
 @router.get(
@@ -86,6 +157,9 @@ def recover_managed_key(
         str, Header(alias="Idempotency-Key", min_length=16, max_length=128)
     ] = "",
     service: ManagedKeyService = Depends(get_managed_key_service),
+    authentication: AuthenticationService = Depends(
+        get_authentication_service
+    ),
 ) -> ManagedKeyRecoveryResponse:
     if idempotency_key != f"recovery:{payload.recovery_request_id}":
         raise HTTPException(status_code=409, detail="Recovery idempotency key is invalid.")
@@ -106,6 +180,11 @@ def recover_managed_key(
         recovery_request_id=payload.recovery_request_id,
         reason=payload.reason,
         correlation_id=payload.recovery_request_id,
+    )
+    # Whoever held the old key may still hold a session: end them all.
+    authentication.revoke_subject(
+        payload.owner_user_id,
+        reason="guardian_recovery_completed",
     )
     return ManagedKeyRecoveryResponse(
         predecessor_key_id=predecessor.key_id,

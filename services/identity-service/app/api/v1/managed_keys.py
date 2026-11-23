@@ -11,10 +11,20 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies import (
+    get_dual_control_service,
     get_managed_key_service,
+    get_step_up_service,
+    get_step_up_settings,
     require_permission,
 )
+from app.application.services.dual_control_service import (
+    KEY_COMPROMISE,
+    KEY_DESTRUCTION,
+    DualControlService,
+)
 from app.application.services.managed_key_service import ManagedKeyService
+from app.application.services.step_up_service import StepUpService
+from app.config.step_up_settings import StepUpSettings
 from app.domain.auth import AuthenticatedPrincipal
 from app.domain.permissions import Permission
 from app.schemas.credential_api import ApiErrorResponse
@@ -160,7 +170,19 @@ def rotate_managed_key(
         require_permission(Permission.WALLET_KEY_ROTATE)
     ),
     service: ManagedKeyService = Depends(get_managed_key_service),
+    step_up_token: Annotated[
+        str | None, Header(alias="X-Step-Up-Token")
+    ] = None,
+    step_up: StepUpService = Depends(get_step_up_service),
 ) -> ManagedKeyResponse:
+    # Voluntary rotation only. A compromised key is not ACTIVE, so the service
+    # refuses it here; that case must go through a completed Guardian recovery.
+    step_up.require(
+        principal,
+        step_up_token,
+        action="wallet.key.rotate",
+        resource=key_id,
+    )
     return ManagedKeyResponse.from_domain(
         service.rotate(
             wallet_id,
@@ -241,7 +263,22 @@ def compromise_managed_key(
         require_permission(Permission.WALLET_KEY_COMPROMISE)
     ),
     service: ManagedKeyService = Depends(get_managed_key_service),
+    dual_operation: Annotated[
+        str | None, Header(alias="X-Dual-Control-Operation")
+    ] = None,
+    dual_token: Annotated[
+        str | None, Header(alias="X-Dual-Control-Token")
+    ] = None,
+    dual_control: DualControlService = Depends(get_dual_control_service),
+    settings: StepUpSettings = Depends(get_step_up_settings),
 ) -> ManagedKeyResponse:
+    if settings.dual_control_required:
+        dual_control.consume(
+            dual_operation,
+            dual_token,
+            operation_type=KEY_COMPROMISE,
+            target=key_id,
+        )
     return ManagedKeyResponse.from_domain(
         service.mark_compromised(
             wallet_id,
@@ -296,7 +333,22 @@ def schedule_managed_key_destruction(
         require_permission(Permission.WALLET_KEY_DESTROY)
     ),
     service: ManagedKeyService = Depends(get_managed_key_service),
+    dual_operation: Annotated[
+        str | None, Header(alias="X-Dual-Control-Operation")
+    ] = None,
+    dual_token: Annotated[
+        str | None, Header(alias="X-Dual-Control-Token")
+    ] = None,
+    dual_control: DualControlService = Depends(get_dual_control_service),
+    settings: StepUpSettings = Depends(get_step_up_settings),
 ) -> ManagedKeyResponse:
+    if settings.dual_control_required:
+        dual_control.consume(
+            dual_operation,
+            dual_token,
+            operation_type=KEY_DESTRUCTION,
+            target=key_id,
+        )
     return ManagedKeyResponse.from_domain(
         service.schedule_destruction(
             wallet_id,
