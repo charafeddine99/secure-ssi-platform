@@ -36,9 +36,13 @@ def test_production_requires_explicit_valid_secrets() -> None:
             "RECOVERY_SHARE_ENVELOPE_KEY_BASE64": base64.b64encode(
                 b"E" * 32
             ).decode(),
+            "RECOVERY_STEP_UP_SECRET": "S" * 32,
+            "FRAUD_INTERNAL_SERVICE_TOKEN": "F" * 32,
         }
     )
     assert settings.environment == "production"
+    assert settings.step_up_required is True
+    assert "S" * 32 not in repr(settings)
     assert "J" * 32 not in repr(settings)
     assert "G" * 32 not in repr(settings)
 

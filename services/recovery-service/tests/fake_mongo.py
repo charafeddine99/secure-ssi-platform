@@ -115,6 +115,8 @@ class Database:
                 unique_compounds=(("recoveryRequestId", "guardianId"),),
             ),
             "recovery_audit_events": Collection(unique_fields=("eventId",)),
+            "recovery_notifications": Collection(),
+            "recovery_step_up_tokens": Collection(),
         }
 
     def __getitem__(self, name: str) -> Collection:

@@ -25,7 +25,7 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_recovery_service
+from app.api.dependencies import get_recovery_service, get_session_gateway
 from app.main import app
 from tests.support import WALLET_ID, build_runtime
 
@@ -58,6 +58,7 @@ def _headers(user_id: str, role: str = "holder") -> dict[str, str]:
 def golden_path_client() -> Iterator[tuple[TestClient, object]]:
     runtime = build_runtime()
     app.dependency_overrides[get_recovery_service] = lambda: runtime.service
+    app.dependency_overrides[get_session_gateway] = lambda: runtime.gateway
     client = TestClient(app, raise_server_exceptions=False)
     yield client, runtime
     client.close()
@@ -104,16 +105,23 @@ def test_social_recovery_golden_path_3_of_5_shamir_and_timelock(golden_path_clie
             json={
                 "walletId": WALLET_ID,
                 "guardianUserId": guardian_principal.user_id,
-                "guardianDid": runtime.guardian_dids[guardian_principal.user_id],
                 "displayName": f"Golden Path Guardian {index}",
-                "verificationMethod": (
-                    f"{runtime.guardian_dids[guardian_principal.user_id]}#"
-                    f"{runtime.guardian_dids[guardian_principal.user_id][len('did:key:'):]}"
-                ),
             },
         )
         assert g_resp.status_code == 201, g_resp.text
-        g_data = g_resp.json()
+        invited = g_resp.json()
+        assert invited["status"] == "INVITED"
+        did, method, proof = runtime.sign_binding(
+            guardian_id=invited["guardianId"],
+            key=runtime.guardian_signing_keys[guardian_principal.user_id],
+        )
+        accepted = client.post(
+            f"/api/v1/guardians/{invited['guardianId']}/accept",
+            headers=_headers(guardian_principal.user_id),
+            json={"guardianDid": did, "verificationMethod": method, "proof": proof},
+        )
+        assert accepted.status_code == 200, accepted.text
+        g_data = accepted.json()
         assert g_data["status"] == "ACTIVE"
         guardian_ids.append(g_data["guardianId"])
 
