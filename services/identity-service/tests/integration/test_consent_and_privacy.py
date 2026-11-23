@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -172,7 +174,7 @@ def test_holder_consent_and_full_credential_disclosure_flow(auth_headers_fn):
         sample_vp = build_signed_presentation(
             signed_vc,
             nonce=nonce,
-            domain="http://testserver/verifier",
+            domain=request_object_signer().client_id,
         )
         from tests.support.consent import record_holder_approval
 

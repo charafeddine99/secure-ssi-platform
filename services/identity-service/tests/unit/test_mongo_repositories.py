@@ -453,6 +453,7 @@ def test_index_manager_creates_stable_named_indexes() -> None:
         "ix_credentials_wallet_owner_created_at",
     }
     assert audit_names == {
+        "uq_audit_events_chain_seq",
         "ix_audit_events_created_at",
         "ix_audit_events_type_created_at",
         "ix_audit_events_actor_created_at",

@@ -292,6 +292,7 @@ def test_key_management_settings_fail_closed_in_production() -> None:
         default_provider="remote-kms",
         development_provider_enabled=False,
         remote_base_url="https://kms.example.test",
+        remote_auth_token_env="KMS_TOKEN",
     )
     assert safe.default_provider == "remote-kms"
 

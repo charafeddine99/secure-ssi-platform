@@ -1,5 +1,6 @@
 import os
 import pytest
+from app.config.request_object_settings import request_object_signer
 from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
@@ -228,7 +229,7 @@ def test_oid4vp_full_verification_lifecycle(auth_headers_fn):
         sample_vp = build_signed_presentation(
             signed_vc,
             nonce=nonce,
-            domain="http://testserver/verifier",
+            domain=request_object_signer().client_id,
         )
 
 

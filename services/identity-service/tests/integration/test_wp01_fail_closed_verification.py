@@ -13,6 +13,8 @@ Never convert an exception or missing security proof into verified=True.
 
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 import copy
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -248,7 +250,7 @@ def test_gap01_replayed_presentation_fails_closed():
     vp_token = build_signed_presentation(
         vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
     )
     _record_holder_consent(session_id, vc)
     # First submission: success
@@ -479,7 +481,7 @@ def test_positive_golden_path_verification_succeeds():
     vp_token = build_signed_presentation(
         vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
     )
     _record_holder_consent(session_id, vc)
     res = client.post(
