@@ -259,8 +259,20 @@ def validate_challenge(value: str) -> str:
     return value
 
 
+# OpenID4VP 1.0: the proof domain is the verifier's client_id. With the
+# decentralized_identifier prefix that is a DID, which is case sensitive.
+_CLIENT_ID_DOMAIN_PATTERN = re.compile(
+    r"^decentralized_identifier:did:[a-z0-9]+:[A-Za-z0-9._:%-]{1,480}$"
+)
+
+
 def normalize_domain(value: str) -> str:
-    normalized = value.strip().casefold().rstrip(".")
+    stripped = value.strip()
+    if stripped.startswith("decentralized_identifier:"):
+        if not _CLIENT_ID_DOMAIN_PATTERN.fullmatch(stripped):
+            raise ValueError("Presentation domain is not a valid client identifier.")
+        return stripped
+    normalized = stripped.casefold().rstrip(".")
     if not _DOMAIN_PATTERN.fullmatch(normalized):
         raise ValueError("Presentation domain must be a DNS hostname.")
     return normalized

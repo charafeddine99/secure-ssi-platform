@@ -54,6 +54,7 @@ class AuthenticatedPrincipal:
     permissions: tuple[Permission, ...]
     authentication_source: str
     issuer_did: str | None = None
+    session_id: str = ""
 
     @classmethod
     def from_user(
