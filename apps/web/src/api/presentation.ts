@@ -31,6 +31,8 @@ export interface Oid4vpSession {
   responseUri?: string;
   deepLinkUri: string;
   qrPayload: string;
+  /** HTTPS link for a phone. Null when no reachable public origin is configured. */
+  handoffUri: string | null;
   expiresAt: string;
   verificationResult: VerificationResult | null;
   disclosedClaims: Record<string, unknown> | null;
@@ -80,6 +82,7 @@ function parseSession(value: unknown): Oid4vpSession {
     responseUri: typeof raw.responseUri === "string" ? raw.responseUri : undefined,
     deepLinkUri: typeof raw.deepLinkUri === "string" ? raw.deepLinkUri : "",
     qrPayload: typeof raw.qrPayload === "string" ? raw.qrPayload : "",
+    handoffUri: typeof raw.handoffUri === "string" ? raw.handoffUri : null,
     expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : "",
     verificationResult: parseVerificationResult(raw.verificationResult),
     disclosedClaims: raw.disclosedClaims && typeof raw.disclosedClaims === "object" ? raw.disclosedClaims as Record<string, unknown> : null,
@@ -100,6 +103,21 @@ export async function createOid4vpSession(payload: {
 
 export async function getOid4vpSession(sessionId: string, signal?: AbortSignal): Promise<Oid4vpSession> {
   return parseSession(await apiRequest<unknown>(`/api/v1/oid4vp/requests/${encodeURIComponent(sessionId)}`, { signal }));
+}
+
+/**
+ * Checks an openid4vp:// link that carries request_uri: the server reads the
+ * signed request object, verifies it and returns the session to open.
+ */
+export async function resolveOid4vpRequestLink(link: string): Promise<{ sessionId: string; clientId: string }> {
+  const body = await apiRequest<{ sessionId?: unknown; clientId?: unknown }>("/api/v1/oid4vp/wallet/resolve-request", {
+    method: "POST",
+    body: { link },
+  });
+  if (typeof body.sessionId !== "string" || typeof body.clientId !== "string") {
+    throw new Error("The wallet service returned an unexpected answer.");
+  }
+  return { sessionId: body.sessionId, clientId: body.clientId };
 }
 
 export async function getOid4vpHolderRequest(sessionId: string): Promise<Oid4vpHolderRequest> {

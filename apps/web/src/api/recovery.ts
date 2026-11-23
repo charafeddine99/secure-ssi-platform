@@ -1,4 +1,6 @@
 import { apiRequest, assertShape, isApiError } from "../lib/http.ts";
+import { stepUpHeaders } from "./stepUp.ts";
+import { signGuardianJwt, type GuardianDeviceKey } from "../lib/guardianDeviceKey.ts";
 
 export type RecoveryState =
   | "PENDING_APPROVALS"
@@ -34,8 +36,10 @@ export interface RecoveryPolicy {
   maximumAttempts: number;
   cooldownSeconds: number;
   allowCancellation: boolean;
-  allowSelfGuardian?: boolean;
   version?: number;
+  /** A weakening change waiting out its delay; the values above still apply. */
+  pendingChange?: Partial<Record<string, number | boolean>> | null;
+  pendingEffectiveAt?: string | null;
 }
 
 export interface Guardian {
@@ -46,8 +50,30 @@ export interface Guardian {
   guardianDid: string;
   displayName: string;
   verificationMethod: string;
-  status: "ACTIVE" | "SUSPENDED" | "REVOKED" | "REMOVED" | "UNKNOWN";
+  status: "INVITED" | "PENDING_ACTIVATION" | "ACTIVE" | "SUSPENDED" | "REVOKED" | "REMOVED" | "UNKNOWN";
   createdAt: string;
+  pendingStatus: string | null;
+  pendingEffectiveAt: string | null;
+}
+
+export interface GuardianInvitation {
+  guardianId: string;
+  walletId: string;
+  displayName: string;
+  challenge: string;
+  expiresAt: string;
+  purpose: "ENROLL" | "REBIND";
+}
+
+export interface RecoveryNotification {
+  notificationId: string;
+  eventType: string;
+  aggregateId: string;
+  walletId: string;
+  createdAt: string;
+  readAt: string | null;
+  delivery: string;
+  emailStatus: string;
 }
 
 export interface RecoveryRequest {
@@ -58,6 +84,9 @@ export interface RecoveryRequest {
   reason: string;
   status: RecoveryState;
   challenge: string;
+  policyHash: string;
+  riskLevel: string;
+  riskStatus: string;
   approvalsCount: number | null;
   rejectionsCount: number | null;
   requiredCount: number | null;
@@ -106,6 +135,9 @@ export function mapRecoveryRequest(value: unknown): RecoveryRequest {
     reason: str(raw.reason, "UNSPECIFIED"),
     status: normalizeRecoveryState(raw.state ?? raw.status),
     challenge: str(raw.challenge),
+    policyHash: str(raw.policyHash),
+    riskLevel: str(raw.riskLevel, "NOT_ASSESSED"),
+    riskStatus: str(raw.riskStatus, "ON_HOLD"),
     approvalsCount: num(raw.approvalCount ?? raw.approvalsCount),
     rejectionsCount: num(raw.rejectionCount),
     requiredCount: num(raw.minimumApprovals ?? raw.requiredCount),
@@ -140,10 +172,12 @@ function mapGuardian(value: unknown): Guardian {
     guardianDid: str(raw.guardianDid),
     displayName: str(raw.displayName, "Unnamed guardian"),
     verificationMethod: str(raw.verificationMethod),
-    status: (["ACTIVE", "SUSPENDED", "REVOKED", "REMOVED"] as const).includes(status as "ACTIVE")
+    status: (["INVITED", "PENDING_ACTIVATION", "ACTIVE", "SUSPENDED", "REVOKED", "REMOVED"] as const).includes(status as "ACTIVE")
       ? status as Guardian["status"]
       : "UNKNOWN",
     createdAt: str(raw.createdAt),
+    pendingStatus: typeof raw.pendingStatus === "string" ? raw.pendingStatus : null,
+    pendingEffectiveAt: typeof raw.pendingEffectiveAt === "string" ? raw.pendingEffectiveAt : null,
   };
 }
 
@@ -155,38 +189,105 @@ export async function fetchGuardians(walletId?: string): Promise<Guardian[]> {
   return (body.items as unknown[]).map(mapGuardian);
 }
 
-/** Default verification method for a did:key guardian (did:key:z…#z…). */
-export function defaultVerificationMethod(did: string): string {
-  if (did.startsWith("did:key:")) {
-    const fragment = did.slice("did:key:".length);
-    return `${did}#${fragment}`;
-  }
-  return `${did}#key-1`;
-}
-
-export async function addGuardian(payload: {
-  walletId: string;
-  guardianUserId: string;
-  guardianDid: string;
-  displayName: string;
-  verificationMethod?: string;
-}): Promise<Guardian> {
+/** Invites an account. It has no authority until that person accepts with their own key. */
+export async function addGuardian(
+  payload: { walletId: string; guardianUserId: string; displayName: string },
+  stepUpToken?: string | null,
+): Promise<Guardian> {
   return mapGuardian(await apiRequest<unknown>("/api/v1/recovery/guardians", {
     method: "POST",
+    headers: stepUpHeaders(stepUpToken),
     body: {
       walletId: payload.walletId,
       guardianUserId: payload.guardianUserId.trim(),
-      guardianDid: payload.guardianDid.trim(),
       displayName: payload.displayName.trim(),
-      verificationMethod: payload.verificationMethod?.trim() || defaultVerificationMethod(payload.guardianDid.trim()),
     },
   }));
 }
 
-export async function removeGuardian(guardianId: string): Promise<Guardian> {
+export async function removeGuardian(guardianId: string, stepUpToken?: string | null): Promise<Guardian> {
   return mapGuardian(await apiRequest<unknown>(`/api/v1/recovery/guardians/${encodeURIComponent(guardianId)}`, {
     method: "DELETE",
+    headers: stepUpHeaders(stepUpToken),
   }));
+}
+
+export async function fetchGuardianInvitations(): Promise<GuardianInvitation[]> {
+  const body = await apiRequest<{ items?: unknown }>("/api/v1/recovery/guardians/invitations");
+  assertShape(Array.isArray(body?.items), "guardian invitations");
+  return body.items as GuardianInvitation[];
+}
+
+function bindingProof(key: GuardianDeviceKey, invitation: GuardianInvitation): Promise<string> {
+  return signGuardianJwt(key, "guardian-binding+jwt", {
+    sub: invitation.guardianId,
+    walletId: invitation.walletId,
+    challenge: invitation.challenge,
+  });
+}
+
+export async function acceptGuardianInvitation(
+  invitation: GuardianInvitation,
+  key: GuardianDeviceKey,
+  stepUpToken?: string | null,
+): Promise<Guardian> {
+  return mapGuardian(await apiRequest<unknown>(
+    `/api/v1/recovery/guardians/${encodeURIComponent(invitation.guardianId)}/accept`,
+    {
+      method: "POST",
+      headers: stepUpHeaders(stepUpToken),
+      body: {
+        guardianDid: key.did,
+        verificationMethod: key.verificationMethod,
+        proof: await bindingProof(key, invitation),
+      },
+    },
+  ));
+}
+
+export async function startGuardianRebind(guardianId: string): Promise<GuardianInvitation> {
+  return apiRequest<GuardianInvitation>(`/api/v1/recovery/guardians/${encodeURIComponent(guardianId)}/rebind`, { method: "POST" });
+}
+
+export async function completeGuardianRebind(
+  invitation: GuardianInvitation,
+  key: GuardianDeviceKey,
+  stepUpToken?: string | null,
+): Promise<Guardian> {
+  return mapGuardian(await apiRequest<unknown>(
+    `/api/v1/recovery/guardians/${encodeURIComponent(invitation.guardianId)}/rebind`,
+    {
+      method: "PUT",
+      headers: stepUpHeaders(stepUpToken),
+      body: {
+        guardianDid: key.did,
+        verificationMethod: key.verificationMethod,
+        proof: await bindingProof(key, invitation),
+      },
+    },
+  ));
+}
+
+export async function fetchRecoveryNotifications(): Promise<RecoveryNotification[]> {
+  const body = await apiRequest<{ items?: unknown }>("/api/v1/recovery/notifications");
+  assertShape(Array.isArray(body?.items), "recovery notifications");
+  return body.items as RecoveryNotification[];
+}
+
+export async function markRecoveryNotificationRead(notificationId: string): Promise<void> {
+  await apiRequest<unknown>(`/api/v1/recovery/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+}
+
+export async function reviewRecoveryRisk(
+  requestId: string,
+  decision: "RELEASE" | "UPHOLD",
+  reason: string,
+  stepUpToken?: string | null,
+): Promise<RecoveryRequest> {
+  return mapRecoveryRequest(await apiRequest<unknown>(
+    `/api/v1/recovery/requests/${encodeURIComponent(requestId)}/risk-review`,
+    { method: "POST", headers: stepUpHeaders(stepUpToken), body: { decision, reason } },
+  ));
 }
 
 function isRecoveryPolicyForWallet(value: unknown, walletId: string): value is RecoveryPolicy {
@@ -236,9 +337,10 @@ export async function fetchRecoveryPolicy(walletId: string): Promise<RecoveryPol
   }
 }
 
-export async function upsertRecoveryPolicy(policy: RecoveryPolicy): Promise<RecoveryPolicy> {
+export async function upsertRecoveryPolicy(policy: RecoveryPolicy, stepUpToken?: string | null): Promise<RecoveryPolicy> {
   const body = await apiRequest<RecoveryPolicy>("/api/v1/recovery/policy", {
     method: "PUT",
+    headers: stepUpHeaders(stepUpToken),
     body: {
       walletId: policy.walletId,
       minimumApprovals: policy.minimumApprovals,
@@ -278,9 +380,10 @@ export async function fetchRecoveryRequestById(requestId: string): Promise<Recov
   return mapRecoveryRequest(await apiRequest<unknown>(`/api/v1/recovery/requests/${encodeURIComponent(requestId)}`));
 }
 
-export async function initiateRecoveryRequest(params: { walletId: string; reason: RecoveryReason }): Promise<RecoveryRequest> {
+export async function initiateRecoveryRequest(params: { walletId: string; reason: RecoveryReason }, stepUpToken?: string | null): Promise<RecoveryRequest> {
   return mapRecoveryRequest(await apiRequest<unknown>("/api/v1/recovery/requests", {
     method: "POST",
+    headers: stepUpHeaders(stepUpToken),
     body: { walletId: params.walletId, reason: params.reason },
   }));
 }
@@ -291,66 +394,101 @@ export async function cancelRecoveryRequest(requestId: string): Promise<Recovery
   }));
 }
 
-async function guardianDecisionProof(
-  request: RecoveryRequest,
-  guardian: Guardian,
-  decision: "APPROVE" | "REJECT",
-): Promise<string> {
-  if (!request.sessionId || !request.challenge || !guardian.guardianDid) {
-    throw new Error("The recovery session, server challenge and assigned guardian DID are required.");
-  }
-  const body = await apiRequest<{ proof?: unknown; guardianDid?: unknown }>(
-    "/api/v1/identity/wallets/guardian-recovery-proof",
-    {
-      method: "POST",
-      body: {
-        requestId: request.requestId,
-        sessionId: request.sessionId,
-        guardianId: guardian.guardianId,
-        walletId: request.walletId,
-        guardianDid: guardian.guardianDid,
-        challenge: request.challenge,
-        decision,
-      },
-    },
-  );
-  assertShape(typeof body?.proof === "string" && body.guardianDid === guardian.guardianDid, "guardian decision proof");
-  return body.proof as string;
-}
-
 /**
- * Two server calls: the Identity Service signs the challenge-bound decision
- * with the guardian's *server-managed* wallet key, then the Recovery Service
- * verifies that signature against the registered guardian DID.
+ * The decision is signed here, with the Guardian's own device key. The platform
+ * only verifies it; it cannot sign for a Guardian. The proof also covers the
+ * policy snapshot hash, so it cannot be moved to a different request or policy.
  */
 export async function decideRecoveryRequest(
   request: RecoveryRequest,
   guardian: Guardian,
   decision: "APPROVE" | "REJECT",
+  key: GuardianDeviceKey,
+  stepUpToken?: string | null,
 ): Promise<RecoveryRequest> {
-  const proof = await guardianDecisionProof(request, guardian, decision);
+  if (!request.sessionId || !request.challenge || !request.policyHash) {
+    throw new Error("The recovery session and server challenge are required.");
+  }
+  if (key.did !== guardian.guardianDid) {
+    throw new Error("This browser does not hold your Guardian key. Bind a new key first.");
+  }
+  const proof = await signGuardianJwt(key, "guardian-recovery+jwt", {
+    sub: guardian.guardianId,
+    requestId: request.requestId,
+    sessionId: request.sessionId,
+    walletId: request.walletId,
+    decision,
+    challenge: request.challenge,
+    policyHash: request.policyHash,
+  });
   const body = await apiRequest<{ recovery?: unknown }>(
     `/api/v1/recovery/requests/${encodeURIComponent(request.requestId)}/${decision === "APPROVE" ? "approve" : "reject"}`,
-    { method: "POST", body: { guardianId: guardian.guardianId, challenge: request.challenge, proof } },
+    {
+      method: "POST",
+      headers: stepUpHeaders(stepUpToken),
+      body: { guardianId: guardian.guardianId, challenge: request.challenge, proof },
+    },
   );
   return mapRecoveryRequest(body?.recovery);
 }
 
-/** Existing contract wrappers used by tests/recoveryApi_contract. */
-export async function approveRecoveryPetition(
-  request: RecoveryRequest,
-  guardianId: string,
-  guardianDid: string,
-): Promise<{ success: true; request: RecoveryRequest }> {
-  const updated = await decideRecoveryRequest(request, { guardianId, guardianDid } as Guardian, "APPROVE");
-  return { success: true, request: updated };
+export interface RecoveryTimelineEvent {
+  eventId: string;
+  eventType: string;
+  occurredAt: string;
+  guardianId: string | null;
+  decision: string | null;
 }
 
-export async function rejectRecoveryPetition(
-  request: RecoveryRequest,
-  guardianId: string,
-  guardianDid: string,
-): Promise<{ success: true; request: RecoveryRequest }> {
-  const updated = await decideRecoveryRequest(request, { guardianId, guardianDid } as Guardian, "REJECT");
-  return { success: true, request: updated };
+/** Audit timeline of one request, readable by its owner and assigned guardians. */
+export async function fetchRecoveryTimeline(requestId: string): Promise<RecoveryTimelineEvent[]> {
+  const body = await apiRequest<{ items?: unknown }>(`/api/v1/recovery/requests/${encodeURIComponent(requestId)}/timeline`);
+  assertShape(Array.isArray(body?.items), "recovery timeline");
+  return body.items as RecoveryTimelineEvent[];
+}
+
+/** Admin oversight case: read-only, never contains the guardian challenge. */
+export interface RecoveryOversightCase {
+  requestId: string;
+  ownerUserId: string;
+  walletId: string;
+  reason: string;
+  state: RecoveryState;
+  minimumApprovals: number;
+  guardianCount: number;
+  approvalCount: number;
+  rejectionCount: number;
+  policyVersion: number;
+  timeLockSeconds: number;
+  approvalExpiresAt: string;
+  expiresAt: string;
+  executableAfter: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attemptCount: number;
+  failureCode: string | null;
+  successorDid: string | null;
+  completedAt: string | null;
+  riskLevel: string;
+  riskStatus: string;
+}
+
+export async function fetchRecoveryOversight(state?: RecoveryState): Promise<RecoveryOversightCase[]> {
+  const query = state ? `?state=${encodeURIComponent(state)}` : "";
+  const body = await apiRequest<{ items?: unknown }>(`/api/v1/recovery/admin/requests${query}`);
+  assertShape(Array.isArray(body?.items), "recovery oversight list");
+  return (body.items as RecoveryOversightCase[]).map((item) => ({ ...item, state: normalizeRecoveryState(item.state) }));
+}
+
+export async function fetchRecoveryOversightCase(
+  requestId: string,
+): Promise<{ case: RecoveryOversightCase; timeline: RecoveryTimelineEvent[] }> {
+  const body = await apiRequest<{ case?: RecoveryOversightCase; timeline?: unknown }>(
+    `/api/v1/recovery/admin/requests/${encodeURIComponent(requestId)}`,
+  );
+  assertShape(body?.case && Array.isArray(body.timeline), "recovery oversight case");
+  return {
+    case: { ...body.case, state: normalizeRecoveryState(body.case.state) },
+    timeline: body.timeline as RecoveryTimelineEvent[],
+  };
 }

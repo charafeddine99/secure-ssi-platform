@@ -1,4 +1,5 @@
 import { apiRequest, assertShape } from "../lib/http.ts";
+import { stepUpHeaders } from "./stepUp.ts";
 
 /* ---------- Trust Registry ---------- */
 
@@ -59,17 +60,18 @@ export async function registerTrustedIssuer(payload: {
   organizationName: string;
   permittedCredentialTypes: string[];
   validDays: number;
-}): Promise<TrustRecord> {
+}, stepUpToken: string | null): Promise<TrustRecord> {
   return parseTrustRecord(await apiRequest<unknown>("/api/v1/identity/trust-registry/issuers", {
     method: "POST",
     body: { ...payload, roles: ["issuer"] },
+    headers: stepUpHeaders(stepUpToken),
   }));
 }
 
-export async function changeTrustStatus(recordId: string, action: "suspend" | "revoke", reason: string): Promise<TrustRecord> {
+export async function changeTrustStatus(recordId: string, action: "suspend" | "revoke", reason: string, stepUpToken: string | null): Promise<TrustRecord> {
   return parseTrustRecord(await apiRequest<unknown>(
     `/api/v1/identity/trust-registry/issuers/${encodeURIComponent(recordId)}/${action}`,
-    { method: "POST", body: { reason } },
+    { method: "POST", body: { reason }, headers: stepUpHeaders(stepUpToken) },
   ));
 }
 
@@ -83,6 +85,18 @@ export interface AuditLogEntry {
   riskScore: number | null;
   details: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface AuditIntegrity {
+  status: string;
+  checked: number;
+  unchained: number;
+}
+
+export async function fetchAuditIntegrity(): Promise<AuditIntegrity> {
+  const body = await apiRequest<AuditIntegrity>("/api/v1/identity/audit/integrity");
+  assertShape(typeof body?.status === "string" && typeof body?.checked === "number", "audit integrity");
+  return body;
 }
 
 export async function fetchAuditLogs(eventType?: string, limit = 100): Promise<AuditLogEntry[]> {
