@@ -1,8 +1,12 @@
+import logging
+from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 from fastapi import APIRouter, Depends, Response, Security
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.v1.dependencies import (
+    get_audit_event_repository,
     bearer_scheme,
     get_authentication_service,
     require_permission,
@@ -10,6 +14,10 @@ from app.api.v1.dependencies import (
 from app.application.services.authentication_service import AuthenticationService
 from app.domain.auth import AuthenticatedPrincipal
 from app.domain.exceptions import AuthenticationRequiredError
+from app.application.ports.repositories import AuditEventRepository
+from app.domain.exceptions import InvalidCredentialsError
+from app.domain.persistence import AuditEvent, AuditEventType
+from app.infrastructure.persistence.mappers import new_object_id
 from app.domain.permissions import Permission
 from app.schemas.auth_api import (
     CurrentUserResponse,
@@ -21,6 +29,8 @@ from app.schemas.auth_api import (
 )
 from app.schemas.credential_api import ApiErrorResponse
 
+
+_LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 AUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -43,6 +53,24 @@ AUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+def _audit_login(
+    audit_events: AuditEventRepository,
+    event_type: AuditEventType,
+    subject: str,
+    actor_id: str | None,
+) -> None:
+    """Telemetry must not decide a sign-in, so a failed write is only logged."""
+    now = datetime.now(UTC)
+    try:
+        audit_events.append(AuditEvent(
+            id=new_object_id(), event_type=event_type, subject_id=subject,
+            actor_id=actor_id, correlation_id=None, metadata={},
+            created_at=now, updated_at=now, version=1,
+        ))
+    except Exception as error:
+        _LOGGER.warning("Sign-in audit event was not written (%s)", type(error).__name__)
+
+
 @router.post(
     "/token",
     response_model=TokenResponse,
@@ -60,11 +88,19 @@ def create_access_token(
     request: TokenRequest,
     response: Response,
     service: AuthenticationService = Depends(get_authentication_service),
+    audit_events: AuditEventRepository = Depends(get_audit_event_repository),
 ) -> TokenResponse:
-    session = service.authenticate(
-        username=request.username,
-        password=request.password.get_secret_value(),
-    )
+    # The username is hashed: a mistyped password in that field must not be stored.
+    subject = "login:" + sha256(request.username.strip().casefold().encode()).hexdigest()
+    try:
+        session = service.authenticate(
+            username=request.username,
+            password=request.password.get_secret_value(),
+        )
+    except InvalidCredentialsError:
+        _audit_login(audit_events, AuditEventType.LOGIN_FAILURE, subject, None)
+        raise
+    _audit_login(audit_events, AuditEventType.LOGIN_SUCCESS, subject, session.principal.id)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     return TokenResponse(
