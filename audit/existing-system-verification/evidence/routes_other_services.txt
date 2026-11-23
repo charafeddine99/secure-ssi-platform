@@ -1,0 +1,54 @@
+recovery-service 25
+  GET,POST           /api/v1/guardians
+  GET                /api/v1/guardians/invitations
+  DELETE,GET,PATCH   /api/v1/guardians/{guardian_id}
+  POST               /api/v1/guardians/{guardian_id}/accept
+  POST,PUT           /api/v1/guardians/{guardian_id}/rebind
+  GET                /api/v1/recovery/admin/requests
+  GET                /api/v1/recovery/admin/requests/{request_id}
+  GET                /api/v1/recovery/notifications
+  POST               /api/v1/recovery/notifications/{notification_id}/read
+  GET,PUT            /api/v1/recovery/policy
+  GET,POST           /api/v1/recovery/requests
+  GET                /api/v1/recovery/requests/{request_id}
+  POST               /api/v1/recovery/requests/{request_id}/approve
+  POST               /api/v1/recovery/requests/{request_id}/cancel
+  POST               /api/v1/recovery/requests/{request_id}/reconcile
+  POST               /api/v1/recovery/requests/{request_id}/reject
+  POST               /api/v1/recovery/requests/{request_id}/risk-review
+  GET                /api/v1/recovery/requests/{request_id}/timeline
+  GET                /health
+fraud-service 21
+  POST               /api/fraud_detection
+  GET                /api/v1/fraud/dataset/metrics
+  POST               /api/v1/fraud/evaluate
+  POST               /api/v1/fraud/events
+  POST               /api/v1/fraud/events/batch
+  GET                /api/v1/fraud/history/{did}
+  GET                /api/v1/fraud/intel/anomalies
+  GET                /api/v1/fraud/intel/health
+  GET                /api/v1/fraud/intel/incidents
+  POST               /api/v1/fraud/intel/incidents/{incident_id}/transition
+  POST               /api/v1/fraud/intel/ingest
+  GET                /api/v1/fraud/intel/metrics
+  GET                /api/v1/fraud/intel/model
+  GET                /api/v1/fraud/intel/posture
+  GET                /api/v1/fraud/intel/risk
+  GET                /api/v1/fraud/intel/rules
+  POST               /api/v1/fraud/quarantine
+  DELETE,GET         /api/v1/fraud/quarantine/{did}
+  GET                /api/v1/fraud/stats
+  GET                /health
+  from app.api.routes.proxy import router as proxy_router
+api-gateway 44
+  DELETE,GET,PATCH,POST,PUT /api/v1/audit/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/blockchain/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/fraud/{path}
+  GET,POST           /api/v1/guardians
+  DELETE,GET,PATCH,POST,PUT /api/v1/guardians/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/identity/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/oid4vci/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/oid4vp/{path}
+  DELETE,GET,PATCH,POST,PUT /api/v1/recovery/{path}
+  GET                /api/v1/system/status
+  GET                /health

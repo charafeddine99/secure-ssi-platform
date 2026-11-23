@@ -1,0 +1,3 @@
+initial_wp32_ui: PASS 12 FAIL 0 exit=0 secs=29
+initial_scenarios: PASS 0 FAIL 0 exit=127 secs=3
+initial_ui: PASS 23 FAIL 18 exit=1 secs=57

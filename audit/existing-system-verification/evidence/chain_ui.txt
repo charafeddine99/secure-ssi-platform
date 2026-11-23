@@ -1,0 +1,4 @@
+initial_browser: PASS 40 FAIL 0 exit=0 secs=252
+initial_ui: PASS 25 FAIL 16 exit=1 secs=60
+initial_pages: PASS 0 FAIL 0 exit=0 secs=159
+initial_wp32_ui: PASS 6 FAIL 1 exit=1 secs=37
