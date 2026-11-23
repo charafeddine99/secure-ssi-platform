@@ -7,6 +7,7 @@ from hashlib import sha256
 from hmac import compare_digest
 from secrets import token_bytes, token_urlsafe
 from time import perf_counter
+from typing import Any
 
 from app.application.ports.managed_keys import ManagedKeyRecoveryGateway
 from app.application.ports.repositories import RecoveryRepository
@@ -27,6 +28,7 @@ from app.domain.recovery import (
     RecoveryApproval,
     RecoveryAuditEvent,
     RecoveryAuditEventType,
+    RecoveryAuthorizationError,
     RecoveryChallenge,
     RecoveryConflictError,
     RecoveryDecision,
@@ -34,6 +36,7 @@ from app.domain.recovery import (
     RecoveryLease,
     RecoveryNonce,
     RecoveryNotFoundError,
+    RecoveryNotification,
     RecoveryOperation,
     RecoveryPolicy,
     RecoveryPolicySnapshot,
@@ -41,11 +44,14 @@ from app.domain.recovery import (
     RecoveryReason,
     RecoveryRequest,
     RecoveryResult,
+    RecoveryRisk,
     RecoverySecretShareMetadata,
     RecoverySession,
     RecoveryState,
     RecoveryValidationError,
+    RiskHoldStatus,
     SecretShareError,
+    policy_hash,
 )
 
 
@@ -56,6 +62,52 @@ _LOGGER = logging.getLogger(__name__)
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+_NOTIFIED_EVENTS = frozenset(
+    {
+        RecoveryAuditEventType.GUARDIAN_INVITED,
+        RecoveryAuditEventType.GUARDIAN_ACCEPTED,
+        RecoveryAuditEventType.GUARDIAN_ACTIVATED,
+        RecoveryAuditEventType.GUARDIAN_CHANGE_SCHEDULED,
+        RecoveryAuditEventType.GUARDIAN_REBOUND,
+        RecoveryAuditEventType.RECOVERY_POLICY_UPDATED,
+        RecoveryAuditEventType.RECOVERY_POLICY_CHANGE_SCHEDULED,
+        RecoveryAuditEventType.RECOVERY_REQUESTED,
+        RecoveryAuditEventType.RECOVERY_QUORUM_REACHED,
+        RecoveryAuditEventType.RECOVERY_REJECTED,
+        RecoveryAuditEventType.RECOVERY_CANCELLED,
+        RecoveryAuditEventType.RECOVERY_EXPIRED,
+        RecoveryAuditEventType.RECOVERY_COMPLETED,
+        RecoveryAuditEventType.RECOVERY_FAILED,
+        RecoveryAuditEventType.RECOVERY_RISK_HOLD,
+        RecoveryAuditEventType.RECOVERY_RISK_REVIEWED,
+    }
+)
+_POLICY_FIELDS = {
+    "minimumApprovals": "minimum_approvals",
+    "maximumGuardians": "maximum_guardians",
+    "approvalWindowSeconds": "approval_window_seconds",
+    "timeLockSeconds": "time_lock_seconds",
+    "recoveryExpirationSeconds": "recovery_expiration_seconds",
+    "maximumAttempts": "maximum_attempts",
+    "cooldownSeconds": "cooldown_seconds",
+    "allowCancellation": "allow_cancellation",
+}
+
+
+def _policy_fields(change: Any) -> dict[str, Any]:
+    return {_POLICY_FIELDS[key]: value for key, value in change.items()}
+
+
+def _weakens(policy: RecoveryPolicy, requested: dict[str, Any]) -> bool:
+    return (
+        requested["minimumApprovals"] < policy.minimum_approvals
+        or requested["timeLockSeconds"] < policy.time_lock_seconds
+        or requested["maximumAttempts"] > policy.maximum_attempts
+        or requested["cooldownSeconds"] < policy.cooldown_seconds
+        or requested["approvalWindowSeconds"] > policy.approval_window_seconds
+    )
 
 
 def secure_id(prefix: str) -> str:
@@ -74,7 +126,9 @@ class RecoveryService:
         clock: Clock = utc_now,
         id_generator: IdGenerator = secure_id,
         worker_id: str | None = None,
+        risk: Any = None,
     ) -> None:
+        self._risk = risk
         self._repository = repository
         self._secret_sharing = secret_sharing
         self._managed_keys = managed_keys
@@ -91,10 +145,10 @@ class RecoveryService:
         *,
         wallet_id: str,
         guardian_user_id: str,
-        guardian_did: str,
         display_name: str,
-        verification_method: str,
     ) -> Guardian:
+        """Invites an account. It holds no authority until that account accepts
+        with a key of its own, so nobody can register a DID for someone else."""
         principal.require(Permission.GUARDIAN_CREATE)
         self._managed_keys.verify_wallet_owner(
             wallet_id=wallet_id, owner_user_id=principal.user_id
@@ -103,12 +157,16 @@ class RecoveryService:
             raise RecoveryConflictError(
                 "Guardian assignments cannot change during active recovery."
             )
-        policy = self._repository.get_policy(wallet_id)
-        if guardian_user_id == principal.user_id and (
-            policy is None or not policy.allow_self_guardian
-        ):
+        if guardian_user_id == principal.user_id:
             raise RecoveryValidationError("Wallet owners cannot be their own Guardian.")
+        policy = self._repository.get_policy(wallet_id)
         guardians = self._repository.list_guardians(wallet_id=wallet_id)
+        if any(
+            item.guardian_user_id == guardian_user_id
+            and item.status is not GuardianStatus.REMOVED
+            for item in guardians
+        ):
+            raise RecoveryConflictError("Guardian assignment already exists.")
         maximum = (
             policy.maximum_guardians
             if policy is not None
@@ -122,24 +180,307 @@ class RecoveryService:
             owner_user_id=principal.user_id,
             wallet_id=wallet_id,
             guardian_user_id=guardian_user_id,
-            guardian_did=guardian_did,
+            guardian_did="",
             display_name=display_name.strip(),
-            verification_method=verification_method,
-            status=GuardianStatus.ACTIVE,
+            verification_method="",
+            status=GuardianStatus.INVITED,
             created_at=now,
             updated_at=now,
+            invitation_challenge=token_urlsafe(32),
+            invitation_expires_at=now
+            + timedelta(seconds=self._settings.guardian_invitation_ttl_seconds),
         )
         stored = self._repository.add_guardian(guardian)
         self._audit(
-            RecoveryAuditEventType.GUARDIAN_ADDED,
+            RecoveryAuditEventType.GUARDIAN_INVITED,
             aggregate_id=stored.guardian_id,
             actor_id=principal.user_id,
             at=now,
             discriminator=str(stored.version),
             metadata={"walletId": wallet_id, "status": stored.status.value},
         )
+        return stored
+
+    def list_invitations(
+        self, principal: RecoveryPrincipal
+    ) -> tuple[Guardian, ...]:
+        principal.require(Permission.GUARDIAN_READ)
+        now = self._now()
+        return tuple(
+            item
+            for item in self._repository.list_guardians(
+                guardian_user_id=principal.user_id
+            )
+            if item.invitation_challenge is not None
+            and item.invitation_expires_at is not None
+            and item.invitation_expires_at > now
+        )
+
+    def accept_invitation(
+        self,
+        principal: RecoveryPrincipal,
+        guardian_id: str,
+        *,
+        guardian_did: str,
+        verification_method: str,
+        proof: str,
+    ) -> Guardian:
+        principal.require(Permission.RECOVERY_APPROVE)
+        guardian = self._assigned_guardian(principal, guardian_id)
+        if guardian.status is not GuardianStatus.INVITED:
+            raise RecoveryConflictError("This Guardian invitation is not open.")
+        now = self._now()
+        self._require_key_binding(
+            guardian,
+            guardian_did=guardian_did,
+            verification_method=verification_method,
+            proof=proof,
+            now=now,
+        )
+        if self._changes_are_delayed(guardian.wallet_id):
+            status = GuardianStatus.PENDING_ACTIVATION
+            pending_status = GuardianStatus.ACTIVE
+            effective_at = now + timedelta(
+                seconds=self._settings.guardian_change_delay_seconds
+            )
+        else:
+            status, pending_status, effective_at = (
+                GuardianStatus.ACTIVE,
+                None,
+                None,
+            )
+        accepted = replace(
+            replace(
+                guardian,
+                guardian_did=guardian_did,
+                verification_method=verification_method,
+            ).transition(status, at=now),
+            invitation_challenge=None,
+            invitation_expires_at=None,
+            pending_status=pending_status,
+            pending_effective_at=effective_at,
+        )
+        stored = self._repository.update_guardian(
+            accepted, expected_version=guardian.version
+        )
+        self._audit(
+            RecoveryAuditEventType.GUARDIAN_ACCEPTED,
+            aggregate_id=stored.guardian_id,
+            actor_id=principal.user_id,
+            at=now,
+            discriminator=str(stored.version),
+            metadata={"walletId": stored.wallet_id, "status": stored.status.value},
+        )
         self._refresh_guardian_metric()
         return stored
+
+    def start_rebind(
+        self, principal: RecoveryPrincipal, guardian_id: str
+    ) -> Guardian:
+        """Opens a fresh challenge for a Guardian whose key changed or was lost."""
+        principal.require(Permission.RECOVERY_APPROVE)
+        guardian = self._assigned_guardian(principal, guardian_id)
+        if guardian.status is not GuardianStatus.ACTIVE:
+            raise RecoveryConflictError("Only an active Guardian can rebind a key.")
+        now = self._now()
+        return self._repository.update_guardian(
+            replace(
+                guardian,
+                invitation_challenge=token_urlsafe(32),
+                invitation_expires_at=now
+                + timedelta(seconds=self._settings.guardian_invitation_ttl_seconds),
+                updated_at=now,
+                version=guardian.version + 1,
+            ),
+            expected_version=guardian.version,
+        )
+
+    def complete_rebind(
+        self,
+        principal: RecoveryPrincipal,
+        guardian_id: str,
+        *,
+        guardian_did: str,
+        verification_method: str,
+        proof: str,
+    ) -> Guardian:
+        principal.require(Permission.RECOVERY_APPROVE)
+        guardian = self._assigned_guardian(principal, guardian_id)
+        if guardian.status is not GuardianStatus.ACTIVE:
+            raise RecoveryConflictError("Only an active Guardian can rebind a key.")
+        if self._repository.get_active_request(guardian.wallet_id) is not None:
+            raise RecoveryConflictError(
+                "Guardian keys cannot change during active recovery."
+            )
+        now = self._now()
+        self._require_key_binding(
+            guardian,
+            guardian_did=guardian_did,
+            verification_method=verification_method,
+            proof=proof,
+            now=now,
+        )
+        delay = self._settings.guardian_change_delay_seconds
+        rebound = replace(
+            guardian,
+            invitation_challenge=None,
+            invitation_expires_at=None,
+            pending_did=guardian_did,
+            pending_verification_method=verification_method,
+            pending_effective_at=now + timedelta(seconds=delay),
+            updated_at=now,
+            version=guardian.version + 1,
+        )
+        stored = self._repository.update_guardian(
+            rebound, expected_version=guardian.version
+        )
+        self._audit(
+            RecoveryAuditEventType.GUARDIAN_CHANGE_SCHEDULED,
+            aggregate_id=stored.guardian_id,
+            actor_id=principal.user_id,
+            at=now,
+            discriminator=str(stored.version),
+            metadata={"walletId": stored.wallet_id, "change": "KEY_REBIND"},
+        )
+        self._apply_due_changes(stored.wallet_id)
+        return self._repository.get_guardian(guardian_id) or stored
+
+    def _assigned_guardian(
+        self, principal: RecoveryPrincipal, guardian_id: str
+    ) -> Guardian:
+        guardian = self._repository.get_guardian(guardian_id)
+        if guardian is None or guardian.guardian_user_id != principal.user_id:
+            raise RecoveryNotFoundError("Guardian was not found.")
+        return guardian
+
+    def _require_key_binding(
+        self,
+        guardian: Guardian,
+        *,
+        guardian_did: str,
+        verification_method: str,
+        proof: str,
+        now: datetime,
+    ) -> None:
+        if (
+            guardian.invitation_challenge is None
+            or guardian.invitation_expires_at is None
+            or guardian.invitation_expires_at <= now
+        ):
+            raise RecoveryConflictError("This Guardian challenge has expired.")
+        try:
+            self._guardian_proof_verifier.verify_binding(
+                proof,
+                guardian_did=guardian_did,
+                verification_method=verification_method,
+                guardian_id=guardian.guardian_id,
+                wallet_id=guardian.wallet_id,
+                challenge=guardian.invitation_challenge,
+                now=now,
+            )
+        except GuardianProofError as error:
+            raise RecoveryConflictError("Guardian key proof is invalid.") from error
+        if any(
+            item.guardian_id != guardian.guardian_id
+            and guardian_did in {item.guardian_did, item.pending_did}
+            and item.status is not GuardianStatus.REMOVED
+            for item in self._repository.list_guardians(wallet_id=guardian.wallet_id)
+        ):
+            raise RecoveryConflictError(
+                "Each Guardian must use a key of their own."
+            )
+        self._managed_keys.require_unmanaged_did(
+            did=guardian_did, user_id=guardian.guardian_user_id
+        )
+
+    def _changes_are_delayed(self, wallet_id: str) -> bool:
+        """The first Guardians can join at once, because nothing is protected
+        yet. After recovery works, every change gives the owner time to react."""
+        if self._settings.guardian_change_delay_seconds <= 0:
+            return False
+        policy = self._repository.get_policy(wallet_id)
+        minimum = (
+            self._settings.default_minimum_approvals
+            if policy is None
+            else policy.minimum_approvals
+        )
+        active = sum(
+            item.status is GuardianStatus.ACTIVE
+            for item in self._repository.list_guardians(wallet_id=wallet_id)
+        )
+        return active >= minimum
+
+    def _apply_due_changes(self, wallet_id: str) -> None:
+        if self._repository.get_active_request(wallet_id) is not None:
+            return
+        now = self._now()
+        for guardian in self._repository.list_guardians(wallet_id=wallet_id):
+            if (
+                guardian.pending_effective_at is None
+                or guardian.pending_effective_at > now
+            ):
+                continue
+            updated = guardian
+            if guardian.pending_status is not None:
+                updated = guardian.transition(guardian.pending_status, at=now)
+            if guardian.pending_did is not None:
+                updated = replace(
+                    updated,
+                    guardian_did=guardian.pending_did,
+                    verification_method=(
+                        guardian.pending_verification_method or ""
+                    ),
+                )
+            updated = replace(
+                updated,
+                pending_status=None,
+                pending_did=None,
+                pending_verification_method=None,
+                pending_effective_at=None,
+                updated_at=now,
+                version=guardian.version + 1,
+            )
+            stored = self._repository.update_guardian(
+                updated, expected_version=guardian.version
+            )
+            self._audit(
+                (
+                    RecoveryAuditEventType.GUARDIAN_REBOUND
+                    if guardian.pending_did is not None
+                    else RecoveryAuditEventType.GUARDIAN_ACTIVATED
+                ),
+                aggregate_id=stored.guardian_id,
+                actor_id="system:scheduled-change",
+                at=now,
+                discriminator=str(stored.version),
+                metadata={"walletId": wallet_id, "status": stored.status.value},
+            )
+        policy = self._repository.get_policy(wallet_id)
+        if (
+            policy is not None
+            and policy.pending_change is not None
+            and policy.pending_effective_at is not None
+            and policy.pending_effective_at <= now
+        ):
+            stored_policy = self._repository.upsert_policy(
+                replace(
+                    policy,
+                    **_policy_fields(policy.pending_change),
+                    pending_change=None,
+                    pending_effective_at=None,
+                    version=policy.version + 1,
+                    updated_at=now,
+                ),
+                expected_version=policy.version,
+            )
+            self._audit(
+                RecoveryAuditEventType.RECOVERY_POLICY_UPDATED,
+                aggregate_id=stored_policy.policy_id,
+                actor_id="system:scheduled-change",
+                at=now,
+                discriminator=str(stored_policy.version),
+                metadata={"walletId": wallet_id},
+            )
 
     def list_guardians(
         self,
@@ -148,6 +489,8 @@ class RecoveryService:
         wallet_id: str | None = None,
     ) -> tuple[Guardian, ...]:
         principal.require(Permission.GUARDIAN_READ)
+        if wallet_id is not None:
+            self._apply_due_changes(wallet_id)
         owned = self._repository.list_guardians(
             wallet_id=wallet_id, owner_user_id=principal.user_id
         )
@@ -175,7 +518,6 @@ class RecoveryService:
         guardian_id: str,
         *,
         display_name: str | None = None,
-        verification_method: str | None = None,
         status: GuardianStatus | None = None,
     ) -> Guardian:
         principal.require(Permission.GUARDIAN_UPDATE)
@@ -186,15 +528,42 @@ class RecoveryService:
             )
         now = self._now()
         status_changed = status is not None and status is not guardian.status
-        fields_changed = display_name is not None or verification_method is not None
+        if (
+            status_changed
+            and guardian.status is GuardianStatus.ACTIVE
+            and self._changes_are_delayed(guardian.wallet_id)
+        ):
+            scheduled = self._repository.update_guardian(
+                replace(
+                    guardian,
+                    pending_status=status,
+                    pending_effective_at=now
+                    + timedelta(
+                        seconds=self._settings.guardian_change_delay_seconds
+                    ),
+                    updated_at=now,
+                    version=guardian.version + 1,
+                ),
+                expected_version=guardian.version,
+            )
+            self._audit(
+                RecoveryAuditEventType.GUARDIAN_CHANGE_SCHEDULED,
+                aggregate_id=scheduled.guardian_id,
+                actor_id=principal.user_id,
+                at=now,
+                discriminator=str(scheduled.version),
+                metadata={
+                    "walletId": scheduled.wallet_id,
+                    "change": str(status),
+                },
+            )
+            return scheduled
+        fields_changed = display_name is not None
         updated = guardian.transition(status, at=now) if status_changed else guardian
         if fields_changed:
             updated = replace(
                 updated,
                 display_name=(display_name or updated.display_name).strip(),
-                verification_method=(
-                    verification_method or updated.verification_method
-                ),
                 updated_at=now,
                 version=(updated.version if status_changed else guardian.version + 1),
             )
@@ -235,6 +604,7 @@ class RecoveryService:
         self, principal: RecoveryPrincipal, *, wallet_id: str
     ) -> RecoveryPolicy:
         principal.require(Permission.RECOVERY_POLICY_READ)
+        self._apply_due_changes(wallet_id)
         policy = self._repository.get_policy(wallet_id)
         if policy is None or policy.owner_user_id != principal.user_id:
             raise RecoveryNotFoundError("Recovery policy was not found.")
@@ -253,7 +623,6 @@ class RecoveryService:
         maximum_attempts: int,
         cooldown_seconds: int,
         allow_cancellation: bool,
-        allow_self_guardian: bool = False,
     ) -> RecoveryPolicy:
         principal.require(Permission.RECOVERY_POLICY_UPDATE)
         self._managed_keys.verify_wallet_owner(
@@ -265,12 +634,52 @@ class RecoveryService:
         active = [item for item in guardians if item.status is GuardianStatus.ACTIVE]
         if len(active) > maximum_guardians:
             raise RecoveryValidationError("Policy maximum is below active Guardian count.")
-        if not allow_self_guardian and any(
-            item.guardian_user_id == principal.user_id for item in active
-        ):
-            raise RecoveryValidationError("Policy forbids an assigned self-Guardian.")
+        if minimum_approvals < self._settings.minimum_approvals_floor:
+            raise RecoveryValidationError(
+                "Recovery needs more independent Guardian approvals."
+            )
+        if time_lock_seconds < self._settings.time_lock_floor_seconds:
+            raise RecoveryValidationError("Recovery time-lock is too short.")
+        self._apply_due_changes(wallet_id)
         existing = self._repository.get_policy(wallet_id)
         now = self._now()
+        requested = {
+            "minimumApprovals": minimum_approvals,
+            "maximumGuardians": maximum_guardians,
+            "approvalWindowSeconds": approval_window_seconds,
+            "timeLockSeconds": time_lock_seconds,
+            "recoveryExpirationSeconds": recovery_expiration_seconds,
+            "maximumAttempts": maximum_attempts,
+            "cooldownSeconds": cooldown_seconds,
+            "allowCancellation": allow_cancellation,
+        }
+        if (
+            existing is not None
+            and _weakens(existing, requested)
+            and self._changes_are_delayed(wallet_id)
+        ):
+            scheduled = self._repository.upsert_policy(
+                replace(
+                    existing,
+                    pending_change=requested,
+                    pending_effective_at=now
+                    + timedelta(
+                        seconds=self._settings.guardian_change_delay_seconds
+                    ),
+                    version=existing.version + 1,
+                    updated_at=now,
+                ),
+                expected_version=existing.version,
+            )
+            self._audit(
+                RecoveryAuditEventType.RECOVERY_POLICY_CHANGE_SCHEDULED,
+                aggregate_id=scheduled.policy_id,
+                actor_id=principal.user_id,
+                at=now,
+                discriminator=str(scheduled.version),
+                metadata={"walletId": wallet_id},
+            )
+            return scheduled
         policy = RecoveryPolicy(
             policy_id=existing.policy_id if existing else self._ids("policy"),
             wallet_id=wallet_id,
@@ -283,7 +692,6 @@ class RecoveryService:
             maximum_attempts=maximum_attempts,
             cooldown_seconds=cooldown_seconds,
             allow_cancellation=allow_cancellation,
-            allow_self_guardian=allow_self_guardian,
             version=1 if existing is None else existing.version + 1,
             created_at=now if existing is None else existing.created_at,
             updated_at=now,
@@ -320,6 +728,7 @@ class RecoveryService:
         )
         if self._repository.get_active_request(wallet_id) is not None:
             raise RecoveryConflictError("An active recovery request already exists.")
+        self._apply_due_changes(wallet_id)
         policy = self._repository.get_policy(wallet_id)
         if policy is None:
             policy = self._create_default_policy(principal, wallet_id=wallet_id)
@@ -341,11 +750,25 @@ class RecoveryService:
             raise RecoveryConflictError("Active Guardians cannot satisfy the recovery policy.")
         request_id = self._ids("recovery")
         session_id = self._ids("session")
+        # Share sets are unique per (policy, policy version, share version); every
+        # new request under an unchanged policy needs the next share version.
+        share_version = 1 + max(
+            (
+                item.policy.share_version
+                for item in self._repository.list_requests(
+                    owner_user_id=principal.user_id, limit=100
+                )
+                if item.wallet_id == wallet_id
+                and item.policy.policy_id == policy.policy_id
+                and item.policy.policy_version == policy.version
+            ),
+            default=0,
+        )
         context = SecretSharingContext(
             recovery_request_id=request_id,
             policy_id=policy.policy_id,
             policy_version=policy.version,
-            share_version=1,
+            share_version=share_version,
         )
         secret = bytearray(token_bytes(16))
         try:
@@ -405,6 +828,7 @@ class RecoveryService:
             ),
             created_at=now,
             updated_at=now,
+            risk=self._assess_risk(wallet_id=wallet_id, reason=reason),
         )
         self._repository.save_share_set(split.shares)
         stored = self._repository.add_request(request)
@@ -421,6 +845,15 @@ class RecoveryService:
                 "guardianCount": str(len(snapshot.guardian_ids)),
             },
         )
+        if stored.risk.status is RiskHoldStatus.ON_HOLD:
+            self._audit(
+                RecoveryAuditEventType.RECOVERY_RISK_HOLD,
+                aggregate_id=stored.request_id,
+                actor_id="system:risk",
+                at=now,
+                discriminator="created",
+                metadata={"walletId": wallet_id, "level": stored.risk.level},
+            )
         self._metrics.increment("requests")
         self._metrics.observe("request_creation_seconds", perf_counter() - started)
         return stored
@@ -448,6 +881,33 @@ class RecoveryService:
         return tuple(
             sorted(by_id.values(), key=lambda item: item.created_at, reverse=True)[:limit]
         )
+
+    def get_timeline(
+        self, principal: RecoveryPrincipal, request_id: str
+    ) -> tuple[RecoveryAuditEvent, ...]:
+        """Audit timeline for the owner or an assigned Guardian of the request."""
+        request = self.get_request(principal, request_id)
+        return self._repository.list_audit_events(request.request_id)
+
+    def list_oversight(
+        self,
+        principal: RecoveryPrincipal,
+        *,
+        states: tuple[RecoveryState, ...] | None = None,
+        limit: int = 100,
+    ) -> tuple[RecoveryRequest, ...]:
+        """Admin read-only case list. Admins cannot vote, cancel or bypass."""
+        principal.require(Permission.RECOVERY_OVERSIGHT_READ)
+        return self._repository.list_requests(states=states, limit=limit)
+
+    def get_oversight(
+        self, principal: RecoveryPrincipal, request_id: str
+    ) -> tuple[RecoveryRequest, tuple[RecoveryAuditEvent, ...]]:
+        principal.require(Permission.RECOVERY_OVERSIGHT_READ)
+        request = self._repository.get_request(request_id)
+        if request is None:
+            raise RecoveryNotFoundError("Recovery request was not found.")
+        return request, self._repository.list_audit_events(request_id)
 
     def approve(
         self,
@@ -565,6 +1025,8 @@ class RecoveryService:
             or guardian.guardian_user_id != principal.user_id
             or guardian.wallet_id != request.wallet_id
             or guardian_id not in request.policy.guardian_ids
+            or principal.user_id == request.owner_user_id
+            or guardian.guardian_user_id == request.owner_user_id
         ):
             self._audit_unauthorized(request_id, principal.user_id)
             raise RecoveryNotFoundError("Recovery request was not found.")
@@ -601,6 +1063,7 @@ class RecoveryService:
                 wallet_id=request.wallet_id,
                 decision=decision.value,
                 challenge=challenge,
+                policy_hash=policy_hash(request),
                 now=now,
             )
         except GuardianProofError as error:
@@ -912,6 +1375,8 @@ class RecoveryService:
         self, request: RecoveryRequest, *, actor_id: str
     ) -> RecoveryRequest:
         if request.session.state is not RecoveryState.READY_FOR_EXECUTION:
+            return request
+        if request.risk.status is RiskHoldStatus.ON_HOLD:
             return request
         now = self._now()
         attempt = request.session.attempt_count + 1
@@ -1227,6 +1692,144 @@ class RecoveryService:
                 metadata=metadata,
             )
         )
+        if event_type in _NOTIFIED_EVENTS:
+            self._notify(event_id, event_type, aggregate_id, at, metadata)
+
+    def _notify(
+        self,
+        event_id: str,
+        event_type: RecoveryAuditEventType,
+        aggregate_id: str,
+        at: datetime,
+        metadata: dict[str, str],
+    ) -> None:
+        wallet_id = metadata.get("walletId", "")
+        recipients: set[str] = set()
+        request = self._repository.get_request(aggregate_id)
+        guardian = self._repository.get_guardian(aggregate_id)
+        if request is not None:
+            wallet_id = request.wallet_id
+            recipients.add(request.owner_user_id)
+            for guardian_id in request.policy.guardian_ids:
+                assigned = self._repository.get_guardian(guardian_id)
+                if assigned is not None:
+                    recipients.add(assigned.guardian_user_id)
+        elif guardian is not None:
+            wallet_id = guardian.wallet_id
+            recipients.update({guardian.owner_user_id, guardian.guardian_user_id})
+        elif wallet_id:
+            policy = self._repository.get_policy(wallet_id)
+            if policy is not None:
+                recipients.add(policy.owner_user_id)
+            recipients.update(
+                item.guardian_user_id
+                for item in self._repository.list_guardians(wallet_id=wallet_id)
+                if item.status is GuardianStatus.ACTIVE
+            )
+        for user_id in recipients:
+            self._repository.add_notification(
+                RecoveryNotification(
+                    notification_id="notice_"
+                    + sha256(f"{event_id}:{user_id}".encode()).hexdigest()[:40],
+                    recipient_user_id=user_id,
+                    event_type=event_type.value,
+                    aggregate_id=aggregate_id,
+                    wallet_id=wallet_id,
+                    created_at=at,
+                )
+            )
+
+    def list_notifications(
+        self, principal: RecoveryPrincipal, *, limit: int = 50
+    ) -> tuple[RecoveryNotification, ...]:
+        return self._repository.list_notifications(
+            principal.user_id, limit=limit
+        )
+
+    def mark_notification_read(
+        self, principal: RecoveryPrincipal, notification_id: str
+    ) -> None:
+        self._repository.mark_notification_read(
+            notification_id,
+            recipient_user_id=principal.user_id,
+            read_at=self._now(),
+        )
+
+    def _assess_risk(
+        self, *, wallet_id: str, reason: RecoveryReason
+    ) -> RecoveryRisk:
+        """Only an explicit LOW result passes. Anything else holds the rotation
+        for a person to review; a Guardian quorum alone does not clear it."""
+        try:
+            level = (
+                "UNAVAILABLE"
+                if self._risk is None
+                else self._risk.assess_recovery(
+                    wallet_id=wallet_id, reason=reason.value
+                )
+            )
+        except Exception:
+            level = "UNAVAILABLE"
+        return RecoveryRisk(
+            level=level,
+            status=(
+                RiskHoldStatus.CLEAR if level == "LOW" else RiskHoldStatus.ON_HOLD
+            ),
+        )
+
+    def review_risk(
+        self,
+        principal: RecoveryPrincipal,
+        request_id: str,
+        *,
+        decision: str,
+        reason: str,
+    ) -> RecoveryRequest:
+        principal.require(Permission.RECOVERY_RISK_REVIEW)
+        request = self._repository.get_request(request_id)
+        if request is None:
+            raise RecoveryNotFoundError("Recovery request was not found.")
+        if request.owner_user_id == principal.user_id:
+            raise RecoveryAuthorizationError(
+                "A requester cannot review their own risk hold."
+            )
+        if request.risk.status is not RiskHoldStatus.ON_HOLD:
+            raise RecoveryConflictError("This recovery is not on risk hold.")
+        now = self._now()
+        if decision == "RELEASE":
+            updated = replace(
+                request,
+                risk=replace(
+                    request.risk,
+                    status=RiskHoldStatus.RELEASED,
+                    reviewed_by=principal.user_id,
+                    reviewed_at=now,
+                ),
+                updated_at=now,
+                version=request.version + 1,
+            )
+        else:
+            updated = replace(
+                request.transition(RecoveryState.CANCELLED, at=now),
+                risk=replace(
+                    request.risk, reviewed_by=principal.user_id, reviewed_at=now
+                ),
+            )
+        stored = self._repository.update_request(
+            updated, expected_version=request.version
+        )
+        self._audit(
+            RecoveryAuditEventType.RECOVERY_RISK_REVIEWED,
+            aggregate_id=request_id,
+            actor_id=principal.user_id,
+            at=now,
+            discriminator=str(stored.version),
+            metadata={
+                "decision": decision,
+                "reasonDigest": _digest(reason),
+            },
+        )
+        return stored
 
     def _now(self) -> datetime:
         value = self._clock()
