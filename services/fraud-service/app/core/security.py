@@ -163,6 +163,38 @@ async def require_internal_service(
     )
 
 
+async def require_incident_writer(
+    principal: FraudPrincipal = Depends(require_authenticated_user),
+) -> FraudPrincipal:
+    if "admin" not in principal.roles or "admin:incidents:write" not in principal.permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator permission is required.",
+        )
+    return principal
+
+
+async def spend_step_up(authorization: str | None, token: str | None, *, action: str, resource: str) -> None:
+    """Identity holds the signing secret, so it checks and consumes the token."""
+    headers = {"Authorization": authorization or ""}
+    if token:
+        headers["X-Step-Up-Token"] = token
+    try:
+        async with httpx.AsyncClient(timeout=IDENTITY_AUTH_TIMEOUT_SECONDS, follow_redirects=False) as client:
+            response = await client.post(
+                f"{IDENTITY_SERVICE_URL}/api/v1/auth/step-up/verify",
+                headers=headers,
+                json={"action": action, "resource": resource},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Identity authentication service is unavailable.",
+        ) from exc
+    if response.status_code != status.HTTP_204_NO_CONTENT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Fresh authentication is required.")
+
+
 async def require_admin(
     principal: FraudPrincipal = Depends(require_authenticated_user),
 ) -> FraudPrincipal:

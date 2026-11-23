@@ -7,6 +7,7 @@ per Master Implementation Plan Section 14.
 
 from __future__ import annotations
 
+from app.core.subject import subject_key
 import math
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -75,6 +76,7 @@ class SlidingWindowFeatureStore:
         """Ingests a platform security event and updates sliding-window metrics."""
         ts = timestamp if timestamp is not None else datetime.now(timezone.utc).timestamp()
         meta = metadata or {}
+        did = subject_key(did)
 
         with self._lock:
             # Purge expired events
@@ -125,6 +127,7 @@ class SlidingWindowFeatureStore:
         """Extracts normalized behavioral features for real-time model evaluation."""
         ts = current_timestamp if current_timestamp is not None else datetime.now(timezone.utc).timestamp()
         meta = metadata or {}
+        did = subject_key(did)
 
         with self._lock:
             self._purge_expired(ts)
