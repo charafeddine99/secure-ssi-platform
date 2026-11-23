@@ -1,3 +1,4 @@
+from app.core.telemetry import client_address
 import time
 import uuid
 from collections import OrderedDict
@@ -92,6 +93,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/login",
             "/api/v1/identity/auth/login",
             "/api/v1/identity/auth/token",
+            "/api/v1/identity/auth/register",
             "/api/v1/oid4vci/token",
             "/api/v1/oid4vci/credential",
             "/api/v1/identity/credentials/sign",
@@ -101,7 +103,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         return any(path.startswith(prefix) for prefix in sensitive_prefixes)
 
     async def dispatch(self, request: Request, call_next):
-        client_ip = request.client.host if request.client else "127.0.0.1"
+        client_ip = client_address(request)
         now = time.time()
         path = request.url.path
 
