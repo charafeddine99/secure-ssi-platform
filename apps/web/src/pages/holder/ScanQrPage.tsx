@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { IconClipboardText, IconFileCertificate, IconSend } from "@tabler/icons-react";
 import { claimOid4vciOffer, IssuanceStepError, type IssuanceStep } from "../../api/issuance.ts";
 import { Page } from "../../components/ui/PageHeader.tsx";
@@ -9,9 +9,11 @@ import { Checkbox, TextAreaField, TextField } from "../../components/ui/Field.ts
 import { Alert } from "../../components/ui/Alert.tsx";
 import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
 import { ErrorState, LoadingState } from "../../components/ui/States.tsx";
-import { describeError } from "../../lib/http.ts";
+import { describeError, isApiError } from "../../lib/http.ts";
+import { resolveOid4vpRequestLink } from "../../api/presentation.ts";
 import { humanize } from "../../lib/format.ts";
-import { parseOid4vpRequestSessionId } from "../../utils/oid4vpRequestUri.ts";
+import { hasRequestUri, parseOid4vpRequestSessionId } from "../../utils/oid4vpRequestUri.ts";
+import { classifyScanInput } from "../../utils/scanInput.ts";
 import { useHolderWallet } from "./useHolderWallet.ts";
 import { parseCredentialOfferUri, type ParsedOffer } from "./offerUri.ts";
 
@@ -25,7 +27,8 @@ const STEP_LABELS: Record<IssuanceStep, string> = {
 export const ScanQrPage: React.FC = () => {
   const navigate = useNavigate();
   const wallet = useHolderWallet();
-  const [input, setInput] = React.useState("");
+  const location = useLocation();
+  const [input, setInput] = React.useState(() => String((location.state as { link?: unknown } | null)?.link ?? ""));
   const [parseError, setParseError] = React.useState<string | null>(null);
   const [offer, setOffer] = React.useState<ParsedOffer | null>(null);
   const [consent, setConsent] = React.useState(false);
@@ -34,7 +37,7 @@ export const ScanQrPage: React.FC = () => {
   const [claimError, setClaimError] = React.useState<string | null>(null);
   const [claimed, setClaimed] = React.useState<{ credentialId: string; status: string } | null>(null);
 
-  const onReview = (event: React.FormEvent) => {
+  const onReview = async (event: React.FormEvent) => {
     event.preventDefault();
     setParseError(null);
     setOffer(null);
@@ -42,24 +45,26 @@ export const ScanQrPage: React.FC = () => {
     setClaimError(null);
     setConsent(false);
     setTxCode("");
-    const value = input.trim();
-    if (!value) {
-      setParseError("Paste an openid-credential-offer:// or openid4vp:// link.");
-      return;
-    }
+    const scanned = classifyScanInput(input, window.location.origin);
     try {
-      if (value.startsWith("openid-credential-offer://")) {
-        setOffer(parseCredentialOfferUri(value));
+      if (scanned.kind === "offer") {
+        setOffer(parseCredentialOfferUri(scanned.value));
         return;
       }
-      if (value.startsWith("openid4vp://")) {
-        const sessionId = parseOid4vpRequestSessionId(value);
+      if (scanned.kind === "oid4vp") {
+        const sessionId = hasRequestUri(scanned.value)
+          ? (await resolveOid4vpRequestLink(scanned.value)).sessionId
+          : parseOid4vpRequestSessionId(scanned.value);
         navigate(`/wallet/consent?sessionId=${encodeURIComponent(sessionId)}`);
         return;
       }
-      setParseError("Unrecognised link. It must start with openid-credential-offer:// or openid4vp://.");
+      if (scanned.kind === "handoff") {
+        navigate(`/wallet/consent?sessionId=${encodeURIComponent(scanned.request)}`);
+        return;
+      }
+      setParseError(scanned.reason);
     } catch (error) {
-      setParseError(error instanceof Error ? error.message : "The link could not be read.");
+      setParseError(isApiError(error) ? describeError(error) : error instanceof Error ? error.message : "The link could not be read.");
     }
   };
 
@@ -97,11 +102,16 @@ export const ScanQrPage: React.FC = () => {
       breadcrumbs={[{ label: "Wallet", to: "/wallet" }, { label: "Receive or share" }]}
       narrow
     >
+      {Boolean((location.state as { present?: unknown } | null)?.present) && (
+        <Alert tone="info" title="Presenting starts with the verifier" className="mb-3">
+          Ask the verifier for its QR code. Scan it with your phone camera, or paste its link here. You then see exactly what it asks for before anything is shared.
+        </Alert>
+      )}
       <Card title="Paste a link">
         <form onSubmit={onReview} noValidate>
           <TextAreaField
             label="Offer or request link"
-            hint="openid-credential-offer://… (OID4VCI) or openid4vp://… (OID4VP)"
+            hint="An issuer offer (openid-credential-offer://), a verifier request (openid4vp://) or a verifier link from this site."
             rows={4}
             value={input}
             onChange={(event) => setInput(event.target.value)}

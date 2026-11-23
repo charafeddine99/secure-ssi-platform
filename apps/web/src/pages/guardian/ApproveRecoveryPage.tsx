@@ -13,6 +13,8 @@ import { RecoveryStateBadge } from "../../components/ui/StatusBadge.tsx";
 import { ErrorState, LoadingState } from "../../components/ui/States.tsx";
 import { RecoveryProgress } from "../../components/ssi/RecoveryProgress.tsx";
 import { useAuth } from "../../context/AuthContext.ts";
+import { useStepUp } from "../../components/ssi/stepUpContext.ts";
+import { findDeviceKey } from "../../lib/guardianDeviceKey.ts";
 import { useAsync } from "../../lib/useAsync.ts";
 import { describeError } from "../../lib/http.ts";
 import { formatDateTime, humanize } from "../../lib/format.ts";
@@ -34,6 +36,7 @@ export const ApproveRecoveryPage: React.FC = () => {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [updated, setUpdated] = React.useState<RecoveryRequest | null>(null);
+  const withStepUp = useStepUp();
   const crumbs = [{ label: "Guardian tasks", to: "/guardian" }, { label: "Review request" }];
 
   if (data.status === "loading") return <Page title="Review recovery request" breadcrumbs={crumbs}><div className="card"><LoadingState label="Loading request" /></div></Page>;
@@ -47,7 +50,9 @@ export const ApproveRecoveryPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      setUpdated(await decideRecoveryRequest(request, guardian, decision));
+      const key = await findDeviceKey(user?.id ?? "");
+      if (!key) throw new Error("This browser does not hold your Guardian key. Bind a new key on the Guardian tasks page.");
+      setUpdated(await withStepUp("recovery.decide", request.requestId, (token) => decideRecoveryRequest(request, guardian, decision, key, token)));
       setDecision(null);
     } catch (cause) {
       setError(describeError(cause));
@@ -71,6 +76,7 @@ export const ApproveRecoveryPage: React.FC = () => {
             { label: "Wallet", value: <IdentifierText value={request.walletId} label="wallet" /> },
             { label: "Requested", value: formatDateTime(request.createdAt) },
             { label: "Decisions close", value: formatDateTime(request.approvalExpiresAt) },
+            { label: "Risk check", value: request.riskStatus === "ON_HOLD" ? `On hold (${humanize(request.riskLevel)})` : humanize(request.riskStatus) },
             guardian ? { label: "You act as", value: <>{guardian.displayName} · <IdentifierText value={guardian.guardianDid} label="guardian DID" copy={false} /></> } : null,
           ]} />
         </Card>
@@ -83,7 +89,7 @@ export const ApproveRecoveryPage: React.FC = () => {
       {guardian && isOpen(request) && !updated && (
         <Card
           title="Your decision"
-          subtitle="Signed with your wallet key."
+          subtitle="Signed in this browser with your own Guardian key. The platform cannot sign for you."
           footer={(
             <div className="btn-list">
               <Button onClick={() => setDecision("APPROVE")} disabled={!confirmed} icon={<IconCheck aria-hidden="true" />}>Approve</Button>

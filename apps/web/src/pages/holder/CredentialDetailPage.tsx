@@ -14,6 +14,7 @@ import { useAsync } from "../../lib/useAsync.ts";
 import { describeError } from "../../lib/http.ts";
 import { formatDateTime, humanize, isExpired, renderClaimValue } from "../../lib/format.ts";
 import { useHolderWallet } from "./useHolderWallet.ts";
+import { RequestReissuanceCard } from "../../components/ssi/ReissuanceCards.tsx";
 
 export const CredentialDetailPage: React.FC = () => {
   const { id = "" } = useParams();
@@ -93,6 +94,7 @@ export const CredentialDetailPage: React.FC = () => {
         </Card>
       </Grid>
 
+      {wallet.status === "success" && <RequestReissuanceCard walletId={wallet.data.walletId} credentialId={credential.id} />}
       <Card title="Attributes" flush>
         {claims.length === 0 ? <div className="card-body text-secondary">No attributes besides the holder DID.</div> : (
           <Table caption="Credential attributes">

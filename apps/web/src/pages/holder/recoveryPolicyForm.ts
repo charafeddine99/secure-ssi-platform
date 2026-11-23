@@ -43,7 +43,7 @@ export function validatePolicyForm(form: PolicyForm, walletId: string): { policy
     }
     return value;
   };
-  const minimumApprovals = int("minimumApprovals", 1, 32);
+  const minimumApprovals = int("minimumApprovals", 2, 32);
   const maximumGuardians = int("maximumGuardians", 1, 32);
   if (!errors.minimumApprovals && !errors.maximumGuardians && minimumApprovals > maximumGuardians) {
     errors.minimumApprovals = "Required approvals cannot exceed the number of guardians allowed.";

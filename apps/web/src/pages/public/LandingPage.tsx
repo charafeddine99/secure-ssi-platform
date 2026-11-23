@@ -31,7 +31,7 @@ export const LandingPage: React.FC = () => {
               <div className="btn-list">
                 {user
                   ? <ButtonLink to={roleHomePath(user.role)} icon={<IconArrowRight aria-hidden="true" />}>Open workspace</ButtonLink>
-                  : <ButtonLink to="/login" icon={<IconArrowRight aria-hidden="true" />}>Sign in</ButtonLink>}
+                  : <><ButtonLink to="/register" icon={<IconArrowRight aria-hidden="true" />}>Create account</ButtonLink><ButtonLink to="/login" variant="secondary">Sign in</ButtonLink></>}
                 <ButtonLink to="/docs" variant="secondary">How it works</ButtonLink>
               </div>
             </div>

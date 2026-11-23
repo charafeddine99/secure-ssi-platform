@@ -11,10 +11,13 @@ import { useAuth } from "../../context/AuthContext.ts";
 import { useAsync } from "../../lib/useAsync.ts";
 import { formatDateTime, humanize } from "../../lib/format.ts";
 import { isActive, isOpen, loadAssignments } from "./guardianData.ts";
+import { GuardianKeysCard, InvitationsCard } from "./GuardianEnrollment.tsx";
+import { RecoveryNotificationsCard } from "../../components/ssi/RecoveryNotificationsCard.tsx";
 
 export const GuardianDashboard: React.FC = () => {
   const { user } = useAuth();
   const data = useAsync(() => loadAssignments(user?.id ?? ""), [user?.id]);
+  const [keysVersion, setKeysVersion] = React.useState(0);
   return (
     <Page
       eyebrow="Guardian tasks"
@@ -22,6 +25,7 @@ export const GuardianDashboard: React.FC = () => {
       description="Confirm with the person before approving."
       actions={<Button variant="secondary" onClick={data.reload} icon={<IconRefresh aria-hidden="true" />}>Refresh</Button>}
     >
+      <InvitationsCard onChanged={() => { data.reload(); setKeysVersion((value) => value + 1); }} />
       <AsyncView state={data} onRetry={data.reload} loadingLabel="Loading guardian assignments" errorTitle="The recovery service could not be reached">
         {(items) => {
           const open = items.filter((a) => isOpen(a.request));
@@ -55,6 +59,8 @@ export const GuardianDashboard: React.FC = () => {
           );
         }}
       </AsyncView>
+      <GuardianKeysCard key={keysVersion} />
+      <RecoveryNotificationsCard />
     </Page>
   );
 };

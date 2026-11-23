@@ -1,4 +1,5 @@
 import React from "react";
+import { IssuerReissuanceCard } from "../../components/ssi/ReissuanceCards.tsx";
 import { IconHistory, IconSearch, IconShieldOff } from "@tabler/icons-react";
 import { fetchCredentialHistory, fetchCredentialStatus, revokeCredential, type CredentialStatusSnapshot } from "../../api/status.ts";
 import { Page } from "../../components/ui/PageHeader.tsx";
@@ -68,6 +69,7 @@ export const RevocationRegistryPage: React.FC = () => {
       breadcrumbs={[{ label: "Issuer", to: "/issuer" }, { label: "Status and revocation" }]}
       narrow
     >
+      <IssuerReissuanceCard />
       <Card title="Find a credential">
         <form className="row g-2 align-items-start" onSubmit={onLookup} noValidate>
           <div className="col-md">
@@ -105,7 +107,7 @@ export const RevocationRegistryPage: React.FC = () => {
   );
 };
 
-/** Append-only lifecycle events recorded by the Identity Service for this credential. */
+/** Lifecycle events recorded by the Identity Service for this credential. */
 const StatusHistory: React.FC<{ credentialId: string; status: string }> = ({ credentialId, status }) => {
   // Reload after a revocation so the new event appears.
   const history = useAsync(() => fetchCredentialHistory(credentialId), [credentialId, status]);

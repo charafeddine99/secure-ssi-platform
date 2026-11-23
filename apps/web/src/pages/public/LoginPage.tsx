@@ -98,7 +98,8 @@ export const LoginPage: React.FC = () => {
                 <Button type="submit" loading={busy} block icon={<IconLogin2 aria-hidden="true" />}>Sign in</Button>
               </div>
             </form>
-            <div className="text-secondary mt-4 small"><Link to="/">Back to overview</Link></div>
+            <div className="text-secondary mt-4">New here? <Link className="text-decoration-underline" to="/register">Create an account</Link></div>
+            <div className="text-secondary mt-2 small"><Link to="/">Back to overview</Link></div>
           </div>
         </main>
         <div className="col-12 col-lg-6 col-xl-7 d-none d-lg-block">
