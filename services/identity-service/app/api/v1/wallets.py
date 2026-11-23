@@ -1,19 +1,12 @@
-import base64
-import json
-import secrets
-from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 
 from app.api.v1.dependencies import (
     get_holder_wallet_service,
     get_audit_event_repository,
-    get_managed_key_repository,
     require_permission,
-    _provider_aware_holder_signer,
 )
-from app.application.ports.key_management import ManagedKeyRepository
 from app.application.ports.repositories import AuditEventRepository
 from app.application.services.holder_wallet_service import (
     HolderWalletService,
@@ -29,8 +22,6 @@ from app.schemas.holder_wallet_api import (
     WalletCredentialResponse,
     HolderActivityResponse,
     HolderActivityEventResponse,
-    GuardianRecoveryProofRequest,
-    GuardianRecoveryProofResponse,
 )
 
 
@@ -111,83 +102,6 @@ def get_wallet(
 ) -> HolderWalletResponse:
     return HolderWalletResponse.from_domain(
         service.get_owned(wallet_id, owner_user_id=principal.id)
-    )
-
-
-@router.post(
-    "/guardian-recovery-proof",
-    response_model=GuardianRecoveryProofResponse,
-    summary="Sign a challenge-bound Guardian recovery decision",
-    responses=_ERRORS,
-)
-def create_guardian_recovery_proof(
-    payload: GuardianRecoveryProofRequest,
-    principal: AuthenticatedPrincipal = Depends(
-        require_permission(Permission.WALLETS_READ)
-    ),
-    wallets: HolderWalletService = Depends(get_holder_wallet_service),
-    managed_keys: ManagedKeyRepository = Depends(get_managed_key_repository),
-) -> GuardianRecoveryProofResponse:
-    wallet = wallets.get_owned_by_holder_did(
-        payload.guardian_did,
-        owner_user_id=principal.id,
-    )
-    wallet.require_usable_for_signing()
-    if not wallet.holder_did.startswith("did:key:z"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Guardian recovery signing currently supports Ed25519 did:key wallets.",
-        )
-
-    signer = _provider_aware_holder_signer(managed_keys)
-    metadata = signer.get_metadata(wallet.key_reference)
-    expected_method = f"{wallet.holder_did}#{wallet.holder_did[len('did:key:'):]}"
-    if metadata.verification_method != expected_method:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The active wallet key is not bound to the registered Guardian DID.",
-        )
-
-    issued_at = datetime.now(UTC)
-    claims = {
-        "iss": wallet.holder_did,
-        "sub": payload.guardian_id,
-        "aud": "secure-ssi-platform:guardian-recovery",
-        "requestId": payload.request_id,
-        "sessionId": payload.session_id,
-        "walletId": payload.wallet_id,
-        "decision": payload.decision,
-        "challenge": payload.challenge,
-        "iat": int(issued_at.timestamp()),
-        "exp": int((issued_at + timedelta(seconds=120)).timestamp()),
-        "jti": secrets.token_urlsafe(18),
-    }
-    header = {
-        "alg": "EdDSA",
-        "typ": "guardian-recovery+jwt",
-        "kid": metadata.verification_method,
-    }
-
-    def encode_segment(value: dict[str, object]) -> str:
-        raw = json.dumps(
-            value,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-    signing_input = f"{encode_segment(header)}.{encode_segment(claims)}"
-    signature = signer.sign(
-        signing_input.encode("ascii"),
-        key_reference=wallet.key_reference,
-    )
-    proof = (
-        f"{signing_input}."
-        f"{base64.urlsafe_b64encode(signature).rstrip(b'=').decode('ascii')}"
-    )
-    return GuardianRecoveryProofResponse(
-        guardian_did=wallet.holder_did,
-        proof=proof,
     )
 
 
