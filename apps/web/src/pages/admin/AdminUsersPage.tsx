@@ -2,6 +2,7 @@ import React from "react";
 import { IconCertificate, IconDeviceFloppy, IconRefresh, IconUsers, IconUserShield } from "@tabler/icons-react";
 import { fetchAdminIssuerScopeOptions, fetchAdminUsers, updateAdminIssuerScope, type AdminIssuerScopeOption, type AdminUserRecord } from "../../api/admin.ts";
 import { Grid, Page } from "../../components/ui/PageHeader.tsx";
+import { InviteAdministratorCard, OnboardingCard } from "../../components/ssi/OnboardingCards.tsx";
 import { Card, Stat, Table } from "../../components/ui/Card.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { AsyncView } from "../../components/ui/AsyncView.tsx";
@@ -64,6 +65,8 @@ export const AdminUsersPage: React.FC = () => {
                 <Stat label="Issuer accounts" value={issuers.length} icon={<IconCertificate size={20} />} tone="indigo" />
                 <Stat label="Issuers with institution" value={issuers.filter((u) => u.issuerDid).length} icon={<IconUserShield size={20} />} tone="teal" />
               </Grid>
+              <OnboardingCard onChanged={data.reload} />
+              <InviteAdministratorCard />
               <Card title="Accounts" flush>
                 {users.length === 0 ? <EmptyState title="No accounts" description="The identity store returned no accounts." /> : (
                   <Table caption="Platform accounts" stackBelow="md">

@@ -66,7 +66,7 @@ export const AdminDashboard: React.FC = () => {
         { to: "/admin/trust-registry", title: "Trust registry", text: "Issuers verifiers accept.", icon: <IconBuildingBank size={22} />, tone: "indigo" },
         { to: "/admin/users", title: "Users & issuer scope", text: "Link issuers to institutions.", icon: <IconUsers size={22} />, tone: "teal" },
         { to: "/admin/audit", title: "Audit log", text: "Security-relevant events.", icon: <IconHistory size={22} />, tone: "purple" },
-        { to: "/admin/fraud-monitor", title: "Risk engine", text: "Advisory risk service.", icon: <IconCpu size={22} />, tone: "orange" },
+        { to: "/admin/intelligence", title: "Security intelligence", text: "Risk, attacks and incidents.", icon: <IconCpu size={22} />, tone: "orange" },
       ]} />
       <div className="row row-cards row-deck">
         <div className="col-lg-8">

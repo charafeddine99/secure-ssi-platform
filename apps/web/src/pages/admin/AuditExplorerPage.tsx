@@ -1,9 +1,10 @@
 import React from "react";
 import { IconDownload, IconRefresh } from "@tabler/icons-react";
-import { fetchAuditLogs, type AuditLogEntry } from "../../api/admin.ts";
+import { fetchAuditIntegrity, fetchAuditLogs, type AuditLogEntry } from "../../api/admin.ts";
 import { Page } from "../../components/ui/PageHeader.tsx";
 import { Card, Table } from "../../components/ui/Card.tsx";
 import { Button } from "../../components/ui/Button.tsx";
+import { Alert } from "../../components/ui/Alert.tsx";
 import { SelectField, TextField } from "../../components/ui/Field.tsx";
 import { AsyncView } from "../../components/ui/AsyncView.tsx";
 import { Badge, type BadgeTone } from "../../components/ui/StatusBadge.tsx";
@@ -28,6 +29,7 @@ export const AuditExplorerPage: React.FC = () => {
   const [expanded, setExpanded] = React.useState<string | null>(null);
   // Categories are filtered locally: the service only accepts exact event-type values.
   const logs = useAsync(() => fetchAuditLogs(undefined, 150), []);
+  const integrity = useAsync(fetchAuditIntegrity, []);
 
   const visible = (rows: AuditLogEntry[]) => {
     const term = search.trim().toLowerCase();
@@ -56,6 +58,11 @@ export const AuditExplorerPage: React.FC = () => {
         breadcrumbs={[{ label: "Administration", to: "/admin" }, { label: "Audit log" }]}
         actions={<Button variant="secondary" onClick={logs.reload} icon={<IconRefresh aria-hidden="true" />}>Refresh</Button>}
     >
+      {integrity.status === "success" && (
+        <Alert tone={integrity.data.status === "INTACT" ? "success" : "danger"} title={integrity.data.status === "INTACT" ? "Audit chain intact" : "Audit chain check failed"} className="mb-3">
+          {integrity.data.checked} events checked; {integrity.data.unchained} older events are outside the chain. This detects edits and removed events, but not the removal of the newest events.
+        </Alert>
+      )}
       <Card
         title="Events"
         actions={logs.status === "success" && logs.data.length > 0
