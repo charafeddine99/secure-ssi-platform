@@ -20,6 +20,7 @@ const ScanQrPage = lazy(() => import("../pages/holder/ScanQrPage.tsx"), "ScanQrP
 const PresentationConsentPage = lazy(() => import("../pages/holder/PresentationConsentPage.tsx"), "PresentationConsentPage");
 const ActivityHistoryPage = lazy(() => import("../pages/holder/ActivityHistoryPage.tsx"), "ActivityHistoryPage");
 const SecuritySettingsPage = lazy(() => import("../pages/holder/SecuritySettingsPage.tsx"), "SecuritySettingsPage");
+const WalletBackupPage = lazy(() => import("../pages/holder/WalletBackupPage.tsx"), "WalletBackupPage");
 
 const IssuerDashboard = lazy(() => import("../pages/issuer/IssuerDashboard.tsx"), "IssuerDashboard");
 const CredentialTemplatesPage = lazy(() => import("../pages/issuer/CredentialTemplatesPage.tsx"), "CredentialTemplatesPage");
@@ -31,6 +32,7 @@ const CreateRequestPage = lazy(() => import("../pages/verifier/CreateRequestPage
 const VerifyPresentationPage = lazy(() => import("../pages/verifier/VerifyPresentationPage.tsx"), "VerifyPresentationPage");
 const VerificationHistoryPage = lazy(() => import("../pages/verifier/VerificationHistoryPage.tsx"), "VerificationHistoryPage");
 
+const PresentRequestHandoff = lazy(() => import("../pages/holder/PresentRequestHandoff.tsx"), "PresentRequestHandoff");
 const GuardianDashboard = lazy(() => import("../pages/guardian/GuardianDashboard.tsx"), "GuardianDashboard");
 const RecoveryRequestsPage = lazy(() => import("../pages/guardian/RecoveryRequestsPage.tsx"), "RecoveryRequestsPage");
 const ApproveRecoveryPage = lazy(() => import("../pages/guardian/ApproveRecoveryPage.tsx"), "ApproveRecoveryPage");
@@ -40,7 +42,11 @@ const AdminUsersPage = lazy(() => import("../pages/admin/AdminUsersPage.tsx"), "
 const TrustRegistryPage = lazy(() => import("../pages/admin/TrustRegistryPage.tsx"), "TrustRegistryPage");
 const SmartContractsPage = lazy(() => import("../pages/admin/SmartContractsPage.tsx"), "SmartContractsPage");
 const AuditExplorerPage = lazy(() => import("../pages/admin/AuditExplorerPage.tsx"), "AuditExplorerPage");
-const AiFraudMonitorPage = lazy(() => import("../pages/admin/AiFraudMonitorPage.tsx"), "AiFraudMonitorPage");
+const RegisterPage = lazy(() => import("../pages/public/RegisterPage.tsx"), "RegisterPage");
+const AccountSecurityPage = lazy(() => import("../pages/AccountSecurityPage.tsx"), "AccountSecurityPage");
+const SecurityIntelligencePage = lazy(() => import("../pages/admin/SecurityIntelligencePage.tsx"), "SecurityIntelligencePage");
+const RecoveryOversightPage = lazy(() => import("../pages/admin/RecoveryOversightPage.tsx"), "RecoveryOversightPage");
+const PlatformBackupPage = lazy(() => import("../pages/admin/PlatformBackupPage.tsx"), "PlatformBackupPage");
 
 /** Legacy canonical URL /credentials/:id now resolves to the wallet route. */
 const CredentialAlias: React.FC = () => {
@@ -62,14 +68,18 @@ export const AppRoutes: React.FC = () => (
       </Route>
       {/* Tabler single-page sign-in layout, without the public navbar. */}
       <Route path="login" element={<LoginPage />} />
+      <Route path="register" element={<RegisterPage />} />
 
       <Route element={<RoleGuard><AppShell /></RoleGuard>}>
+        <Route path="account/security" element={<AccountSecurityPage />} />
         <Route path="wallet" element={guarded(<WalletDashboard />, "HOLDER", "wallets:read")} />
         <Route path="wallet/credentials/:id" element={guarded(<CredentialDetailPage />, "HOLDER", "wallets:credentials:read")} />
         <Route path="wallet/scan" element={guarded(<ScanQrPage />, "HOLDER", "wallets:read")} />
+        <Route path="wallet/present" element={guarded(<PresentRequestHandoff />, "HOLDER", "wallets:read")} />
         <Route path="wallet/consent" element={guarded(<PresentationConsentPage />, "HOLDER", "presentations:create")} />
         <Route path="wallet/activity" element={guarded(<ActivityHistoryPage />, "HOLDER", "presentations:read")} />
         <Route path="wallet/security" element={guarded(<SecuritySettingsPage />, "HOLDER", "wallet:key:read")} />
+        <Route path="wallet/backup" element={guarded(<WalletBackupPage />, "HOLDER", "wallets:backup")} />
         <Route path="credentials/:id" element={guarded(<CredentialAlias />, "HOLDER")} />
         <Route path="consent/presentation" element={guarded(<PresentationConsentPage />, "HOLDER", "presentations:create")} />
 
@@ -93,7 +103,10 @@ export const AppRoutes: React.FC = () => (
         <Route path="admin/trust-registry" element={guarded(<TrustRegistryPage />, "ADMIN", "admin:operations:read")} />
         <Route path="admin/contracts" element={guarded(<SmartContractsPage />, "ADMIN", "admin:operations:read")} />
         <Route path="admin/audit" element={guarded(<AuditExplorerPage />, "ADMIN", "admin:operations:read")} />
-        <Route path="admin/fraud-monitor" element={guarded(<AiFraudMonitorPage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/fraud-monitor" element={<Navigate to="/admin/intelligence" replace />} />
+        <Route path="admin/intelligence" element={guarded(<SecurityIntelligencePage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/recovery" element={guarded(<RecoveryOversightPage />, "ADMIN", "admin:operations:read")} />
+        <Route path="admin/backups" element={guarded(<PlatformBackupPage />, "ADMIN", "admin:backup:read")} />
       </Route>
 
       <Route element={<PublicLayout />}>

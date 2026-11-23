@@ -2,7 +2,7 @@ import React from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   IconBuildingBank, IconChecklist, IconClock, IconCpu, IconDatabase, IconFileText, IconHistory, IconHome, IconInbox,
-  IconLogout, IconPalette, IconPlus, IconRotate, IconSearch, IconShieldLock, IconUsers, IconWallet,
+  IconArchive, IconLifebuoy, IconLogout, IconPalette, IconPlus, IconRotate, IconSearch, IconShieldLock, IconUsers, IconWallet,
 } from "@tabler/icons-react";
 import { BrandMark } from "../components/ssi/BrandMark.tsx";
 import { LoadingState } from "../components/ui/States.tsx";
@@ -30,6 +30,8 @@ const ICONS: Record<NavItem["icon"], React.ReactNode> = {
   database: <IconDatabase {...ICON_PROPS} />,
   cpu: <IconCpu {...ICON_PROPS} />,
   landmark: <IconBuildingBank {...ICON_PROPS} />,
+  archive: <IconArchive {...ICON_PROPS} />,
+  lifebuoy: <IconLifebuoy {...ICON_PROPS} />,
 };
 
 function initials(name: string): string {
@@ -84,7 +86,7 @@ const UserMenu: React.FC<{ compact?: boolean; placement?: "down" | "up" }> = ({ 
         aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="avatar avatar-sm bg-primary-lt" aria-hidden="true">{initials(user.displayName)}</span>
+        <span className="avatar avatar-sm app-user-avatar" aria-hidden="true">{initials(user.displayName)}</span>
         <span className={compact ? "visually-hidden" : "d-block ps-2 text-start min-w-0"}>
           <span className="d-block text-truncate">{user.displayName}</span>
           <span className="d-block mt-1 small text-secondary">{roleLabel(user.role)}</span>

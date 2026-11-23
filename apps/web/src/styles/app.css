@@ -18,6 +18,8 @@
   --ssi-art: url("../assets/ssi-trust-network.svg");
   --tblr-font-sans-serif: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --tblr-body-font-family: var(--tblr-font-sans-serif);
+  /* One typeface everywhere, identifiers included. */
+  --tblr-font-monospace: var(--tblr-font-sans-serif);
 }
 
 html[data-ssi-radius="sharp"] {
@@ -1450,8 +1452,11 @@ html[data-bs-theme="dark"] .page-body .card:focus-within {
   width: 100%;
 }
 
+/* Both faces share one grid cell, so the card grows with whichever face is
+   taller instead of clipping status and actions at a fixed height. */
 .ssi-pass-inner {
   position: relative;
+  display: grid;
   height: 100%;
   min-height: 16.5rem;
   transform-style: preserve-3d;
@@ -1463,8 +1468,8 @@ html[data-bs-theme="dark"] .page-body .card:focus-within {
 }
 
 .ssi-pass-face {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  grid-area: 1 / 1;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1584,7 +1589,40 @@ html[data-bs-theme="dark"] .page-body .card:focus-within {
 
 .ssi-pass-status-revoked::before,
 .ssi-pass-status-suspended::before { background: #f87171; }
-.ssi-pass-status-expired::before { background: #fbbf24; }
+.ssi-pass-status-expired::before,
+.ssi-pass-status-unknown::before { background: #fbbf24; }
+.ssi-pass-status-valid::before { background: #86efac; }
+.ssi-pass-status-checking::before { background: rgba(255, 255, 255, 0.5); }
+
+.ssi-pass-issuer-name {
+  display: block;
+  font-weight: 600;
+}
+
+/* Trust is a separate fact from status, so it gets its own quiet pill. */
+.ssi-pass-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ssi-pass-trust::before {
+  content: "";
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: #fbbf24;
+}
+
+.ssi-pass-trust-trusted::before { background: #86efac; }
+.ssi-pass-trust-suspended::before,
+.ssi-pass-trust-revoked::before { background: #f87171; }
 
 .ssi-pass-qr {
   flex: 0 0 auto;
@@ -1610,6 +1648,7 @@ html[data-bs-theme="dark"] .page-body .card:focus-within {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: auto;
 }
@@ -1859,6 +1898,10 @@ html:not([data-bs-theme="dark"]) .badge.bg-azure-lt { color: color-mix(in srgb, 
 html:not([data-bs-theme="dark"]) .badge.bg-teal-lt { color: color-mix(in srgb, var(--tblr-teal) 50%, #000) !important; }
 html:not([data-bs-theme="dark"]) .badge.bg-orange-lt { color: color-mix(in srgb, var(--tblr-orange) 55%, #000) !important; }
 html:not([data-bs-theme="dark"]) .badge.bg-secondary-lt { color: #475569 !important; }
+html[data-bs-theme="dark"] .badge.bg-indigo-lt { color: #c7d2fe !important; }
+html[data-bs-theme="dark"] .alert-success { --tblr-alert-color: #86efac; }
+html[data-bs-theme="dark"] .alert-danger { --tblr-alert-color: #fca5a5; }
+html:not([data-bs-theme="dark"]) .badge.bg-indigo-lt { color: color-mix(in srgb, var(--tblr-indigo) 72%, #000) !important; }
 
 html:not([data-bs-theme="dark"]) .alert-info { --tblr-alert-color: color-mix(in srgb, var(--tblr-info) 60%, #000); }
 html:not([data-bs-theme="dark"]) .alert-warning { --tblr-alert-color: color-mix(in srgb, var(--tblr-warning) 50%, #000); }
@@ -1867,3 +1910,40 @@ html:not([data-bs-theme="dark"]) .alert-danger { --tblr-alert-color: color-mix(i
 html:not([data-bs-theme="dark"]) .alert .alert-description { color: #475569; }
 
 html:not([data-bs-theme="dark"]) .steps .step-item { color: #5b6574; }
+
+/* WCAG 1.4.3: these sat below 4.5:1 on the mobile header and stacked tables. */
+.app-user-avatar {
+  background: var(--tblr-primary);
+  color: #fff;
+}
+
+.step-item .h4,
+.steps .step-item h3 {
+  color: var(--tblr-body-color);
+}
+
+html:not([data-bs-theme="dark"]) .badge.bg-red-lt {
+  background: #fbe9e9 !important;
+  color: #8f1f1f !important;
+}
+
+.btn-danger {
+  --tblr-btn-bg: #c02525;
+  --tblr-btn-color: #fff;
+  background-color: #c02525;
+  color: #fff;
+}
+
+html:not([data-bs-theme="dark"]) .text-danger { color: #a61e1e !important; }
+html[data-bs-theme="dark"] .text-danger { color: #ffb3b3 !important; }
+
+html[data-bs-theme="dark"] .badge.bg-red-lt {
+  background: #4a1a1a !important;
+  color: #ffc9c9 !important;
+}
+
+.ssi-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.ssi-tabs .nav-link { white-space: nowrap; color: var(--tblr-body-color); }
+.ssi-pass-status-not-yet-valid::before { background: #fbbf24; }
+.ssi-pass-note { font-size: 0.8125rem; color: rgba(255, 255, 255, 0.92); }
+.ssi-pass-btn:disabled { opacity: 0.55; cursor: not-allowed; }
