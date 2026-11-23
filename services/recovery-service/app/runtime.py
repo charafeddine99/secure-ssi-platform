@@ -9,6 +9,8 @@ from app.core.config import RecoverySettings
 from app.infrastructure.managed_keys.identity_gateway import (
     IdentityManagedKeyRecoveryGateway,
 )
+from app.infrastructure.risk.fraud_gateway import FraudRecoveryRiskGateway
+from app.infrastructure.risk.security_event_forwarder import build_forwarder
 from app.infrastructure.persistence.connection import (
     MongoRecoveryConnectionManager,
 )
@@ -30,10 +32,13 @@ class RecoveryRuntime:
         self.metrics = RecoveryMetrics()
         self.connection = MongoRecoveryConnectionManager(settings)
         self.gateway = IdentityManagedKeyRecoveryGateway(settings)
+        self.risk = FraudRecoveryRiskGateway(settings)
         self.repository = MemoryRecoveryRepository()
         self.service = self._build_service()
         self.stop_event: asyncio.Event | None = None
         self.worker_task: asyncio.Task[None] | None = None
+        self.forwarder_stop: asyncio.Event | None = None
+        self.forwarder_task: asyncio.Task[None] | None = None
 
     @property
     def persistence_name(self) -> str:
@@ -49,6 +54,13 @@ class RecoveryRuntime:
         self.metrics.set_active_guardians(
             self.repository.count_active_guardians()
         )
+        forwarder = build_forwarder(self.connection.database, self.settings)
+        if forwarder is not None:
+            self.forwarder_stop = asyncio.Event()
+            self.forwarder_task = asyncio.create_task(
+                forwarder.run(self.forwarder_stop),
+                name="security-event-forwarder",
+            )
         if self.settings.reconciliation_enabled:
             self.stop_event = asyncio.Event()
             worker = RecoveryReconciliationBackgroundService(
@@ -64,6 +76,10 @@ class RecoveryRuntime:
             self.stop_event.set()
         if self.worker_task is not None:
             await self.worker_task
+        if self.forwarder_stop is not None:
+            self.forwarder_stop.set()
+        if self.forwarder_task is not None:
+            await self.forwarder_task
         self.gateway.close()
         self.connection.close()
 
@@ -76,4 +92,5 @@ class RecoveryRuntime:
             managed_keys=self.gateway,
             settings=self.settings,
             metrics=self.metrics,
+            risk=self.risk,
         )
