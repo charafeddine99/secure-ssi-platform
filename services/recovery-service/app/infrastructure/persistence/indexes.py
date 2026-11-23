@@ -13,6 +13,8 @@ REQUESTS = "recovery_requests"
 APPROVALS = "recovery_approvals"
 SHARES = "recovery_secret_shares"
 AUDIT = "recovery_audit_events"
+NOTIFICATIONS = "recovery_notifications"
+STEP_UP_TOKENS = "recovery_step_up_tokens"
 
 GUARDIAN_INDEXES = (
     IndexModel([("guardianId", ASCENDING)], unique=True, name="uq_guardians_id"),
@@ -103,5 +105,22 @@ def ensure_recovery_indexes(database: Database[dict[str, Any]]) -> None:
         database[APPROVALS].create_indexes(list(APPROVAL_INDEXES))
         database[SHARES].create_indexes(list(SHARE_INDEXES))
         database[AUDIT].create_indexes(list(AUDIT_INDEXES))
+        database[NOTIFICATIONS].create_indexes(
+            [
+                IndexModel(
+                    [("recipientUserId", ASCENDING), ("createdAt", DESCENDING)],
+                    name="ix_recovery_notification_recipient",
+                )
+            ]
+        )
+        database[STEP_UP_TOKENS].create_indexes(
+            [
+                IndexModel(
+                    [("expiresAt", ASCENDING)],
+                    expireAfterSeconds=0,
+                    name="ttl_recovery_step_up_token",
+                )
+            ]
+        )
     except PyMongoError as error:
         raise RecoveryPersistenceError("Recovery indexes could not be ensured.") from error

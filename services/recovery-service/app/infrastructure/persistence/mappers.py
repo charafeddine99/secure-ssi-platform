@@ -18,9 +18,11 @@ from app.domain.recovery import (
     RecoveryReason,
     RecoveryRequest,
     RecoveryResult,
+    RecoveryRisk,
     RecoverySecretShareMetadata,
     RecoverySession,
     RecoveryState,
+    RiskHoldStatus,
 )
 
 
@@ -41,6 +43,14 @@ def guardian_to_document(value: Guardian) -> dict[str, Any]:
         "revokedAt": value.revoked_at,
         "removedAt": value.removed_at,
         "version": value.version,
+        "invitationChallenge": value.invitation_challenge,
+        "invitationExpiresAt": value.invitation_expires_at,
+        "pendingStatus": (
+            None if value.pending_status is None else value.pending_status.value
+        ),
+        "pendingDid": value.pending_did,
+        "pendingVerificationMethod": value.pending_verification_method,
+        "pendingEffectiveAt": value.pending_effective_at,
     }
 
 
@@ -60,6 +70,16 @@ def guardian_from_document(value: dict[str, Any]) -> Guardian:
         revoked_at=value.get("revokedAt"),
         removed_at=value.get("removedAt"),
         version=value["version"],
+        invitation_challenge=value.get("invitationChallenge"),
+        invitation_expires_at=value.get("invitationExpiresAt"),
+        pending_status=(
+            None
+            if value.get("pendingStatus") is None
+            else GuardianStatus(value["pendingStatus"])
+        ),
+        pending_did=value.get("pendingDid"),
+        pending_verification_method=value.get("pendingVerificationMethod"),
+        pending_effective_at=value.get("pendingEffectiveAt"),
     )
 
 
@@ -77,10 +97,13 @@ def policy_to_document(value: RecoveryPolicy) -> dict[str, Any]:
         "maximumAttempts": value.maximum_attempts,
         "cooldownSeconds": value.cooldown_seconds,
         "allowCancellation": value.allow_cancellation,
-        "allowSelfGuardian": value.allow_self_guardian,
         "version": value.version,
         "createdAt": value.created_at,
         "updatedAt": value.updated_at,
+        "pendingChange": (
+            None if value.pending_change is None else dict(value.pending_change)
+        ),
+        "pendingEffectiveAt": value.pending_effective_at,
     }
 
 
@@ -97,10 +120,11 @@ def policy_from_document(value: dict[str, Any]) -> RecoveryPolicy:
         maximum_attempts=value["maximumAttempts"],
         cooldown_seconds=value["cooldownSeconds"],
         allow_cancellation=value["allowCancellation"],
-        allow_self_guardian=value.get("allowSelfGuardian", False),
         version=value["version"],
         created_at=value["createdAt"],
         updated_at=value["updatedAt"],
+        pending_change=value.get("pendingChange"),
+        pending_effective_at=value.get("pendingEffectiveAt"),
     )
 
 
@@ -158,6 +182,12 @@ def request_to_document(value: RecoveryRequest) -> dict[str, Any]:
         "createdAt": value.created_at,
         "updatedAt": value.updated_at,
         "version": value.version,
+        "risk": {
+            "level": value.risk.level,
+            "status": value.risk.status.value,
+            "reviewedBy": value.risk.reviewed_by,
+            "reviewedAt": value.risk.reviewed_at,
+        },
     }
 
 
@@ -211,6 +241,19 @@ def request_from_document(value: dict[str, Any]) -> RecoveryRequest:
         created_at=value["createdAt"],
         updated_at=value["updatedAt"],
         version=value["version"],
+        risk=_risk_from_document(value.get("risk")),
+    )
+
+
+def _risk_from_document(value: dict[str, Any] | None) -> RecoveryRisk:
+    # A request stored before risk assessment existed stays held for review.
+    if value is None:
+        return RecoveryRisk()
+    return RecoveryRisk(
+        level=value["level"],
+        status=RiskHoldStatus(value["status"]),
+        reviewed_by=value.get("reviewedBy"),
+        reviewed_at=value.get("reviewedAt"),
     )
 
 

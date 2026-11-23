@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 from threading import RLock
 
@@ -7,6 +8,7 @@ from app.domain.recovery import (
     RecoveryApproval,
     RecoveryAuditEvent,
     RecoveryConflictError,
+    RecoveryNotification,
     RecoveryPolicy,
     RecoveryRequest,
     RecoverySecretShareMetadata,
@@ -23,6 +25,51 @@ class MemoryRecoveryRepository:
         self.approvals: dict[tuple[str, str], RecoveryApproval] = {}
         self.shares: dict[tuple[str, int, int, str], RecoverySecretShareMetadata] = {}
         self.audit_events: dict[str, RecoveryAuditEvent] = {}
+        self.notifications: dict[str, RecoveryNotification] = {}
+        self.step_up_tokens: set[str] = set()
+
+    def add_notification(self, notification: RecoveryNotification) -> None:
+        with self._lock:
+            self.notifications.setdefault(
+                notification.notification_id, notification
+            )
+
+    def list_notifications(
+        self,
+        recipient_user_id: str,
+        *,
+        limit: int,
+    ) -> tuple[RecoveryNotification, ...]:
+        with self._lock:
+            items = [
+                item
+                for item in self.notifications.values()
+                if item.recipient_user_id == recipient_user_id
+            ]
+        items.sort(key=lambda item: item.created_at, reverse=True)
+        return tuple(items[:limit])
+
+    def mark_notification_read(
+        self,
+        notification_id: str,
+        *,
+        recipient_user_id: str,
+        read_at: datetime,
+    ) -> None:
+        with self._lock:
+            item = self.notifications.get(notification_id)
+            if item is not None and item.recipient_user_id == recipient_user_id:
+                self.notifications[notification_id] = replace(
+                    item, read_at=read_at
+                )
+
+    def consume_step_up(self, token_id: str, *, expires_at: datetime) -> bool:
+        del expires_at
+        with self._lock:
+            if token_id in self.step_up_tokens:
+                return False
+            self.step_up_tokens.add(token_id)
+            return True
 
     def add_guardian(self, guardian: Guardian) -> Guardian:
         with self._lock:

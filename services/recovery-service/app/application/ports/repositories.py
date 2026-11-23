@@ -6,6 +6,7 @@ from app.domain.recovery import (
     GuardianStatus,
     RecoveryApproval,
     RecoveryAuditEvent,
+    RecoveryNotification,
     RecoveryPolicy,
     RecoveryRequest,
     RecoverySecretShareMetadata,
@@ -107,6 +108,27 @@ class RecoveryRepository(Protocol):
     ) -> tuple[RecoveryRequest, ...]: ...
 
     def count_active_guardians(self) -> int: ...
+
+    def add_notification(self, notification: RecoveryNotification) -> None: ...
+
+    def list_notifications(
+        self,
+        recipient_user_id: str,
+        *,
+        limit: int,
+    ) -> tuple[RecoveryNotification, ...]: ...
+
+    def mark_notification_read(
+        self,
+        notification_id: str,
+        *,
+        recipient_user_id: str,
+        read_at: datetime,
+    ) -> None: ...
+
+    def consume_step_up(self, token_id: str, *, expires_at: datetime) -> bool:
+        """True the first time this token is used, False on any replay."""
+        ...
 
 
 class RecoveryConnectionManager(Protocol):
