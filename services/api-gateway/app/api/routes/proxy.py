@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from typing import Any
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from app.core.session import (
 router = APIRouter(prefix="/api/v1", tags=["API Gateway Facade & Proxy"])
 
 MAX_PAYLOAD_BYTES = 1024 * 1024  # 1 MB
+# host or host:port only: no scheme, path, userinfo or whitespace.
+_FORWARDED_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?")
 MAX_JSON_DEPTH = 16
 HTTP_413 = getattr(status, "HTTP_413_CONTENT_TOO_LARGE", getattr(status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413))
 
@@ -131,9 +134,17 @@ async def forward_request(target_url: str, request: Request) -> Response:
     headers = {
         name: value
         for name, value in request.headers.items()
-        if name.lower() not in {"host", "content-length", "cookie", CLIENT_HEADER}
+        if name.lower()
+        not in {"host", "content-length", "cookie", CLIENT_HEADER, "x-forwarded-host", "x-forwarded-proto"}
         and not name.lower().startswith(forbidden_context_headers)
     }
+    # The address the caller used, so services can build links a browser can open
+    # instead of their internal Docker hostname. Always set here, never passed through.
+    caller_host = request.headers.get("host", "")
+    if _FORWARDED_HOST.fullmatch(caller_host):
+        headers["x-forwarded-host"] = caller_host
+        caller_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        headers["x-forwarded-proto"] = caller_proto if caller_proto in {"http", "https"} else request.url.scheme
     headers["x-correlation-id"] = correlation_id
     cookie_token = session_token(request)
     used_cookie = False
