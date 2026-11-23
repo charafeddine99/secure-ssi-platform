@@ -1,10 +1,10 @@
+import { didKeyFromPublicKey } from "../src/lib/guardianDeviceKey.ts";
 import {
-  approveRecoveryPetition,
+  decideRecoveryRequest,
   canInitiateRecovery,
   fetchRecoveryPolicy,
   mapRecoveryRequest,
   normalizeRecoveryState,
-  rejectRecoveryPetition,
 } from "../src/services/api.ts";
 
 let assertionCount = 0;
@@ -75,11 +75,8 @@ async function runTests(): Promise<void> {
   };
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.includes("/identity/wallets/guardian-recovery-proof")) {
-      return new Response(JSON.stringify({ guardianDid: "did:key:zGuardianProofKey", proof: "signed-guardian-proof" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (url.includes("guardian-recovery-proof")) {
+      throw new Error("The web app must never ask the server to sign for a Guardian.");
     }
     capturedRecoveryUrl = url;
     capturedBody = String(init?.body ?? "");
@@ -109,27 +106,35 @@ async function runTests(): Promise<void> {
 
     responseStatus = 200;
     responseDocument = { recovery: requestDocument };
-    const decision = await approveRecoveryPetition(
-      mapped,
-      "guardian_test_1234567890123456",
-      "did:key:zGuardianProofKey",
-    );
-    equal(decision.success, true, "Approval success follows an HTTP success response");
+    const pair = await crypto.subtle.generateKey("Ed25519", false, ["sign", "verify"]) as CryptoKeyPair;
+    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+    const identity = didKeyFromPublicKey(raw);
+    const deviceKey = {
+      ...identity,
+      sign: async (data: Uint8Array) => new Uint8Array(await crypto.subtle.sign("Ed25519", pair.privateKey, data as BufferSource)),
+    };
+    const assigned = { guardianId: "guardian_test_1234567890123456", guardianDid: identity.did } as Guardian;
+    const signedRequest = { ...mapped, policyHash: "a".repeat(64) };
+    await decideRecoveryRequest(signedRequest, assigned, "APPROVE", deviceKey);
     equal(capturedRecoveryUrl.endsWith(`/recovery/requests/${requestDocument.requestId}/approve`), true, "Approval uses the backend request ID");
     const payload = JSON.parse(capturedBody) as Record<string, unknown>;
     equal(payload.challenge, requestDocument.challenge, "Approval sends the server challenge");
     equal(payload.guardianId, "guardian_test_1234567890123456", "Approval sends the selected assignment");
-    equal(payload.proof, "signed-guardian-proof", "Approval sends the proof returned by the Identity Service signer");
+    const [header, claims, signature] = String(payload.proof).split(".");
+    const decoded = JSON.parse(Buffer.from(claims, "base64url").toString("utf8")) as Record<string, unknown>;
+    equal(JSON.parse(Buffer.from(header, "base64url").toString("utf8")).typ, "guardian-recovery+jwt", "The proof is a Guardian decision token");
+    equal(decoded.policyHash, "a".repeat(64), "The proof covers the policy snapshot");
+    equal(decoded.iss, identity.did, "The proof is issued by the Guardian's own key");
+    ok(
+      await crypto.subtle.verify("Ed25519", pair.publicKey, Buffer.from(signature, "base64url"), new TextEncoder().encode(`${header}.${claims}`)),
+      "The signature was made locally and verifies against the device key",
+    );
 
     responseStatus = 403;
     responseDocument = { message: "Guardian assignment is not authorized." };
     let rejected = false;
     try {
-      await rejectRecoveryPetition(
-        mapped,
-        "guardian_test_1234567890123456",
-        "did:key:zGuardianProofKey",
-      );
+      await decideRecoveryRequest(signedRequest, assigned, "REJECT", deviceKey);
     } catch (error: unknown) {
       rejected = error instanceof Error && error.message === "Guardian assignment is not authorized.";
     }
