@@ -2,20 +2,13 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from app.config.environment_policy import is_production_like
 from app.domain.exceptions import AuthConfigurationError
 
 
 _DEVELOPMENT_ONLY_JWT_SECRET = (
     "local-academic-prototype-jwt-secret-not-for-production-2026-only"
 )
-# Fail closed: only these explicitly named environments may use development
-# fallbacks. Any other value (including typos such as "prd") is production-like.
-_NON_PRODUCTION_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
-
-
-def is_production_like(environment: str) -> bool:
-    return environment.strip().lower() not in _NON_PRODUCTION_ENVIRONMENTS
-
 
 @dataclass(frozen=True)
 class AuthSettings:

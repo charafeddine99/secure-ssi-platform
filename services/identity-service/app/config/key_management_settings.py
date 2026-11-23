@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.config.environment_policy import is_production_like
 from app.domain.managed_key import (
     KeyAlgorithm,
     KeyPolicyError,
@@ -11,8 +12,6 @@ from app.domain.managed_key import (
 )
 from app.domain.persistence import PersistenceConfigurationError
 
-
-_PRODUCTION_LIKE = frozenset({"production", "prod", "staging"})
 
 
 @dataclass(frozen=True)
@@ -73,16 +72,12 @@ class KeyManagementSettings:
             raise PersistenceConfigurationError(
                 "Development key provider is enabled but prohibited."
             )
-        if (
-            environment in _PRODUCTION_LIKE
-            and self.prohibit_development_in_production
-            and (
-                self.default_provider.casefold() == "development"
-                or providers == ("development",)
-            )
-        ):
+        # Not switchable: prohibit_development_in_production is ignored here
+        # so that no setting can weaken this gate in a production-like mode.
+        if is_production_like(environment) and "development" in providers:
             raise PersistenceConfigurationError(
-                "Production cannot use development-only key custody."
+                "Production-like environments cannot enable the development "
+                "key provider."
             )
         if any(
             provider != "development"
@@ -100,12 +95,20 @@ class KeyManagementSettings:
                 "Remote KMS base URL is required."
             )
         if (
-            environment in _PRODUCTION_LIKE
+            is_production_like(environment)
             and self.remote_provider_name.casefold() in providers
             and not self.tls_verify
         ):
             raise PersistenceConfigurationError(
                 "Production remote KMS requires TLS verification."
+            )
+        if (
+            is_production_like(environment)
+            and not self.remote_auth_token_env
+            and not self.client_certificate_path
+        ):
+            raise PersistenceConfigurationError(
+                "Production remote KMS requires client authentication."
             )
         if not 0.1 <= self.connect_timeout_seconds <= 60:
             raise PersistenceConfigurationError(
