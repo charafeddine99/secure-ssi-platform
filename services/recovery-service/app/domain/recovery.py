@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
@@ -40,6 +42,8 @@ class SecretShareError(RecoveryError):
 
 
 class GuardianStatus(StrEnum):
+    INVITED = "INVITED"
+    PENDING_ACTIVATION = "PENDING_ACTIVATION"
     ACTIVE = "ACTIVE"
     SUSPENDED = "SUSPENDED"
     REVOKED = "REVOKED"
@@ -77,6 +81,12 @@ class RecoveryReason(StrEnum):
     KEY_LOSS = "KEY_LOSS"
 
 
+class RiskHoldStatus(StrEnum):
+    CLEAR = "CLEAR"
+    ON_HOLD = "ON_HOLD"
+    RELEASED = "RELEASED"
+
+
 class RecoveryOperation(StrEnum):
     MANAGED_KEY_ROTATION = "MANAGED_KEY_ROTATION"
 
@@ -88,6 +98,14 @@ class RecoveryDecision(StrEnum):
 
 class RecoveryAuditEventType(StrEnum):
     GUARDIAN_ADDED = "GUARDIAN_ADDED"
+    GUARDIAN_INVITED = "GUARDIAN_INVITED"
+    GUARDIAN_ACCEPTED = "GUARDIAN_ACCEPTED"
+    GUARDIAN_ACTIVATED = "GUARDIAN_ACTIVATED"
+    GUARDIAN_REBOUND = "GUARDIAN_REBOUND"
+    GUARDIAN_CHANGE_SCHEDULED = "GUARDIAN_CHANGE_SCHEDULED"
+    RECOVERY_POLICY_CHANGE_SCHEDULED = "RECOVERY_POLICY_CHANGE_SCHEDULED"
+    RECOVERY_RISK_HOLD = "RECOVERY_RISK_HOLD"
+    RECOVERY_RISK_REVIEWED = "RECOVERY_RISK_REVIEWED"
     GUARDIAN_UPDATED = "GUARDIAN_UPDATED"
     GUARDIAN_SUSPENDED = "GUARDIAN_SUSPENDED"
     GUARDIAN_RESUMED = "GUARDIAN_RESUMED"
@@ -196,6 +214,12 @@ class Guardian:
     suspended_at: datetime | None = None
     revoked_at: datetime | None = None
     removed_at: datetime | None = None
+    invitation_challenge: str | None = field(default=None, repr=False)
+    invitation_expires_at: datetime | None = None
+    pending_status: GuardianStatus | None = None
+    pending_did: str | None = None
+    pending_verification_method: str | None = None
+    pending_effective_at: datetime | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -203,12 +227,15 @@ class Guardian:
             self.owner_user_id,
             self.wallet_id,
             self.guardian_user_id,
-            self.guardian_did,
             self.display_name,
-            self.verification_method,
         ):
             if not value.strip():
                 raise RecoveryValidationError("Guardian fields must not be empty.")
+        # Only an invitation has no key: the invitee proves one when accepting.
+        if self.status is not GuardianStatus.INVITED and not (
+            self.guardian_did.strip() and self.verification_method.strip()
+        ):
+            raise RecoveryValidationError("Guardian key binding is missing.")
         _aware(self.created_at, "createdAt")
         _aware(self.updated_at, "updatedAt")
         if self.version < 1 or self.updated_at < self.created_at:
@@ -221,6 +248,15 @@ class Guardian:
     def transition(self, status: GuardianStatus, *, at: datetime) -> Guardian:
         _aware(at, "updatedAt")
         allowed = {
+            GuardianStatus.INVITED: {
+                GuardianStatus.PENDING_ACTIVATION,
+                GuardianStatus.ACTIVE,
+                GuardianStatus.REMOVED,
+            },
+            GuardianStatus.PENDING_ACTIVATION: {
+                GuardianStatus.ACTIVE,
+                GuardianStatus.REMOVED,
+            },
             GuardianStatus.ACTIVE: {
                 GuardianStatus.SUSPENDED,
                 GuardianStatus.REVOKED,
@@ -262,10 +298,11 @@ class RecoveryPolicy:
     maximum_attempts: int
     cooldown_seconds: int
     allow_cancellation: bool
-    allow_self_guardian: bool
     version: int
     created_at: datetime
     updated_at: datetime
+    pending_change: Mapping[str, Any] | None = None
+    pending_effective_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.policy_id or not self.wallet_id or not self.owner_user_id:
@@ -442,6 +479,27 @@ class RecoverySession:
 
 
 @dataclass(frozen=True)
+class RecoveryRisk:
+    """Advisory only: it can stop a rotation, never replace quorum or proof."""
+
+    level: str = "NOT_ASSESSED"
+    status: RiskHoldStatus = RiskHoldStatus.ON_HOLD
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class RecoveryNotification:
+    notification_id: str
+    recipient_user_id: str
+    event_type: str
+    aggregate_id: str
+    wallet_id: str
+    created_at: datetime
+    read_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class RecoveryRequest:
     request_id: str
     owner_user_id: str
@@ -455,6 +513,7 @@ class RecoveryRequest:
     created_at: datetime
     updated_at: datetime
     version: int = 1
+    risk: RecoveryRisk = field(default_factory=RecoveryRisk)
 
     def __post_init__(self) -> None:
         if not self.request_id or not self.owner_user_id or not self.wallet_id:
@@ -570,3 +629,31 @@ class RecoveryAuditEvent:
 def _aware(value: datetime, name: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise RecoveryValidationError(f"{name} must be timezone-aware.")
+
+
+def policy_hash(request: RecoveryRequest) -> str:
+    """Everything a Guardian approves, bound into each decision proof.
+
+    Built from the request's snapshot, so a later policy change cannot alter
+    what an open request means, and a proof cannot move to a different one.
+    """
+    snapshot = request.policy
+    canonical = json.dumps(
+        {
+            "requestId": request.request_id,
+            "sessionId": request.session.session_id,
+            "walletId": request.wallet_id,
+            "purpose": request.reason.value,
+            "operation": request.operation.value,
+            "nonceDigest": request.nonce.digest,
+            "policyId": snapshot.policy_id,
+            "policyVersion": snapshot.policy_version,
+            "minimumApprovals": snapshot.minimum_approvals,
+            "timeLockSeconds": snapshot.time_lock_seconds,
+            "guardianIds": sorted(snapshot.guardian_ids),
+            "expiresAt": int(request.session.expires_at.timestamp()),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()

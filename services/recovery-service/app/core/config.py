@@ -4,21 +4,27 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 
+from app.core.environment_policy import is_production_like
+
 
 SERVICE_NAME = "recovery-service"
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
-# Fail closed: only these explicitly named environments may use development
-# fallbacks. Any other value (including typos such as "prd") is production-like.
-_NON_PRODUCTION_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
 _DEVELOPMENT_JWT_SECRET = (
     "local-academic-prototype-jwt-secret-not-for-production-2026-only"
 )
 _DEVELOPMENT_GRANT_SECRET = (
     "local-recovery-to-identity-grant-secret-not-for-production-2026"
 )
+_DEVELOPMENT_STEP_UP_SECRET = (
+    "local-step-up-token-secret-not-for-production-2026-only"
+)
 _DEVELOPMENT_ENVELOPE_KEY = sha256(
     b"secure-ssi-recovery-development-envelope-key-2026"
 ).digest()
+
+
+_PRODUCTION_MINIMUM_APPROVALS = 2
+_PRODUCTION_MINIMUM_DELAY_SECONDS = 24 * 3600
 
 
 class RecoveryConfigurationError(ValueError):
@@ -44,8 +50,8 @@ class RecoverySettings:
     identity_grant_lifetime_seconds: int = 60
     identity_timeout_seconds: float = 5.0
     envelope_master_key: bytes = field(default=b"", repr=False)
-    default_minimum_approvals: int = 3
-    default_maximum_guardians: int = 5
+    default_minimum_approvals: int = 2
+    default_maximum_guardians: int = 3
     default_approval_window_seconds: int = 3600
     default_time_lock_seconds: int = 300
     default_expiration_seconds: int = 86400
@@ -56,8 +62,19 @@ class RecoverySettings:
     reconciliation_batch_size: int = 100
     reconciliation_lease_seconds: int = 30
     reconciliation_stale_seconds: int = 60
+    minimum_approvals_floor: int = 2
+    time_lock_floor_seconds: int = 60
+    guardian_change_delay_seconds: int = 300
+    guardian_invitation_ttl_seconds: int = 7 * 24 * 3600
+    step_up_required: bool = False
+    step_up_secret: str = field(default=_DEVELOPMENT_STEP_UP_SECRET, repr=False)
+    fraud_base_url: str = "http://fraud-service:8000"
+    fraud_service_token: str = field(default="", repr=False)
+    fraud_timeout_seconds: float = 2.0
 
     def __post_init__(self) -> None:
+        if is_production_like(self.environment):
+            self._require_production_floors()
         if self.jwt_algorithm != "HS256":
             raise RecoveryConfigurationError("Only HS256 recovery JWTs are supported.")
         if len(self.jwt_secret.encode()) < 32 or len(self.identity_grant_secret.encode()) < 32:
@@ -102,10 +119,41 @@ class RecoverySettings:
             raise RecoveryConfigurationError("Recovery lease settings are invalid.")
 
 
+    def _require_production_floors(self) -> None:
+        """Fixed for any production-like value; configuration can only raise."""
+        if self.minimum_approvals_floor < _PRODUCTION_MINIMUM_APPROVALS:
+            raise RecoveryConfigurationError(
+                "Production recovery needs at least two Guardian approvals."
+            )
+        if (
+            min(
+                self.time_lock_floor_seconds,
+                self.guardian_change_delay_seconds,
+                self.default_time_lock_seconds,
+            )
+            < _PRODUCTION_MINIMUM_DELAY_SECONDS
+        ):
+            raise RecoveryConfigurationError(
+                "Production recovery delays must be at least 24 hours."
+            )
+        if not self.step_up_required:
+            raise RecoveryConfigurationError(
+                "Production recovery requires step-up authentication."
+            )
+        if self.step_up_secret == _DEVELOPMENT_STEP_UP_SECRET:
+            raise RecoveryConfigurationError(
+                "The published step-up secret cannot be used in production."
+            )
+        if not self.fraud_service_token:
+            raise RecoveryConfigurationError(
+                "Production recovery requires the risk service credential."
+            )
+
+
 def load_settings(environ: Mapping[str, str] | None = None) -> RecoverySettings:
     values = os.environ if environ is None else environ
     environment = values.get("RECOVERY_ENVIRONMENT", "development").casefold()
-    production = environment.strip() not in _NON_PRODUCTION_ENVIRONMENTS
+    production = is_production_like(environment)
     jwt_secret = values.get("RECOVERY_AUTH_JWT_SECRET")
     grant_secret = values.get("RECOVERY_IDENTITY_GRANT_SECRET")
     envelope_text = values.get("RECOVERY_SHARE_ENVELOPE_KEY_BASE64")
@@ -154,20 +202,58 @@ def load_settings(environ: Mapping[str, str] | None = None) -> RecoverySettings:
             values.get("RECOVERY_IDENTITY_TIMEOUT_SECONDS", "5")
         ),
         envelope_master_key=envelope_key,
+        minimum_approvals_floor=_int(
+            values.get(
+                "RECOVERY_MINIMUM_APPROVALS_FLOOR",
+                "2",
+            )
+        ),
+        time_lock_floor_seconds=_int(
+            values.get(
+                "RECOVERY_TIME_LOCK_FLOOR_SECONDS",
+                "86400" if production else "60",
+            )
+        ),
+        guardian_change_delay_seconds=_int(
+            values.get(
+                "RECOVERY_GUARDIAN_CHANGE_DELAY_SECONDS",
+                "86400" if production else "300",
+            )
+        ),
+        guardian_invitation_ttl_seconds=_int(
+            values.get("RECOVERY_GUARDIAN_INVITATION_TTL_SECONDS", "604800")
+        ),
+        step_up_required=(
+            production
+            or _bool(values.get("RECOVERY_STEP_UP_REQUIRED", "false"))
+        ),
+        step_up_secret=(
+            values.get("RECOVERY_STEP_UP_SECRET") or _DEVELOPMENT_STEP_UP_SECRET
+        ),
+        fraud_base_url=values.get(
+            "RECOVERY_FRAUD_SERVICE_URL", "http://fraud-service:8000"
+        ),
+        fraud_service_token=values.get("FRAUD_INTERNAL_SERVICE_TOKEN", ""),
         default_minimum_approvals=_int(
-            values.get("RECOVERY_DEFAULT_MINIMUM_APPROVALS", "3")
+            values.get("RECOVERY_DEFAULT_MINIMUM_APPROVALS", "2")
         ),
         default_maximum_guardians=_int(
-            values.get("RECOVERY_DEFAULT_MAXIMUM_GUARDIANS", "5")
+            values.get("RECOVERY_DEFAULT_MAXIMUM_GUARDIANS", "3")
         ),
         default_approval_window_seconds=_int(
             values.get("RECOVERY_DEFAULT_APPROVAL_WINDOW_SECONDS", "3600")
         ),
         default_time_lock_seconds=_int(
-            values.get("RECOVERY_DEFAULT_TIME_LOCK_SECONDS", "300")
+            values.get(
+                "RECOVERY_DEFAULT_TIME_LOCK_SECONDS",
+                "86400" if production else "300",
+            )
         ),
         default_expiration_seconds=_int(
-            values.get("RECOVERY_DEFAULT_EXPIRATION_SECONDS", "86400")
+            values.get(
+                "RECOVERY_DEFAULT_EXPIRATION_SECONDS",
+                "172800" if production else "86400",
+            )
         ),
         default_maximum_attempts=_int(
             values.get("RECOVERY_DEFAULT_MAXIMUM_ATTEMPTS", "3")
