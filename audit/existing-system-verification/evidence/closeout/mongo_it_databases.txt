@@ -1,0 +1,3 @@
+databases before: admin config local secure_identity secure_recovery secure_revocation_ledger secure_security_intel
+databases after: admin config local secure_identity secure_recovery secure_revocation_ledger secure_security_intel
+test database seen during the run: secure_identity_test_6b04546f9003bc2f6a30c92e 
