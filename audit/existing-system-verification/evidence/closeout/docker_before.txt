@@ -1,0 +1,65 @@
+# Owner stack and image state before the closeout (2026-11-23T17:48:52+03:00)
+magical_kowalevski|secure-ssi-platform-identity-service:latest|sha256:e4ce77cb9efbb7a54a086c6a6266eb3c3d6c4f0d5aadd550d08104163f32e3be|exited|2026-10-12T14:41:07.051014991Z
+secure-ssi-platform-api-gateway-1|secure-ssi-platform-api-gateway|sha256:f19f42d26dd087346d319e43f677fa9ff2cad44f5401cfb90aaf6cbe81abe4a3|running|2026-11-23T14:12:04.788395046Z
+secure-ssi-platform-fraud-service-1|secure-ssi-platform-fraud-service|sha256:cf2ca9d77815b0f075368e229eedb03df2df197317bb13f7f260748876d72367|running|2026-11-23T14:12:04.778380048Z
+secure-ssi-platform-identity-service-1|secure-ssi-platform-identity-service|sha256:eb3065f9794dbca8f1b45f4414d10db0f987801cc79e9d5f675caffc00887da9|running|2026-11-23T14:12:04.817947689Z
+secure-ssi-platform-mongodb-1|mongo:7|sha256:1f995ad6fdb93244a1addab1b58f934a0bc2f5643c38e02f5e9d7f0c7d227a7b|running|2026-11-23T14:12:04.804288439Z
+secure-ssi-platform-recovery-service-1|secure-ssi-platform-recovery-service|sha256:c92c09c1b35b5fff144362a10d050f8bf32f78b224d272e575ec1be0f90621f6|running|2026-11-23T14:12:04.749126308Z
+secure-ssi-platform-redis-1|redis:7-alpine|sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499|running|2026-11-23T14:12:04.810628171Z
+secure-ssi-platform-web-1|secure-ssi-platform-web|sha256:844710f7aeeb52f8b0e9deab79acc4c3e61c50b593a577f9b4581c4a3c586a5f|running|2026-11-23T14:12:04.824113122Z
+## images
+audit-20261121-api-gateway:latest|c2145200452e|2026-11-21 16:42:15 +0300 +03
+audit-20261121-fraud-service:latest|62ff12338a69|2026-11-10 18:17:02 +0300 +03
+audit-20261121-identity-service:latest|72419dc69046|2026-11-21 16:42:17 +0300 +03
+audit-20261121-recovery-service:latest|719a23c7b4f0|2026-11-10 18:17:01 +0300 +03
+audit-20261121-web:latest|28d7e2a0e175|2026-11-11 00:15:42 +0300 +03
+secure-ssi-platform-api-gateway:latest|1c45316f33bc|2026-11-10 18:17:01 +0300 +03
+secure-ssi-platform-fraud-service:latest|df56b47ed205|2026-11-10 18:17:02 +0300 +03
+secure-ssi-platform-identity-service:latest|ae8d41c39d65|2026-11-07 20:46:56 +0300 +03
+secure-ssi-platform-recovery-service:latest|806143bcb197|2026-11-10 18:17:01 +0300 +03
+secure-ssi-platform-web:latest|844710f7aeeb|2026-11-11 00:15:42 +0300 +03
+## owner volumes
+secure-ssi-platform_fraud_state
+secure-ssi-platform_identity_backups
+secure-ssi-platform_identity_ledger_anchor
+secure-ssi-platform_mongodb_data
+secure-ssi-platform_redis_data
+## networks
+audit-20261121-dr2_default
+audit-20261121-dr3_default
+audit-20261121-dr4_default
+audit-20261121-dr_default
+audit-20261121_default
+secure-ssi-platform_default
+## running owner image IDs -> created
+eb3065f9794d 
+Error response from daemon: No such image: eb3065f9794d:latest
+f19f42d26dd0 
+Error response from daemon: No such image: f19f42d26dd0:latest
+cf2ca9d77815 
+Error response from daemon: No such image: cf2ca9d77815:latest
+c92c09c1b35b 
+Error response from daemon: No such image: c92c09c1b35b:latest
+844710f7aeeb 2026-11-10T21:15:42.007493781Z tags=[secure-ssi-platform-web:latest]
+## running owner image IDs -> created (full id)
+secure-ssi-platform-identity-service-1 eb3065f9794d created=
+Error response from daemon: No such image: sha256:eb3065f9794dbca8f1b45f4414d10db0f987801cc79e9d5f675caffc00887da9 tags=
+Error response from daemon: No such image: sha256:eb3065f9794dbca8f1b45f4414d10db0f987801cc79e9d5f675caffc00887da9
+secure-ssi-platform-api-gateway-1 f19f42d26dd0 created=
+Error response from daemon: No such image: sha256:f19f42d26dd087346d319e43f677fa9ff2cad44f5401cfb90aaf6cbe81abe4a3 tags=
+Error response from daemon: No such image: sha256:f19f42d26dd087346d319e43f677fa9ff2cad44f5401cfb90aaf6cbe81abe4a3
+secure-ssi-platform-recovery-service-1 c92c09c1b35b created=
+Error response from daemon: No such image: sha256:c92c09c1b35b5fff144362a10d050f8bf32f78b224d272e575ec1be0f90621f6 tags=
+Error response from daemon: No such image: sha256:c92c09c1b35b5fff144362a10d050f8bf32f78b224d272e575ec1be0f90621f6
+secure-ssi-platform-fraud-service-1 cf2ca9d77815 created=
+Error response from daemon: No such image: sha256:cf2ca9d77815b0f075368e229eedb03df2df197317bb13f7f260748876d72367 tags=
+Error response from daemon: No such image: sha256:cf2ca9d77815b0f075368e229eedb03df2df197317bb13f7f260748876d72367
+secure-ssi-platform-web-1 844710f7aeeb created=2026-11-10T21:15:42.007493781Z tags=[secure-ssi-platform-web:latest]
+## owner containers: created (image must be older than this)
+secure-ssi-platform-identity-service-1 created=2026-11-07T17:47:22.036005029Z
+secure-ssi-platform-api-gateway-1 created=2026-11-10T15:30:42.829039371Z
+secure-ssi-platform-recovery-service-1 created=2026-11-10T15:30:41.677272317Z
+secure-ssi-platform-fraud-service-1 created=2026-11-10T15:30:41.513658753Z
+secure-ssi-platform-web-1 created=2026-11-10T21:24:56.812367768Z
+secure-ssi-platform-mongodb-1 created=2026-11-06T15:53:53.793080037Z
+secure-ssi-platform-redis-1 created=2026-11-03T13:25:03.043276166Z
