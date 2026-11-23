@@ -54,7 +54,12 @@ class TokenRevocationStore:
         with self._lock:
             self._revoked_subjects.pop(subject, None)
 
-    def is_revoked(self, jti: str, subject: Optional[str] = None) -> bool:
+    def is_revoked(
+        self,
+        jti: str,
+        subject: Optional[str] = None,
+        issued_at: Optional[datetime] = None,
+    ) -> bool:
         """Checks if a JTI or subject is actively revoked."""
         now = self._clock()
         with self._lock:
@@ -67,7 +72,12 @@ class TokenRevocationStore:
                     return True
 
             if subject and subject in self._revoked_subjects:
-                return True
+                if issued_at is None:
+                    return True
+                revoked_at, _ = self._revoked_subjects[subject]
+                # Same rule as the durable store: a not-before time, in the
+                # whole seconds that access tokens carry.
+                return int(issued_at.timestamp()) <= int(revoked_at.timestamp())
 
             return False
 

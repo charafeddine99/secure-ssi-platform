@@ -11,6 +11,9 @@ from app.domain.exceptions import (
     UnknownIssuerError,
     UnknownVerificationMethodError,
 )
+from app.infrastructure.crypto.development_guard import (
+    require_development_environment,
+)
 from app.infrastructure.crypto.multibase import encode_base58_btc
 
 
@@ -53,6 +56,7 @@ class LocalHolderKeyProvider:
     """Development-only deterministic adapter behind opaque key references."""
 
     def __init__(self) -> None:
+        require_development_environment("local holder key provider")
         self._references_by_holder: dict[str, str] = {}
         self._references_by_method: dict[str, str] = {}
         synthetic = self.get_metadata(

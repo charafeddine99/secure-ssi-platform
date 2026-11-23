@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import time
+from hashlib import sha256
 from typing import Any, Dict, Optional
 
 import httpx
@@ -25,6 +26,10 @@ FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://127.0.0.1:8002").rstr
 FRAUD_INTERNAL_SERVICE_TOKEN = os.getenv("FRAUD_INTERNAL_SERVICE_TOKEN", "")
 # Published docker-compose default for local development only.
 DEVELOPMENT_ONLY_FRAUD_SERVICE_TOKEN = "local-dev-fraud-service-token-not-for-production"
+
+
+def _pseudonym(did: str) -> str:
+    return "subject:" + sha256(did.encode()).hexdigest()
 
 
 class FraudRiskUnavailableError(RuntimeError):
@@ -71,15 +76,12 @@ class FraudRiskClient:
         Risk unavailability is explicit; this client never fabricates a score.
         """
         payload = {
-            "did": did,
+            "did": _pseudonym(did),
             "action": "presentation_verification",
-            "client_ip": client_ip or "127.0.0.1",
-            "user_agent": user_agent or "SecureSSI-Verifier/1.0",
             "failed_attempts": failed_attempts,
             "geo_distance_km": geo_distance_km,
             "time_since_last_action_sec": time_since_last_action_sec,
             "presentation_frequency_10m": presentation_frequency_10m,
-            "device_fingerprint": device_fingerprint or "default-device",
             "device_fingerprint_match": device_fingerprint_match,
             "is_tor_or_proxy": is_tor_or_proxy,
         }
@@ -148,10 +150,8 @@ class FraudRiskClient:
         payload = {
             "event_id": f"evt-{int(time.time() * 1000)}",
             "event_type": event_type,
-            "did": did,
-            "client_ip": client_ip or "127.0.0.1",
-            "user_agent": user_agent or "SecureSSI-Verifier/1.0",
-            "device_fingerprint": device_fingerprint or "default-device",
+            "did": _pseudonym(did),
+            "device_fingerprint": sha256((device_fingerprint or "default-device").encode()).hexdigest(),
             "timestamp": time.time(),
             "metadata": metadata or {},
         }

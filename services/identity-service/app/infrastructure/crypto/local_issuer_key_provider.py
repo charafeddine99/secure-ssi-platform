@@ -8,11 +8,16 @@ from app.domain.exceptions import (
     UnknownIssuerError,
     UnknownVerificationMethodError,
 )
+from app.infrastructure.crypto.development_guard import (
+    require_development_environment,
+)
 from app.infrastructure.crypto.multibase import encode_base58_btc
+from app.infrastructure.crypto.synthetic_identity import (
+    SYNTHETIC_ISSUER_DID,
+    SYNTHETIC_VERIFICATION_METHOD,
+)
 
 
-SYNTHETIC_ISSUER_DID = "did:web:issuer.example"
-SYNTHETIC_VERIFICATION_METHOD = f"{SYNTHETIC_ISSUER_DID}#key-1"
 ED25519_MULTICODEC_PREFIX = b"\xed\x01"
 
 # These deterministic seeds are public test material. They provide reproducible
@@ -57,6 +62,7 @@ class LocalIssuerKeyProvider:
     """In-memory synthetic key provider for local tests and demonstrations."""
 
     def __init__(self, *, alternate_test_key: bool = False) -> None:
+        require_development_environment("local issuer key provider")
         seed = (
             _ALTERNATE_SYNTHETIC_SEED
             if alternate_test_key
