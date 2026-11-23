@@ -139,6 +139,7 @@ class VerificationSessionResponse(Oid4ApiModel):
     )
     status: str
     deep_link_uri: str
+    handoff_uri: str | None = None
     qr_payload: str
     expires_at: datetime
     purpose: str = "Verification of digital identity and qualifications"
@@ -151,6 +152,15 @@ class VerificationSessionResponse(Oid4ApiModel):
     approved_credentials: list[str] = Field(default_factory=list)
     approved_claims: dict[str, Any] | None = None
     rejected_claims: list[str] = Field(default_factory=list)
+
+
+class ResolveRequestUriRequest(Oid4ApiModel):
+    link: str = Field(min_length=1, max_length=4096, description="The scanned openid4vp:// link")
+
+
+class ResolveRequestUriResponse(Oid4ApiModel):
+    session_id: str
+    client_id: str
 
 
 class VerificationSessionListResponse(Oid4ApiModel):
@@ -174,6 +184,7 @@ class HolderOid4vpRequestResponse(Oid4ApiModel):
     consent_status: str
     deep_link_uri: str
     qr_payload: str
+    handoff_uri: str | None = None
     expires_at: datetime
     purpose: str
     requested_fields: list[str] = Field(default_factory=list)

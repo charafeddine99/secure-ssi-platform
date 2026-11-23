@@ -28,6 +28,10 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _REVOCATION_PATH_PATTERN = re.compile(
     r"^/api/v1/credentials/[^/]+/revoke$"
 )
+_WALLET_RESTORE_PATH_PATTERN = re.compile(
+    r"^/api/v1/wallets/[^/]+/backups/[^/]+/(?:preview|restore)$"
+)
+_WALLET_RESTORE_REQUEST_BYTES = 1024 * 1024
 _KEY_MANAGEMENT_PATH_PATTERN = re.compile(
     r"^/api/v1/wallets/[^/]+/keys(?:/[^/]+(?:/"
     r"(?:rotate|suspend|resume|compromise|revoke|schedule-destruction|"
@@ -111,6 +115,11 @@ class JsonRequestSafetyMiddleware:
             and _KEY_MANAGEMENT_PATH_PATTERN.fullmatch(scope["path"])
         ):
             request_limit = MAX_REVOCATION_REQUEST_BYTES
+        if (
+            request_limit is None
+            and _WALLET_RESTORE_PATH_PATTERN.fullmatch(scope["path"])
+        ):
+            request_limit = _WALLET_RESTORE_REQUEST_BYTES
         if scope["method"] != "POST" or request_limit is None:
             await self.app(scope, receive, send_with_request_id)
             return

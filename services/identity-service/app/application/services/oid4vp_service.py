@@ -53,6 +53,8 @@ from app.application.services.verification_policy_service import VerificationPol
 
 logger = logging.getLogger(__name__)
 
+_STATUS_LIST_VALID_FROM_SKEW = timedelta(seconds=5)
+
 
 def _read_quarantine_status(
     quarantine_service: Any,
@@ -93,7 +95,9 @@ class Oid4vpService:
         base_verifier_url: str = "http://localhost:8001",
         did_resolver: DidResolver | None = None,
         canonicalizer: CredentialCanonicalizer | None = None,
+        request_signer: Any = None,
     ) -> None:
+        self._request_signer = request_signer
         self._sessions = session_repository
         self._credentials = credential_repository
         self._audits = audit_repository
@@ -126,7 +130,8 @@ class Oid4vpService:
     ) -> VerificationSession:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl_seconds)
-        session_id = f"session_{ObjectId()}"
+        # Unguessable: this value travels in the QR and in the handoff URL.
+        session_id = f"session_{secrets.token_urlsafe(24)}"
         nonce = secrets.token_hex(16)
         response_uri = f"{self._base_verifier_url}/api/v1/oid4vp/response"
 
@@ -205,6 +210,28 @@ class Oid4vpService:
         ):
             raise SessionExpiredError(f"Verification session {session_id} has expired.")
         return session
+
+    def request_object(self, session_id: str) -> str:
+        """The signed request (JAR) a wallet fetches from ``request_uri``.
+
+        Signed fresh on every fetch with a short lifetime. A request created
+        under another key (for example before a development restart) is gone.
+        """
+        if self._request_signer is None:
+            raise SessionNotFoundError("Signed requests are not enabled.")
+        session = self.get_session(session_id)
+        if session.status != VerificationSessionStatus.PENDING:
+            raise SessionAlreadyConsumedError(f"Verification session {session_id} is closed.")
+        if session.client_id != self._request_signer.client_id:
+            raise SessionExpiredError(f"Verification session {session_id} was signed with a retired key.")
+        return self._request_signer.sign(
+            response_uri=session.response_uri,
+            nonce=session.nonce,
+            state=session.session_id,
+            dcql_query=session.dcql_query,
+            session_expires_at=session.expires_at,
+            now=datetime.now(timezone.utc),
+        )
 
     def get_session_for_owner(
         self,
@@ -471,6 +498,9 @@ class Oid4vpService:
             if not raw:
                 continue
             cleaned = raw.strip()
+            if cleaned.startswith("decentralized_identifier:"):
+                # A wallet may bind to the client_id or to the DID inside it.
+                candidates.add(cleaned.removeprefix("decentralized_identifier:"))
             if cleaned:
                 candidates.add(cleaned)
                 candidates.add(cleaned.rstrip("/"))
@@ -764,7 +794,8 @@ class Oid4vpService:
             )
         except Exception:
             return False, "STATUS_LIST_VALID_FROM_INVALID", None
-        if valid_from > verified_at:
+        # A list re-signed during this verification is dated just after verified_at.
+        if valid_from > verified_at + _STATUS_LIST_VALID_FROM_SKEW:
             return False, "STATUS_LIST_NOT_YET_VALID", None
 
         try:

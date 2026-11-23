@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+import re
+from urllib.parse import urlencode, urlparse
+from app.config.public_origin_settings import load_public_origin_settings
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
+from app.application.services.request_uri_resolver import RequestUriResolver, request_uri_for
+from app.config.request_object_settings import request_object_signer
+from app.domain.request_object import CLIENT_ID_PREFIX, REQUEST_OBJECT_MEDIA_TYPE, RequestObjectError
+from app.infrastructure.clients.request_uri_fetcher import fetch_request_object
 
 from app.api.v1.dependencies import (
     get_holder_presentation_service,
@@ -42,9 +48,121 @@ from app.schemas.oid4_api import (
     CreateWalletOid4vpPresentationRequest,
     HolderOid4vpRequestResponse,
     VerificationSessionListResponse,
+    ResolveRequestUriRequest,
+    ResolveRequestUriResponse,
 )
 
+_SESSION_HANDLE = re.compile(r"^session_[A-Za-z0-9_-]{8,128}$")
+
+_PUBLIC_ORIGIN = load_public_origin_settings()
 router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
+
+
+_FORWARDED_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?")
+
+
+def _origin(request: Request) -> str:
+    # Never the internal service address when a public one exists. Without one,
+    # use the address the caller reached the gateway on (set by the gateway, not
+    # passed through from clients) rather than the internal Docker hostname.
+    if _PUBLIC_ORIGIN.origin:
+        return _PUBLIC_ORIGIN.origin
+    host = request.headers.get("x-forwarded-host", "")
+    proto = request.headers.get("x-forwarded-proto", "")
+    if _FORWARDED_HOST.fullmatch(host) and proto in {"http", "https"}:
+        return f"{proto}://{host}"
+    return str(request.base_url).rstrip("/")
+
+
+def _deep_link(session, request: Request) -> str:
+    """openid4vp:// link. Signed sessions carry only client_id and request_uri."""
+    if session.client_id.startswith(CLIENT_ID_PREFIX):
+        query = urlencode(
+            {
+                "client_id": session.client_id,
+                "request_uri": request_uri_for(_origin(request), session.session_id),
+            }
+        )
+        return f"openid4vp://?{query}"
+    return session.to_authorization_request_uri()
+
+
+@router.get(
+    "/request-objects/{session_id}",
+    summary="Signed authorization request (request_uri target)",
+    description=(
+        "Returns the request as a JWS with typ oauth-authz-req+jwt (OpenID4VP 1.0 "
+        "and RFC 9101). Public: a wallet fetches it after scanning. Holds no "
+        "credential data, only what the openid4vp link already exposed."
+    ),
+    responses={200: {"content": {REQUEST_OBJECT_MEDIA_TYPE: {}}}, 404: {}, 410: {}},
+)
+def get_request_object(
+    session_id: str,
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> Response:
+    if not _SESSION_HANDLE.fullmatch(session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found.")
+    try:
+        token = service.request_object(session_id)
+    except SessionNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found.") from error
+    except (SessionExpiredError, SessionAlreadyConsumedError) as error:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Request is no longer open.") from error
+    return Response(
+        content=token,
+        media_type=REQUEST_OBJECT_MEDIA_TYPE,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post(
+    "/wallet/resolve-request",
+    response_model=ResolveRequestUriResponse,
+    summary="Resolve a scanned openid4vp:// link with request_uri",
+    description=(
+        "Holder only. Reads the request object (own origin locally, other hosts "
+        "through an SSRF-safe fetch), verifies its signature and parameters, and "
+        "returns the session to open. Requests from verifiers outside this "
+        "platform are refused after verification."
+    ),
+)
+def resolve_request_uri(
+    payload: ResolveRequestUriRequest,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(
+        require_permission(Permission.PRESENTATIONS_CREATE)
+    ),
+    service: Oid4vpService = Depends(get_oid4vp_service),
+) -> ResolveRequestUriResponse:
+    if Role.HOLDER not in principal.roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Holder role is required.")
+    resolver = RequestUriResolver(
+        oid4vp_service=service,
+        signer=request_object_signer(),
+        own_origins={_origin(request), str(request.base_url).rstrip("/")},
+        fetch=fetch_request_object,
+    )
+    try:
+        resolved = resolver.resolve(payload.link)
+    except RequestObjectError as error:
+        code = (
+            status.HTTP_404_NOT_FOUND
+            if error.code == "REQUEST_NOT_FOUND"
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=code, detail=f"{error.code}: {error}") from error
+    except SessionNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="REQUEST_NOT_FOUND: This request is not known.",
+        ) from error
+    except (SessionExpiredError, SessionAlreadyConsumedError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="EXPIRED: This request is no longer open.",
+        ) from error
+    return ResolveRequestUriResponse(session_id=resolved.session_id, client_id=resolved.client_id)
 
 
 @router.get(
@@ -58,6 +176,7 @@ router = APIRouter(prefix="/oid4vp", tags=["oid4vp"])
     ),
 )
 def list_verification_sessions(
+    request: Request,
     limit: int = 50,
     offset: int = 0,
     principal: AuthenticatedPrincipal = Depends(
@@ -78,7 +197,7 @@ def list_verification_sessions(
     has_more = len(sessions) > limit
     items = []
     for session in sessions[:limit]:
-        auth_uri = session.to_authorization_request_uri()
+        auth_uri = _deep_link(session, request)
         items.append(
             VerificationSessionResponse(
                 session_id=session.session_id,
@@ -90,7 +209,8 @@ def list_verification_sessions(
                 presentation_definition=dict(session.presentation_definition),
                 status=session.status.value,
                 deep_link_uri=auth_uri,
-                qr_payload=auth_uri,
+                qr_payload=_PUBLIC_ORIGIN.handoff_uri(session.session_id) or auth_uri,
+                handoff_uri=_PUBLIC_ORIGIN.handoff_uri(session.session_id),
                 expires_at=session.expires_at,
                 purpose=session.purpose,
                 consent_status=session.consent_status,
@@ -130,12 +250,13 @@ def create_verification_session(
     ),
     service: Oid4vpService = Depends(get_oid4vp_service),
 ) -> VerificationSessionResponse:
-    base_url = str(request.base_url).rstrip("/")
+    signer = request_object_signer()
     try:
         session = service.create_session(
             owner_user_id=principal.id,
             verifier_did=principal.id if principal.id.startswith("did:") else "did:web:verifier.platform.eudi",
-            client_id=f"{base_url}/verifier",
+            # Signed requests (JAR): the client_id names the verifier's key.
+            client_id=signer.client_id,
             purpose=payload.purpose,
             requested_credential_types=tuple(payload.requested_credential_types),
             requested_fields=tuple(payload.requested_fields),
@@ -144,7 +265,7 @@ def create_verification_session(
         )
     except (MalformedDcqlQueryError, UnsupportedDcqlFeatureError, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    auth_uri = session.to_authorization_request_uri()
+    auth_uri = _deep_link(session, request)
     return VerificationSessionResponse(
         session_id=session.session_id,
         verifier_did=session.verifier_did,
@@ -155,7 +276,8 @@ def create_verification_session(
         presentation_definition=dict(session.presentation_definition),
         status=session.status.value,
         deep_link_uri=auth_uri,
-        qr_payload=auth_uri,
+        qr_payload=_PUBLIC_ORIGIN.handoff_uri(session.session_id) or auth_uri,
+        handoff_uri=_PUBLIC_ORIGIN.handoff_uri(session.session_id),
         expires_at=session.expires_at,
         purpose=session.purpose,
         consent_status=session.consent_status,
@@ -173,6 +295,7 @@ def create_verification_session(
 )
 def get_verification_session(
     session_id: str,
+    request: Request,
     principal: AuthenticatedPrincipal = Depends(
         require_permission(Permission.PRESENTATIONS_VERIFY)
     ),
@@ -188,7 +311,7 @@ def get_verification_session(
     except SessionExpiredError as e:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
 
-    auth_uri = session.to_authorization_request_uri()
+    auth_uri = _deep_link(session, request)
     return VerificationSessionResponse(
         session_id=session.session_id,
         verifier_did=session.verifier_did,
@@ -199,7 +322,8 @@ def get_verification_session(
         presentation_definition=dict(session.presentation_definition),
         status=session.status.value,
         deep_link_uri=auth_uri,
-        qr_payload=auth_uri,
+        qr_payload=_PUBLIC_ORIGIN.handoff_uri(session.session_id) or auth_uri,
+        handoff_uri=_PUBLIC_ORIGIN.handoff_uri(session.session_id),
         expires_at=session.expires_at,
         purpose=session.purpose,
         consent_status=session.consent_status,
@@ -217,6 +341,7 @@ def get_verification_session(
 )
 def get_holder_oid4vp_request(
     session_id: str,
+    request: Request,
     principal: AuthenticatedPrincipal = Depends(
         require_permission(Permission.PRESENTATIONS_CREATE)
     ),
@@ -244,7 +369,7 @@ def get_holder_oid4vp_request(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Verification request not found.",
         )
-    auth_uri = session.to_authorization_request_uri()
+    auth_uri = _deep_link(session, request)
     return HolderOid4vpRequestResponse(
         session_id=session.session_id,
         verifier_did=session.verifier_did,
@@ -256,7 +381,8 @@ def get_holder_oid4vp_request(
         status=session.status.value,
         consent_status=session.consent_status,
         deep_link_uri=auth_uri,
-        qr_payload=auth_uri,
+        qr_payload=_PUBLIC_ORIGIN.handoff_uri(session.session_id) or auth_uri,
+        handoff_uri=_PUBLIC_ORIGIN.handoff_uri(session.session_id),
         expires_at=session.expires_at,
         purpose=session.purpose,
         requested_fields=list(session.requested_fields),
@@ -644,19 +770,25 @@ def create_wallet_oid4vp_presentation(
             status_code=status.HTTP_410_GONE,
             detail="The verification session expires too soon for presentation.",
         )
-    verifier_url = urlparse(session.client_id)
-    if not verifier_url.hostname:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The verifier client identifier is not a valid URL.",
-        )
+    # OpenID4VP 1.0 (Data Integrity): challenge = nonce, domain = client_id.
+    # Older sessions with a URL client_id keep the host form they were made with.
+    if session.client_id.startswith(CLIENT_ID_PREFIX):
+        proof_domain = session.client_id
+    else:
+        verifier_url = urlparse(session.client_id)
+        if not verifier_url.hostname:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The verifier client identifier is not a valid URL.",
+            )
+        proof_domain = verifier_url.hostname
     try:
         persisted = presentations.create_for_oid4vp_session(
             payload.credential_ids,
             session_id=session.session_id,
             wallet_id=wallet.wallet_id,
             challenge=session.nonce,
-            domain=verifier_url.hostname,
+            domain=proof_domain,
             audience=session.client_id,
             lifetime_seconds=min(remaining, 600),
             actor_id=principal.id,
