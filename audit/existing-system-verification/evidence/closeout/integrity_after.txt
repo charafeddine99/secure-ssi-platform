@@ -1,0 +1,106 @@
+# Data-integrity re-check after the closeout (2026-11-23T20:19:21+03:00)
+
+## 1. Owner containers: image, creation, start time and restarts, compared with docker_before.txt
+secure-ssi-platform-api-gateway-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-10T15:30:42
+secure-ssi-platform-fraud-service-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-10T15:30:41
+secure-ssi-platform-identity-service-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-07T17:47:22
+secure-ssi-platform-mongodb-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-06T15:53:53
+secure-ssi-platform-recovery-service-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-10T15:30:41
+secure-ssi-platform-redis-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-03T13:25:03
+secure-ssi-platform-web-1 status=running restarts=0 image_same=yes started_same=yes created=2026-11-10T21:24:56
+
+## 2. Owner images (tags) compared with docker_before.txt
+secure-ssi-platform-api-gateway:latest 1c45316f33bc unchanged
+secure-ssi-platform-fraud-service:latest df56b47ed205 unchanged
+secure-ssi-platform-identity-service:latest ae8d41c39d65 unchanged
+secure-ssi-platform-recovery-service:latest 806143bcb197 unchanged
+secure-ssi-platform-web:latest 844710f7aeeb unchanged
+
+## 3. Owner volumes (names, creation time)
+secure-ssi-platform_fraud_state created=2026-11-06T15:53:53Z in_before=yes
+secure-ssi-platform_identity_backups created=2026-11-06T15:53:53Z in_before=yes
+secure-ssi-platform_identity_ledger_anchor created=2026-11-06T15:53:53Z in_before=yes
+secure-ssi-platform_mongodb_data created=2026-10-07T17:57:00Z in_before=yes
+secure-ssi-platform_redis_data created=2026-10-07T17:57:00Z in_before=yes
+owner volumes before: 5 now: 5
+
+## 4. Separation of the owner and audit stacks (networks per container)
+audit-20261121-api-gateway-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-dr-mongodb-1 project=audit-20261121-dr networks=audit-20261121-dr_default audit-20261121_default state=exited
+audit-20261121-dr2-api-gateway-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr2-fraud-service-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr2-identity-service-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr2-mongodb-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default audit-20261121_default state=exited
+audit-20261121-dr2-recovery-service-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr2-redis-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr2-web-1 project=audit-20261121-dr2 networks=audit-20261121-dr2_default state=exited
+audit-20261121-dr3-api-gateway-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr3-fraud-service-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr3-identity-service-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr3-mongodb-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default audit-20261121_default state=exited
+audit-20261121-dr3-recovery-service-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr3-redis-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr3-web-1 project=audit-20261121-dr3 networks=audit-20261121-dr3_default state=exited
+audit-20261121-dr4-api-gateway-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-fraud-service-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-identity-service-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-mongodb-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-recovery-service-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-redis-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr4-web-1 project=audit-20261121-dr4 networks=audit-20261121-dr4_default state=exited
+audit-20261121-dr5-api-gateway-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-dr5-fraud-service-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-dr5-identity-service-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-dr5-mongodb-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default audit-20261121_default state=exited
+audit-20261121-dr5-recovery-service-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-dr5-redis-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-dr5-web-1 project=audit-20261121-dr5 networks=audit-20261121-dr5_default state=exited
+audit-20261121-fraud-service-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-identity-service-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-mongodb-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-recovery-service-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-redis-1 project=audit-20261121 networks=audit-20261121_default state=running
+audit-20261121-web-1 project=audit-20261121 networks=audit-20261121_default state=running
+secure-ssi-platform-api-gateway-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-fraud-service-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-identity-service-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-mongodb-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-recovery-service-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-redis-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+secure-ssi-platform-web-1 project=secure-ssi-platform networks=secure-ssi-platform_default state=running
+audit containers on the owner network: 0
+owner containers on audit networks: 0
+audit volumes: 26
+
+## 5. Git
+branch: besna-dev
+HEAD: db829e57ab7043a6f65b7c10aac06e62986fbbbd
+origin/besna-dev: db829e57ab7043a6f65b7c10aac06e62986fbbbd
+commits since the closeout start (9fa97d7): 52
+other branches touched: backup/pre-g0-ui 774c735;main 9e965bb;
+uncommitted entries now (excluded on purpose):
+  ?? UsersbesnaAppDataLocalTempsecure-ssi-root-audit-0f9c514d1e954437805097268207189e/
+  ?? audit/existing-system-verification/11_FINAL_TECHNICAL_CLOSEOUT.md
+  ?? audit/existing-system-verification/evidence/closeout/integrity_after.sh
+  ?? audit/existing-system-verification/evidence/closeout/integrity_after.txt
+  ?? research/
+
+## 6. Environment files
+repo .env files: .env.example 
+.env.example keys changed by the closeout: 43 lines (all from the committed WP and FIX-2/3 work; the closeout itself did not edit it)
+temporary env files left in the scratchpad: 0
+
+## 7. Secret and personal-data scan of the closeout files (committed and local-only)
+files scanned: 71
+three-part JWTs (header.payload.signature): 0
+MongoDB URIs with credentials: 2
+password/secret assignments with a value: 2
+e-mail addresses outside the synthetic test domains: 0
+11-digit numbers (national ID shape): 0
+
+## 8. Manual triage of section 5 and section 7 (added 2026-11-23T20:21:10+03:00)
+- "MongoDB URIs with credentials: 2": both in closeout/wp31_dr.before_dr5.mjs (lines 50 and 52; the same lines are in scripts/wp31_dr.mjs). The password part is the template ${env.MONGO_INITDB_ROOT_PASSWORD}, filled in at run time from the isolated audit env; no value is stored in the file. False positive.
+- "password/secret assignments with a value: 2": closeout/wp31_e2e.before_F06.mjs lines 42 and 371 (scripts/wp31_e2e.mjs lines 42 and 397). Deliberately wrong inputs for negative checks: a wrong password for MFA enrollment (expects 403) and a wrong current password for a password change (expects 403); line 372/398 also sends the too-short value "short" (expects 422). Not credentials. False positive.
+- Synthetic user passwords (generated per run, pattern Wp29-/Wp31-...) printed in closeout logs, summaries or JSON: 0; in scripts/*_results.json: 0.
+- "other branches touched" lists the other local branches, not changes: their reflogs show main last changed 2026-10-23 and backup/pre-g0-ui 2026-10-04, so the closeout did not touch them.
+- The DR mongod containers (dr to dr5) are also attached to audit-20261121_default by design: wp31_dr.mjs (line 49) connects each DR mongod to the audit network with the alias dr-mongodb, so the restore CLI in the audit identity container can reach it. All of them belong to audit projects; no audit container is on the owner network and no owner container is on an audit network.
