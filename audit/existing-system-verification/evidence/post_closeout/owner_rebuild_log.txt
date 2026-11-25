@@ -1,0 +1,110 @@
+# Owner-stack rebuild of 2026-11-25 (report 12)
+# Values are never printed here. Container definitions, dumps, tars and build logs stay in C:\ssi-backups\2026-11-25 (outside OneDrive).
+
+## 1. State before (2026-11-25 15:5x, after Docker Desktop was started with the owner's approval)
+All 7 owner containers running and healthy, restart policy unless-stopped, same image IDs as docker_before.txt of 23 Nov.
+Endpoints at 16:06:51 (old images): identity /health 200, /ready 200 READY; recovery, fraud, gateway /health 200; web / 200; sign-in route with an empty body 422.
+
+## 2. Configuration check before the switch (owner_cfg_compare.py: running containers vs the current docker-compose.yml; names and set/empty flags only)
+== identity-service: 110 same, 0 changed, 0 new, 7 only in the old container
+   only in the old container: GPG_KEY, LANG, PATH, PYTHONDONTWRITEBYTECODE, PYTHONUNBUFFERED, PYTHON_SHA256, PYTHON_VERSION
+   mounts: same / ports: same / read-only root: True -> True
+== recovery-service: 36 same, 0 changed, 0 new, 7 only in the old container (the same image-level Python variables)
+   mounts: same / ports: same / read-only root: True -> True
+== fraud-service: 7 same, 0 changed, 0 new, 7 only in the old container (the same image-level Python variables)
+   mounts: same / ports: same / read-only root: True -> True
+== api-gateway: 9 same, 0 changed, 0 new, 7 only in the old container (the same image-level Python variables)
+   mounts: same / ports: same / read-only root: True -> True
+== web: 0 same, 0 changed, 0 new, 6 only in the old container (image-level nginx variables)
+   mounts: same / ports: same / read-only root: False -> False
+No .env file exists; every value comes from the compose defaults, as before.
+
+## 3. Backup (owner_backup.sh)
+mongodump exit 0, 36 collections; volume tars: mongodb_data exit 1 (tar: ./diagnostic.data: file changed as we read it), the other 4 exit 0.
+Rollback images (docker commit of the running containers):
+secure-ssi-platform-web:rollback-20261125 42194a4835af 76MB
+secure-ssi-platform-api-gateway:rollback-20261125 11f4dce92617 297MB
+secure-ssi-platform-fraud-service:rollback-20261125 1b49e7e45125 783MB
+secure-ssi-platform-recovery-service:rollback-20261125 dd8888819dbe 350MB
+secure-ssi-platform-identity-service:rollback-20261125 4d35ab243331 433MB
+Files and SHA-256:
+  4208783 bytes  owner-mongodump.archive.gz
+  100 bytes  volume_fraud_state.tgz
+  100 bytes  volume_identity_backups.tgz
+  265 bytes  volume_identity_ledger_anchor.tgz
+  40838356 bytes  volume_mongodb_data.tgz
+  251 bytes  volume_redis_data.tgz
+  c4ab4be2009522d0bf4a50b3606d3391a62fb98481956ff685d37b2802a16bd9 *owner-mongodump.archive.gz
+  15a0ee532083714099a9bc420b6ff335690c84b064455601849472560d0b049a *volume_fraud_state.tgz
+  542ad059aaf7e8d998f311fdca9adb9c7b78ab0533912ca2d956fdf982e5a037 *volume_identity_backups.tgz
+  75af6c55e8277fd66677b86671cbf33bc656f17551c412b5972e66f6f306b563 *volume_identity_ledger_anchor.tgz
+  4758ce09e6b8bea74a6be1eebdcea64a2c5f6b405af4635e4577d751cb4347cf *volume_mongodb_data.tgz
+  c9aa09558cf520a0497a4a197991bdcbf51e6a947f1157446346c31749540090 *volume_redis_data.tgz
+
+## 4. Dump check (mongodump log vs countDocuments, read-only)
+collections counted 34, dumped 36; documents counted 86581, dumped 86581 (+6 in admin.system.users and admin.system.version)
+counted but not dumped: none; dumped fewer than counted: none
+
+## 5. Builds
+build.log (all five): exit 1. web failed reading apps/web/node_modules: 'The cloud file provider is not running' (OneDrive). recovery and api-gateway were built; identity and fraud were cancelled.
+Fix: apps/web/.dockerignore (node_modules, dist), commit f724f7a. build2.log (identity, fraud): exit 0. build_web.log: exit 0 (context 992 kB; npm ci, lint and build passed).
+Fix files in the new images: byte-identical to the working tree, and equal to HEAD ignoring CR (the Windows checkout uses CRLF).
+
+## 6. Rollout, one service at a time (owner_rollout.sh: up -d --no-deps --no-build)
+  2026-11-25T16:08:54+03:00 replacing identity-service
+   Container secure-ssi-platform-identity-service-1 Recreated 
+   Container secure-ssi-platform-identity-service-1 Starting 
+   Container secure-ssi-platform-identity-service-1 Started 
+  identity-service: healthy after 7 s; image eb3065f9794d -> 6f6d51e50638; restarts 0
+  error-like log lines: 0
+  2026-11-25T16:09:23+03:00 replacing recovery-service
+   Container secure-ssi-platform-recovery-service-1 Recreated 
+   Container secure-ssi-platform-recovery-service-1 Starting 
+   Container secure-ssi-platform-recovery-service-1 Started 
+  recovery-service: healthy after 8 s; image c92c09c1b35b -> 9b0b41686f13; restarts 0
+  error-like log lines: 0
+  2026-11-25T16:09:44+03:00 replacing fraud-service
+   Container secure-ssi-platform-fraud-service-1 Recreated 
+   Container secure-ssi-platform-fraud-service-1 Starting 
+   Container secure-ssi-platform-fraud-service-1 Started 
+  fraud-service: healthy after 7 s; image cf2ca9d77815 -> 6e2fe064ed89; restarts 0
+  error-like log lines: 0
+  2026-11-25T16:10:04+03:00 replacing api-gateway
+   Container secure-ssi-platform-api-gateway-1 Recreated 
+   Container secure-ssi-platform-api-gateway-1 Starting 
+   Container secure-ssi-platform-api-gateway-1 Started 
+  api-gateway: healthy after 7 s; image f19f42d26dd0 -> 1398c5f8e113; restarts 0
+  error-like log lines: 0
+  2026-11-25T16:10:20+03:00 replacing web
+   Container secure-ssi-platform-web-1 Recreated 
+   Container secure-ssi-platform-web-1 Starting 
+   Container secure-ssi-platform-web-1 Started 
+  web: healthy after 10 s; image 844710f7aeeb -> 09e3ec775b77; restarts 0
+  error-like log lines: 0
+
+## 7. Checks after the rollout (owner_verify.sh, read-only)
+  # Owner stack after the rebuild, 2026-11-25T16:10:42+03:00
+  == 1. containers
+  identity-service running health=healthy restarts=0 started=2026-11-25T13:08:56.613879036Z image=sha256:6f6d51e506383f7bcf1009075568fc9ff897aed137bda70
+  recovery-service running health=healthy restarts=0 started=2026-11-25T13:09:25.180960112Z image=sha256:9b0b41686f13f67f3301811afa1320a573d80cfe41f856c
+  fraud-service running health=healthy restarts=0 started=2026-11-25T13:09:46.705634513Z image=sha256:6e2fe064ed89611c285faf1f3d39b270509487780f165fa1ba
+  api-gateway running health=healthy restarts=0 started=2026-11-25T13:10:05.846400524Z image=sha256:1398c5f8e113fb19c985c8363a036d0b0972bd36d12a6a4b7493
+  web running health=healthy restarts=0 started=2026-11-25T13:10:21.678739664Z image=sha256:09e3ec775b7734d0bc93b00e876b76b60841fea5ef0e5f7345f5fe3a877c
+  mongodb running health=healthy restarts=0 started=2026-11-25T12:55:26.197454965Z image=sha256:1f995ad6fdb93244a1addab1b58f934a0bc2f5643c38e02f5e9d7f0c
+  redis running health=healthy restarts=0 started=2026-11-25T12:55:26.191971643Z image=sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c83
+  == 2. endpoints
+  identity /health -> 200
+  identity /ready -> 200
+  identity /ready body: {"status":"READY"}
+  recovery /health -> 200
+  fraud /health -> 200
+  gateway /health -> 200
+  web / -> 200
+  web -> gateway -> identity sign-in route (empty body, no sign-in) -> 422
+  == 3. audit chain, checked by the running identity image in a one-off container (read-only)
+  audit chain: INTACT; chained events checked 30811; unchained 12411; first broken sequence None
+  == 4. collection counts after the rebuild compared with the backup (only growth expected)
+  collections before 34, after 34; documents before 86581, after 86752
+  shrank or missing: none
+  grew: ['secure_identity.audit_events: +84', 'secure_identity.audit_outbox: +84', 'secure_security_intel.event_buckets: +1', 'secure_security_intel.security_events: +2']
+  new collections: none
