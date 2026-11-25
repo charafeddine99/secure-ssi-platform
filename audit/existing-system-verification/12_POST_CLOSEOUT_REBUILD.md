@@ -19,7 +19,7 @@ Evidence is in `evidence/post_closeout/`. Backups, build logs and container defi
 | Data after the rebuild | **Preserved.** No collection shrank or disappeared. The audit chain is `INTACT` before and after. | C.6 |
 | FIX-4 on the owner's real data | **Confirmed.** About 13 routine audit events per minute before the switch, 0 in the 7 minutes after it. | C.7 |
 | New build problem found and fixed | The web image build read the host's `node_modules`, and 4,525 of those files are OneDrive cloud-only. Fixed with `apps/web/.dockerignore`. | commit `f724f7a`, C.4 |
-| Still for the owner | Sign in once and verify one credential (D). Decide whether to keep the backups. OneDrive (I-6) is still open. | D, E |
+| Still for the owner | Sign-in: confirmed by the owner on 2026-11-25. Still open: one credential verification, a decision on the backups, and OneDrive (I-6). | D, E |
 
 ---
 
@@ -150,6 +150,8 @@ The following need the owner's own account, so they are left to the owner (D):
 - one credential verification;
 - the application platform backup.
 
+Afterwards the owner reported that **sign-in works** on the rebuilt stack (2026-11-25).
+
 ### C.9 Rollback, if it is ever needed
 
 For each service, newest first (web, api-gateway, fraud-service, recovery-service, identity-service):
@@ -167,6 +169,8 @@ docker compose -p secure-ssi-platform up -d --no-deps --no-build <service>
 ## D. For the owner
 
 1. **Sign in once** at `http://localhost:3000` and **verify one credential**. Sessions from before the rebuild may be gone, because the services restarted.
+   - Sign-in: **done**; the owner confirmed it works (2026-11-25).
+   - Credential verification: not reported yet.
 2. **Backups.** `C:\ssi-backups\2026-11-25` holds a full copy of the database, including personal and credential data. Keep it outside OneDrive, and delete it once the rebuilt stack has been in use for a while. The rollback images hold the old container settings; keep them local and never push them.
 3. **OneDrive (I-6).** 4,631 files of the repository are cloud-only while the OneDrive client is off, 106 of them under `.git/objects`. Start OneDrive and mark the repository "Always keep on this device", or move the repository out of OneDrive.
 
@@ -176,7 +180,7 @@ docker compose -p secure-ssi-platform up -d --no-deps --no-build <service>
 
 | Report 11 item | Status now |
 |---|---|
-| I-1 owner stack on pre-fix images | **Closed.** Rebuilt from `besna-dev` (C). The owner sign-in check (D.1) is still to do. |
+| I-1 owner stack on pre-fix images | **Closed.** Rebuilt from `besna-dev` (C), and the owner confirmed sign-in on 2026-11-25. One credential verification is not reported yet. |
 | I-5 harness time limit | **Closed** with `run_limited` (B). The 23 November cause is not reproduced (B.3). |
 | I-6 OneDrive cloud-only Git pack | **Open, and wider:** 4,631 cloud-only files (C.4). The web build no longer depends on them. |
 | I-11 no line-by-line review of WP-28..WP-32 | **Open.** That code now runs in the owner stack. It passed every test on 23 November; the owner was told before approving the rebuild. |
