@@ -1,0 +1,13 @@
+# run_limited test, 2026-11-25T15:55:51+03:00
+1. The exit code passes through
+   exit=3 (expected 3)
+2. Environment variables set before the call reach the stage
+   printed=reached (expected reached)
+3. stdout and stderr follow the redirection
+   log lines=2 (expected 2)
+4. Old runner: coreutils timeout 5 s on a hung node with a child
+   after 16 s: timeout still waiting=no, marked node processes alive=0
+   after the manual cleanup: marked node processes alive=0
+5. New runner: run_limited 5 s on the same hung node with a child
+   exit=124 (expected 124) after 6 s; marked node processes alive=0 (expected 0)
+   watchdog message: watchdog: still running after 5s; stopping its process tree (Windows PID 29672)
