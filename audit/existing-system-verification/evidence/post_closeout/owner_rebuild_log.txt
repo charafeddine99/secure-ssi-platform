@@ -108,3 +108,17 @@ Fix files in the new images: byte-identical to the working tree, and equal to HE
   shrank or missing: none
   grew: ['secure_identity.audit_events: +84', 'secure_identity.audit_outbox: +84', 'secure_security_intel.event_buckets: +1', 'secure_security_intel.security_events: +2']
   new collections: none
+
+## 8. FIX-4 on the owner data (secure_identity.audit_events, countDocuments, read-only)
+  2026-11-25T13:04:13Z  43162  old code
+  2026-11-25T13:04:51Z  43174  old code
+  2026-11-25T13:08:53Z  43222  old code, just before the switch (about 12.9 events per minute with 6 managed keys)
+  2026-11-25T13:08:54Z         identity-service switched to the new image
+  2026-11-25T13:11:26Z  43222  new code
+  2026-11-25T13:13:21Z  43222  new code
+  2026-11-25T13:15:54Z  43222  new code, 7 minutes after the switch: 0 new events (6 managed keys, idle)
+  Chained events: 2026-11-06T15:54:46Z to 2026-11-25T13:08:40Z (the newest is 14 s before the switch).
+  Unchained events (12411): 2026-11-03T13:26:15Z to 2026-11-06T15:53:50Z, older than the chain.
+
+## 9. Browser check of the rebuilt web app (built-in browser, no sign-in)
+  http://localhost:3000/ and /login render; all assets 200; 0 console errors.
