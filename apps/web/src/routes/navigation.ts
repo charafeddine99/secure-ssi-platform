@@ -17,6 +17,7 @@ export const NAVIGATION: Record<AppRole, NavItem[]> = {
     { to: "/wallet/backup", label: "Credential backup", icon: "archive", permission: "wallets:backup" },
     { to: "/guardian", label: "Guardian tasks", icon: "users", end: true },
     { to: "/wallet/activity", label: "Activity", icon: "clock", permission: "presentations:read" },
+    { to: "/organizations", label: "Organizations", icon: "landmark" },
     { to: "/account/security", label: "Account security", icon: "shield" },
   ],
   ISSUER: [
@@ -24,6 +25,7 @@ export const NAVIGATION: Record<AppRole, NavItem[]> = {
     { to: "/issuer/templates", label: "Credential types", icon: "file", permission: "credentials:sign" },
     { to: "/issuer/issue", label: "Create offer", icon: "plus", permission: "credentials:sign" },
     { to: "/issuer/revocations", label: "Status & revocation", icon: "rotate", permission: "credentials:revoke" },
+    { to: "/organizations", label: "Organizations", icon: "landmark" },
     { to: "/account/security", label: "Account security", icon: "shield" },
   ],
   VERIFIER: [
@@ -31,17 +33,20 @@ export const NAVIGATION: Record<AppRole, NavItem[]> = {
     { to: "/verifier/request", label: "New request", icon: "plus", permission: "presentations:verify" },
     { to: "/verifier/verify", label: "Verify presentation", icon: "check", permission: "presentations:verify" },
     { to: "/verifier/history", label: "History", icon: "history", permission: "presentations:read" },
+    { to: "/organizations", label: "Organizations", icon: "landmark" },
     { to: "/account/security", label: "Account security", icon: "shield" },
   ],
   ADMIN: [
     { to: "/admin", label: "Platform health", icon: "home", permission: "admin:operations:read", end: true },
     { to: "/admin/users", label: "Users & issuer scope", icon: "users", permission: "admin:users:read" },
     { to: "/admin/trust-registry", label: "Trust registry", icon: "landmark", permission: "admin:operations:read" },
+    { to: "/admin/trust-review", label: "Trust review", icon: "check", permission: "trust-review:decide" },
     { to: "/admin/audit", label: "Audit log", icon: "history", permission: "admin:operations:read" },
     { to: "/admin/recovery", label: "Recovery oversight", icon: "lifebuoy", permission: "admin:operations:read" },
     { to: "/admin/backups", label: "Platform backup", icon: "archive", permission: "admin:backup:read" },
     { to: "/admin/contracts", label: "Optional anchoring", icon: "database", permission: "admin:operations:read" },
     { to: "/admin/intelligence", label: "Security intelligence", icon: "shield", permission: "admin:operations:read" },
+    { to: "/organizations", label: "Organizations", icon: "landmark" },
     { to: "/account/security", label: "Account security", icon: "check" },
   ],
 };

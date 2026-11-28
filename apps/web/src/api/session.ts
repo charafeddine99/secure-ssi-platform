@@ -37,6 +37,7 @@ export const IDENTITY_PERMISSIONS = [
   "admin:incidents:write",
   "trust-registry:read",
   "trust-registry:write",
+  "trust-review:decide",
 ] as const;
 
 export type IdentityPermission = typeof IDENTITY_PERMISSIONS[number];

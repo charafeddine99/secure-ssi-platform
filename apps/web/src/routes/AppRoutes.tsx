@@ -13,6 +13,8 @@ const EcosystemPage = lazy(() => import("../pages/public/EcosystemPage.tsx"), "E
 const ArchitectureDocsPage = lazy(() => import("../pages/public/ArchitectureDocsPage.tsx"), "ArchitectureDocsPage");
 const LoginPage = lazy(() => import("../pages/public/LoginPage.tsx"), "LoginPage");
 const NotFoundPage = lazy(() => import("../pages/public/NotFoundPage.tsx"), "NotFoundPage");
+const OrganizationsPage = lazy(() => import("../pages/OrganizationsPage.tsx"), "OrganizationsPage");
+const TrustReviewPage = lazy(() => import("../pages/admin/TrustReviewPage.tsx"), "TrustReviewPage");
 
 const WalletDashboard = lazy(() => import("../pages/holder/WalletDashboard.tsx"), "WalletDashboard");
 const CredentialDetailPage = lazy(() => import("../pages/holder/CredentialDetailPage.tsx"), "CredentialDetailPage");
@@ -107,6 +109,9 @@ export const AppRoutes: React.FC = () => (
         <Route path="admin/intelligence" element={guarded(<SecurityIntelligencePage />, "ADMIN", "admin:operations:read")} />
         <Route path="admin/recovery" element={guarded(<RecoveryOversightPage />, "ADMIN", "admin:operations:read")} />
         <Route path="admin/backups" element={guarded(<PlatformBackupPage />, "ADMIN", "admin:backup:read")} />
+        <Route path="admin/trust-review" element={guarded(<TrustReviewPage />, "ADMIN", "trust-review:decide")} />
+        {/* Memberships are per organization and re-checked by the server; any signed-in person may have them. */}
+        <Route path="organizations" element={<OrganizationsPage />} />
       </Route>
 
       <Route element={<PublicLayout />}>

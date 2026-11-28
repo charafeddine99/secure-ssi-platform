@@ -4,7 +4,7 @@ import { registerAccount, type RegistrationRole } from "../../api/registration.t
 import { BrandMark } from "../../components/ssi/BrandMark.tsx";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
-import { SelectField, TextAreaField, TextField } from "../../components/ui/Field.tsx";
+import { TextAreaField, TextField } from "../../components/ui/Field.tsx";
 import { describeError } from "../../lib/http.ts";
 
 const ROLE_NOTES: Record<RegistrationRole, string> = {
@@ -17,7 +17,8 @@ const ROLE_NOTES: Record<RegistrationRole, string> = {
 export const RegisterPage: React.FC = () => {
   const [params] = useSearchParams();
   const invitationCode = params.get("invite") ?? "";
-  const [role, setRole] = React.useState<RegistrationRole>(invitationCode ? "admin" : "holder");
+  // Public sign-up is personal only; issuer and verifier access comes from an approved organization.
+  const role: RegistrationRole = invitationCode ? "admin" : "holder";
   const [email, setEmail] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -26,7 +27,7 @@ export const RegisterPage: React.FC = () => {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<string | null>(null);
-  const applies = role === "issuer" || role === "verifier";
+  const applies: boolean = false; // organization applications moved to the Organizations page
 
   React.useEffect(() => { document.title = "Create account · Secure SSI Platform"; }, []);
 
@@ -69,11 +70,10 @@ export const RegisterPage: React.FC = () => {
                 {invitationCode ? (
                   <p className="text-secondary">{ROLE_NOTES.admin}</p>
                 ) : (
-                  <SelectField label="Account type" hint={ROLE_NOTES[role]} value={role} onChange={(e) => setRole(e.target.value as RegistrationRole)}>
-                    <option value="holder">Holder: personal wallet</option>
-                    <option value="issuer">Issuer: organisation</option>
-                    <option value="verifier">Verifier: organisation</option>
-                  </SelectField>
+                  <p className="text-secondary">
+                    This creates your personal account and wallet. To act for a university, company or other institution,
+                    sign in afterwards and apply for it, or accept its invitation, on the Organizations page.
+                  </p>
                 )}
                 <TextField label="Full name" autoComplete="name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={200} required />
                 <TextField label="E-mail address" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} required />
