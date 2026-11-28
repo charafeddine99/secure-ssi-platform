@@ -101,6 +101,16 @@ def _self_registration_enabled(settings: Any) -> bool:
     return not is_production_like(settings.environment)
 
 
+def _legacy_role_applications_enabled(settings: Any) -> bool:
+    """Public sign-up creates personal accounts. Issuer and verifier access now comes from an approved
+    organization (POST /organizations/applications) and its capabilities, so the old "sign up as issuer or
+    verifier" path is off in production-like modes and stays on in development for existing flows."""
+    value = os.getenv("IDENTITY_LEGACY_ROLE_APPLICATIONS_ENABLED", "").strip().casefold()
+    if value:
+        return value in {"1", "true", "yes"}
+    return not is_production_like(settings.environment)
+
+
 def _digest(code: str) -> str:
     return sha256(code.encode()).hexdigest()
 
@@ -137,6 +147,11 @@ def register_account(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Registration needs the persistent account store.")
     if payload.role != "admin" and not _self_registration_enabled(settings):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Registration is closed.")
+    if payload.role in ("issuer", "verifier") and not _legacy_role_applications_enabled(settings):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Create a personal account, then apply for your organization from the Organizations page.",
+        )
     email = payload.email.strip().casefold()
     problem = password_problem(payload.password, username=email)
     if problem:
