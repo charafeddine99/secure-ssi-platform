@@ -25,6 +25,8 @@ class Permission(StrEnum):
     WALLETS_CREATE = "wallets:create"
     WALLETS_READ = "wallets:read"
     WALLETS_CREDENTIALS_READ = "wallets:credentials:read"
+    WALLETS_BACKUP = "wallets:backup"
+    WALLETS_RESTORE = "wallets:restore"
     PRESENTATION_CHALLENGES_CREATE = "presentation-challenges:create"
     PRESENTATION_CHALLENGES_READ = "presentation-challenges:read"
     WALLET_KEY_CREATE = "wallet:key:create"
@@ -40,21 +42,52 @@ class Permission(StrEnum):
     ADMIN_OPERATIONS_READ = "admin:operations:read"
     ADMIN_USERS_READ = "admin:users:read"
     ADMIN_USERS_WRITE = "admin:users:write"
+    ADMIN_BACKUP_READ = "admin:backup:read"
+    ADMIN_BACKUP_WRITE = "admin:backup:write"
+    ADMIN_INCIDENTS_WRITE = "admin:incidents:write"
     TRUST_REGISTRY_READ = "trust-registry:read"
     TRUST_REGISTRY_WRITE = "trust-registry:write"
+    # Platform trust review of organizations and their issuer/verifier capabilities.
+    TRUST_REVIEW_DECIDE = "trust-review:decide"
 
 
 _ROLE_PERMISSIONS = MappingProxyType(
     {
-        # Only the issuing authority may revoke its credentials (least
-        # privilege); administrators operate the platform, not credential status.
-        Role.ADMIN: frozenset(Permission) - {Permission.CREDENTIALS_REVOKE},
+        # Listed one by one, so a new permission reaches no role by accident.
+        # Administrators run the platform: they do not revoke credentials, hold
+        # wallets or present credentials.
+        Role.ADMIN: frozenset(
+            {
+                Permission.AUTH_SELF_READ,
+                Permission.ADMIN_KEY_RECONCILE,
+                Permission.ADMIN_OPERATIONS_READ,
+                Permission.ADMIN_USERS_READ,
+                Permission.ADMIN_USERS_WRITE,
+                Permission.ADMIN_BACKUP_READ,
+                Permission.ADMIN_BACKUP_WRITE,
+                Permission.ADMIN_INCIDENTS_WRITE,
+                Permission.TRUST_REGISTRY_READ,
+                Permission.TRUST_REGISTRY_WRITE,
+                Permission.TRUST_REVIEW_DECIDE,
+                Permission.CREDENTIALS_VALIDATE,
+                Permission.CREDENTIALS_VERIFY,
+                Permission.PRESENTATIONS_READ,
+                Permission.PRESENTATIONS_RECONCILE,
+                Permission.WALLET_KEY_READ,
+                Permission.WALLET_KEY_COMPROMISE,
+                Permission.WALLET_KEY_DESTROY,
+                Permission.WALLET_KEY_RECONCILE,
+            }
+        ),
         Role.ISSUER: frozenset(
-            permission
-            for permission in Permission
-            if not permission.value.startswith(
-                ("wallet:key:", "admin:", "trust-registry:write")
-            )
+            {
+                Permission.AUTH_SELF_READ,
+                Permission.CREDENTIALS_SIGN,
+                Permission.CREDENTIALS_VALIDATE,
+                Permission.CREDENTIALS_VERIFY,
+                Permission.CREDENTIALS_REVOKE,
+                Permission.TRUST_REGISTRY_READ,
+            }
         ),
         Role.VERIFIER: frozenset(
             {
@@ -75,6 +108,8 @@ _ROLE_PERMISSIONS = MappingProxyType(
                 Permission.WALLETS_CREATE,
                 Permission.WALLETS_READ,
                 Permission.WALLETS_CREDENTIALS_READ,
+                Permission.WALLETS_BACKUP,
+                Permission.WALLETS_RESTORE,
                 Permission.PRESENTATION_CHALLENGES_READ,
                 Permission.WALLET_KEY_CREATE,
                 Permission.WALLET_KEY_READ,

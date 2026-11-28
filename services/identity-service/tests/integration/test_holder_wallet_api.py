@@ -413,7 +413,7 @@ def test_wallet_challenge_presentation_flow_and_object_authorization(
     assert inventory.json()["credentials"][0]["credentialId"] == (
         credential["id"]
     )
-    assert hidden_wallet.status_code == 404
+    assert hidden_wallet.status_code == 403
     assert hidden_presentation.status_code == 404
     assert verifier_read.status_code == 200
     assert presentation["proof"]["audience"] == "secure-ssi-verifier"

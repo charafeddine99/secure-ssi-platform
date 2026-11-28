@@ -10,18 +10,32 @@ import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States
 import { IdentifierText } from "../../components/ui/IdentifierText.tsx";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { useToast } from "../../components/ui/toastContext.ts";
-import { CredentialCard } from "../../components/ssi/CredentialCard.tsx";
+import { CredentialCard, type IssuerTrust } from "../../components/ssi/CredentialCard.tsx";
+import { fetchPublicTrustedIssuers } from "../../api/admin.ts";
 import { QuickActions } from "../../components/ssi/QuickActions.tsx";
 import { useAuth } from "../../context/AuthContext.ts";
 import { useAsync } from "../../lib/useAsync.ts";
 import { describeError } from "../../lib/http.ts";
 import { formatDateTime, humanize } from "../../lib/format.ts";
 import { useHolderWallet } from "./useHolderWallet.ts";
+import { HolderReissuanceCard } from "../../components/ssi/ReissuanceCards.tsx";
 
 export const WalletDashboard: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
   const wallet = useHolderWallet();
+  // One registry read for all cards. A failed read leaves every issuer "unknown".
+  const registry = useAsync(() => fetchPublicTrustedIssuers(), []);
+  const trustFor = (issuer: string): IssuerTrust => {
+    if (registry.status !== "success") return { name: null, state: "UNKNOWN" };
+    const record = registry.data.find((r) => r.issuerDid === issuer);
+    if (!record) return { name: null, state: "NOT_LISTED" };
+    const state = record.trustStatus.toUpperCase();
+    return {
+      name: record.organizationName,
+      state: state === "ACTIVE" || state === "TRUSTED" ? "TRUSTED" : state === "SUSPENDED" ? "SUSPENDED" : state === "REVOKED" ? "REVOKED" : "UNKNOWN",
+    };
+  };
   const walletId = wallet.status === "success" ? wallet.data.walletId : null;
   const credentials = useAsync(
     () => (walletId ? fetchWalletCredentials(walletId) : new Promise<never>(() => undefined)),
@@ -132,8 +146,11 @@ export const WalletDashboard: React.FC = () => {
         </div>
       </div>
 
+      <HolderReissuanceCard />
+
       <section aria-labelledby="credentials-title">
-        <h2 id="credentials-title" className="h3 mb-3">Stored credentials</h2>
+        <h2 id="credentials-title" className="h3 mb-1">Stored credentials</h2>
+        <p className="text-secondary mb-3">To share one, scan the verifier&apos;s QR code with your phone camera, or press Present and paste the verifier&apos;s link. Cards carry no QR code.</p>
         {wallet.status !== "success" ? null : (
           <AsyncView state={credentials} onRetry={credentials.reload} loadingLabel="Loading credentials">
             {(items) => items.length === 0 ? (
@@ -142,7 +159,7 @@ export const WalletDashboard: React.FC = () => {
               </div>
             ) : (
               <Grid cols={3}>
-                {items.map((credential) => <CredentialCard key={credential.id} credential={credential} />)}
+                {items.map((credential) => <CredentialCard key={credential.id} credential={credential} trust={trustFor(credential.issuer)} />)}
               </Grid>
             )}
           </AsyncView>

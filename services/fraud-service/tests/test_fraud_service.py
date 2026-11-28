@@ -163,7 +163,7 @@ def test_manual_quarantine_and_release_lifecycle(monkeypatch):
     )
     assert stat_res.status_code == 200
     assert stat_res.json()["is_quarantined"] is True
-    assert stat_res.json()["effect_scope"] == "fraud-service-process-local"
+    assert stat_res.json()["effect_scope"] == "fraud-service-only"
 
     # 4. Karantinayı kaldır
     rel_res = client.delete(
@@ -171,7 +171,7 @@ def test_manual_quarantine_and_release_lifecycle(monkeypatch):
     )
     assert rel_res.status_code == 200
     assert rel_res.json()["status"] == "RELEASED"
-    assert rel_res.json()["effect_scope"] == "fraud-service-process-local"
+    assert rel_res.json()["effect_scope"] == "fraud-service-only"
 
 def test_model_stats_report_heuristic_status_without_model_metrics():
     response = client.get("/api/v1/fraud/stats")

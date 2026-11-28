@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.core.subject import subject_key
 from app.application.hybrid_detector import detector
 from app.core import security
 from app.core.config import CORS_ORIGINS
@@ -127,7 +128,7 @@ def test_holder_cannot_read_or_mutate_another_dids_admin_quarantine():
 
     admin_state = client.get(f"/api/v1/fraud/quarantine/{did}", headers=ADMIN_HEADERS)
     assert admin_state.status_code == 200
-    assert admin_state.json()["effect_scope"] == "fraud-service-process-local"
+    assert admin_state.json()["effect_scope"] == "fraud-service-only"
 
 
 def test_privileged_synthetic_metrics_require_admin():
@@ -180,7 +181,7 @@ def test_event_store_discards_raw_identifiers_and_purges_derived_state():
         },
     )
 
-    event = store._did_events["did:key:privacy-test"][0]
+    event = store._did_events[subject_key("did:key:privacy-test")][0]
     retained_repr = repr((event, store._known_devices, store._last_action_time))
     assert set(event) == {"event_type", "timestamp"}
     assert "raw-event-id-do-not-retain" not in retained_repr
@@ -190,16 +191,16 @@ def test_event_store_discards_raw_identifiers_and_purges_derived_state():
     assert "raw-metadata-do-not-retain" not in retained_repr
     assert all(
         "raw-device-fingerprint-do-not-retain" not in value
-        for value in store._known_devices["did:key:privacy-test"]
+        for value in store._known_devices[subject_key("did:key:privacy-test")]
     )
-    assert store._last_known_geo["did:key:privacy-test"] == (48.9, 2.4)
+    assert store._last_known_geo[subject_key("did:key:privacy-test")] == (48.9, 2.4)
     assert (48.8566, 2.3522) not in store._last_known_geo.values()
 
     store.get_features("did:key:privacy-test", current_timestamp=now + 11)
-    assert "did:key:privacy-test" not in store._did_events
-    assert "did:key:privacy-test" not in store._known_devices
-    assert "did:key:privacy-test" not in store._last_action_time
-    assert "did:key:privacy-test" not in store._last_known_geo
+    assert subject_key("did:key:privacy-test") not in store._did_events
+    assert subject_key("did:key:privacy-test") not in store._known_devices
+    assert subject_key("did:key:privacy-test") not in store._last_action_time
+    assert subject_key("did:key:privacy-test") not in store._last_known_geo
 
 
 def test_feature_store_bounds_event_and_did_cardinality():
@@ -214,7 +215,7 @@ def test_feature_store_bounds_event_and_did_cardinality():
             did="did:key:bounded",
             timestamp=now + index,
         )
-    assert len(store._did_events["did:key:bounded"]) == 2
+    assert len(store._did_events[subject_key("did:key:bounded")]) == 2
 
     store.ingest_event(
         event_id="event-other-1", event_type="LOGIN", did="did:key:other-1", timestamp=now
@@ -223,5 +224,5 @@ def test_feature_store_bounds_event_and_did_cardinality():
         event_id="event-other-2", event_type="LOGIN", did="did:key:other-2", timestamp=now
     )
     assert len(store._did_events) == 2
-    assert "did:key:bounded" not in store._did_events
+    assert subject_key("did:key:bounded") not in store._did_events
     assert "did:key:bounded" not in store._known_devices

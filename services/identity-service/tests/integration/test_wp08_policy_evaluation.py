@@ -16,6 +16,8 @@ additive policy layer; this test suite specifically validates:
 """
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -104,7 +106,7 @@ def _make_valid_vp_token(*, nonce: str, expired: bool = False) -> dict[str, Any]
     return build_signed_presentation(
         signed_vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 
@@ -141,7 +143,7 @@ def _make_invalid_sig_vp_token(*, nonce: str) -> dict[str, Any]:
     return build_signed_presentation(
         unsigned_vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 

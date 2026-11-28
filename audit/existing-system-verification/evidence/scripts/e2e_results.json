@@ -1,0 +1,930 @@
+{
+ "passed": 132,
+ "failed": 0,
+ "results": [
+  {
+   "area": "setup",
+   "name": "synthetic accounts seeded in the isolated database",
+   "status": null,
+   "pass": true,
+   "note": "5 created"
+  },
+  {
+   "area": "mfa",
+   "name": "status reports required and not enrolled",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "mfa",
+   "name": "enrollment refuses a wrong password",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "mfa",
+   "name": "seven principals enrolled through the real API",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "mfa",
+   "name": "a valid code is accepted",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "mfa",
+   "name": "the same code cannot be used twice",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "mfa",
+   "name": "replacing a factor needs the current code",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "issuer revokes c3 through the API",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "the revocation is in the dedicated ledger database",
+   "status": null,
+   "pass": true,
+   "note": "events=1"
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal can read",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal cannot update (database refuses)",
+   "status": null,
+   "pass": true,
+   "note": "update=DENIED:Unauthorized"
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal cannot replace (database refuses)",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal cannot delete (database refuses)",
+   "status": null,
+   "pass": true,
+   "note": "delete=DENIED:Unauthorized"
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal cannot drop the collection",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "ledger principal cannot drop the database",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "application principal cannot read the ledger",
+   "status": null,
+   "pass": true,
+   "note": "read=DENIED:Unauthorized"
+  },
+  {
+   "area": "ledger",
+   "name": "application principal cannot write the ledger",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "ledger count unchanged by those attempts",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "published list shows c3 revoked",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":200,\"bit\":true}"
+  },
+  {
+   "area": "ledger",
+   "name": "published list shows c1 not revoked",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "c1 is accepted before any attack",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 1: record deleted, bit stays revoked",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":200,\"bit\":true}"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 2: record and published list both gone, bit stays revoked",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":200,\"bit\":true}"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 3: stale ACTIVE record with current audit, bit stays revoked",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":200,\"bit\":true}"
+  },
+  {
+   "area": "ledger",
+   "name": "stale ACTIVE record cannot pass verification",
+   "status": null,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "ledger",
+   "name": "credential status reports REVOKED despite the stale record",
+   "status": 200,
+   "pass": true,
+   "note": "0"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 4: altered ledger gives no status at all",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":503,\"bit\":null}"
+  },
+  {
+   "area": "ledger",
+   "name": "verification fails closed while the ledger is altered",
+   "status": null,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "ledger",
+   "name": "restoring the original event restores status",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 4: rolled back ledger is detected by the anchor",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":503,\"bit\":null}"
+  },
+  {
+   "area": "ledger",
+   "name": "reinstating the event clears the rollback finding",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 6: replayed revocation adds no event",
+   "status": null,
+   "pass": true,
+   "note": "status=200"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 7: six concurrent revocations all succeed",
+   "status": null,
+   "pass": true,
+   "note": "200,200,200,200,200,200"
+  },
+  {
+   "area": "ledger",
+   "name": "scenario 7: sequence stays contiguous and unique",
+   "status": null,
+   "pass": true,
+   "note": "n=8"
+  },
+  {
+   "area": "ledger",
+   "name": "startup reconciliation repairs the stale record to REVOKED",
+   "status": null,
+   "pass": true,
+   "note": "REVOKED"
+  },
+  {
+   "area": "guardian",
+   "name": "policy change without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "client-invented step-up value is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "step-up for another action is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "allowSelfGuardian=true is rejected",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "M=1 is rejected",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "time-lock below the floor is rejected",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "valid 2-of-3 policy is saved",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "owner cannot invite themself",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "owner cannot register a DID for someone",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "invitation has no key and no authority",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "invitation challenge is not shown to the owner",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "another user cannot accept the invitation",
+   "status": 404,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "a DID without its private key is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "the server-side Guardian signer no longer exists",
+   "status": 405,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "the platform-held wallet DID cannot become a Guardian key",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "guardian A accepts with a key only they hold",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "guardian B accepts",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "two guardians cannot share a key",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "a guardian added after setup waits for activation",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "weakening the policy is scheduled, not applied",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "guardians get a durable notice of the scheduled change",
+   "status": null,
+   "pass": true,
+   "note": "n=3"
+  },
+  {
+   "area": "guardian",
+   "name": "notices say e-mail is not configured",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "after the delay guardian C is active",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "guardian",
+   "name": "direct key rotation without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "starting recovery without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "owner opens a request",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "risk service answered through a real service call",
+   "status": null,
+   "pass": true,
+   "note": "LOW/CLEAR"
+  },
+  {
+   "area": "recovery",
+   "name": "owner cannot approve their own request",
+   "status": 404,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "guardian decision without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "proof for another policy snapshot is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "a key that is not the Guardian's is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "first approval does not reach quorum",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "concurrent decisions are accepted or cleanly refused",
+   "status": null,
+   "pass": true,
+   "note": "200,200"
+  },
+  {
+   "area": "recovery",
+   "name": "quorum transition happens exactly once",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "recovery",
+   "name": "recovery completes after quorum and time-lock",
+   "status": null,
+   "pass": true,
+   "note": "COMPLETED"
+  },
+  {
+   "area": "recovery",
+   "name": "exactly one rotation was executed",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "session",
+   "name": "the old session is dead on Identity",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "session",
+   "name": "the old session is dead on Recovery",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "session",
+   "name": "the old session stays dead after restarting both services",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "session",
+   "name": "the owner can sign in again",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "session",
+   "name": "the wallet has a new DID",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "keys",
+   "name": "the predecessor key is COMPROMISED",
+   "status": null,
+   "pass": true,
+   "note": "COMPROMISED,ACTIVE"
+  },
+  {
+   "area": "keys",
+   "name": "a compromised key cannot be rotated directly",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "keys",
+   "name": "one administrator alone cannot compromise a key",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "keys",
+   "name": "an administrator cannot approve their own operation",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "keys",
+   "name": "a second administrator approves",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "keys",
+   "name": "approval for another key is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "risk",
+   "name": "fraud outage puts the request on hold",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "risk",
+   "name": "quorum plus time-lock does not rotate while held",
+   "status": null,
+   "pass": true,
+   "note": "READY_FOR_EXECUTION"
+  },
+  {
+   "area": "risk",
+   "name": "the DID has not changed during the hold",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "risk",
+   "name": "the holder cannot release their own hold",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "risk",
+   "name": "an administrator can uphold the hold and cancel",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "risk",
+   "name": "cancelled request left the key alone",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "credential backup without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "credential backup with step-up",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "the audit chain reports the deleted audit rows",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "archive previews with no server row and no audit trail",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "scenario 10: revoked credential stays revoked via the ledger alone",
+   "status": null,
+   "pass": true,
+   "note": "[\"RESTORABLE\",\"REVOKED\"]"
+  },
+  {
+   "area": "wallet",
+   "name": "valid credential is restorable from the standalone archive",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "restore without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "restore with step-up restores only the valid credential",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "wallet",
+   "name": "restored credential verifies",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "qr",
+   "name": "verifier QR is an http(s) link a camera can open",
+   "status": null,
+   "pass": true,
+   "note": "http://wallet.wp31.test/wallet/present?request=<handle>"
+  },
+  {
+   "area": "qr",
+   "name": "the QR holds no credential id, urn, DID, nonce or claim",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "client_id is a did:jwk verifier key, not an internal host",
+   "status": null,
+   "pass": true,
+   "note": "decentralized_identifier:did:jwk:eyJjcnY"
+  },
+  {
+   "area": "qr",
+   "name": "no internal host appears in the same-device link",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "the same-device link is a signed OID4VP authorization request",
+   "status": null,
+   "pass": true,
+   "note": "200 oauth-authz-req+jwt EdDSA signature=true"
+  },
+  {
+   "area": "qr",
+   "name": "every request gets a fresh nonce and handle",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "an unknown handle gives 404",
+   "status": 404,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "an anonymous caller cannot read a request",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "after a denial no presentation can be created",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "qr",
+   "name": "the full request to verdict path is accepted",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "qr",
+   "name": "a replayed presentation is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "holder asks for a credential bound to the old DID",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "a revoked credential cannot be requested",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "another holder cannot request it",
+   "status": 404,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the issuer sees the request",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the issuer never sees an offer link in the queue",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "a holder cannot approve it",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the issuer approves",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the holder receives the offer",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the new credential is claimed",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "it is bound to the new DID",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "it has a new id",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "reissue",
+   "name": "the re-issued credential verifies with the new key",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "password",
+   "name": "changing it without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "a wrong current password is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "a short new password is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "the password changes with step-up",
+   "status": 204,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "the old session is ended",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "the old password no longer works",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "password",
+   "name": "the new password works",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "trust",
+   "name": "adding an issuer without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "trust",
+   "name": "a token for another issuer is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "trust",
+   "name": "the issuer is added with step-up",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "trust",
+   "name": "suspending without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "trust",
+   "name": "suspending with step-up works",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  }
+ ]
+}

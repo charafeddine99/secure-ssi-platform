@@ -1,0 +1,206 @@
+{
+ "results": [
+  {
+   "name": "owner sets up an authenticator through the UI",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "owner registers a passkey through the real WebAuthn API",
+   "pass": true,
+   "note": "virtual authenticator"
+  },
+  {
+   "name": "policy saved after a passkey step-up",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "three guardians invited through the UI, no DID asked for",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g1 accepts with a key created in this browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g1 private key is non-extractable",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g2 accepts with a key created in this browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g2 private key is non-extractable",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g3 accepts with a key created in this browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g3 private key is non-extractable",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "page says account loss is not covered",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "recovery started from the UI with step-up",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g1 approves, signed in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "g2 approves, signed in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "admin page shows off-site and point-in-time as not configured",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "Create backup now clicked and succeeded",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "Verify clicked and succeeded",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "key rotated after quorum and time-lock",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "the browser session from before recovery was ended",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "page states the server can read credentials and no keys are included",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "Create and download clicked",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "downloaded file is encrypted",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "downloaded file has no key material",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "wrong passphrase rejected in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "tampered file rejected in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "unsupported version rejected in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "unknown archive field rejected in the browser",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "the credential card has no QR",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "the QR link opens the consent page with purpose and verifier",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "declining sends no presentation",
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "name": "a malformed handle shows a safe error",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "an unknown request does not open a consent form",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "a signed-out phone lands on sign-in",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "after sign-in the same request opens",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "restore starts from wiped browser storage and a new sign-in",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "revoked credential shown as revoked in the preview",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "valid credential back in the wallet",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "revoked credential not restored",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "the requester sees no Approve button for their own request",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "name": "a second administrator approves in the UI and gets a one-time token",
+   "pass": true,
+   "note": ""
+  }
+ ],
+ "consoleErrors": [],
+ "storageOrUrlFindings": []
+}

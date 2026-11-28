@@ -137,6 +137,55 @@ def test_proxy_does_not_forward_client_identity_or_internal_service_headers(monk
     ]
     assert not leaked, f"Untrusted context headers reached downstream: {leaked!r}"
 
+def _capture_forwarded(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"{}"
+        headers = {"content-type": "application/json"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, *, method, url, headers, **_kwargs):
+            captured.update({key.lower(): value for key, value in headers.items()})
+            return FakeResponse()
+
+    monkeypatch.setattr(proxy_routes.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    return captured
+
+
+def test_proxy_tells_services_the_address_the_caller_used(monkeypatch):
+    captured = _capture_forwarded(monkeypatch)
+    response = client.get(
+        "/api/v1/fraud/stats",
+        headers={"Host": "wallet.example.test:3000", "X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 200
+    assert captured["x-forwarded-host"] == "wallet.example.test:3000"
+    assert captured["x-forwarded-proto"] == "https"
+
+
+def test_proxy_never_passes_client_forwarded_host_through(monkeypatch):
+    captured = _capture_forwarded(monkeypatch)
+    response = client.get(
+        "/api/v1/fraud/stats",
+        headers={
+            "Host": "wallet.example.test",
+            "X-Forwarded-Host": "attacker.example",
+            "X-Forwarded-Proto": "javascript",
+        },
+    )
+    assert response.status_code == 200
+    assert captured["x-forwarded-host"] == "wallet.example.test"
+    assert captured["x-forwarded-proto"] in {"http", "https"}
+
+
 def test_correlation_id_middleware():
     # 1. Automatic generation
     res = client.get("/health")

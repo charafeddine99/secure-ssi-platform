@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Annotated, Any
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.api.v1.dependencies import (
+    get_step_up_service,
     get_trust_registry_service,
     require_permission,
 )
+from app.application.services.step_up_service import StepUpService
 from app.application.services.trust_registry_service import TrustRegistryService
 from app.domain.auth import AuthenticatedPrincipal
 from app.domain.permissions import Permission
@@ -99,7 +101,10 @@ def register_trusted_issuer(
         require_permission(Permission.TRUST_REGISTRY_WRITE)
     ),
     service: TrustRegistryService = Depends(get_trust_registry_service),
+    step_up_token: Annotated[str | None, Header(alias="X-Step-Up-Token")] = None,
+    step_up: StepUpService = Depends(get_step_up_service),
 ) -> TrustRecordResponse:
+    step_up.require(principal, step_up_token, action="trust.registry.write", resource=payload.issuer_did)
     roles = tuple(TrustRole(r) for r in payload.roles if r in TrustRole._value2member_map_)
     now = datetime.now(UTC)
     v_until = now + timedelta(days=payload.valid_days)
@@ -142,7 +147,10 @@ def update_trust_record(
         require_permission(Permission.TRUST_REGISTRY_WRITE)
     ),
     service: TrustRegistryService = Depends(get_trust_registry_service),
+    step_up_token: Annotated[str | None, Header(alias="X-Step-Up-Token")] = None,
+    step_up: StepUpService = Depends(get_step_up_service),
 ) -> TrustRecordResponse:
+    step_up.require(principal, step_up_token, action="trust.registry.write", resource=record_id)
     t_status = None
     if payload.trust_status:
         try:
@@ -200,7 +208,10 @@ def suspend_trusted_issuer(
         require_permission(Permission.TRUST_REGISTRY_WRITE)
     ),
     service: TrustRegistryService = Depends(get_trust_registry_service),
+    step_up_token: Annotated[str | None, Header(alias="X-Step-Up-Token")] = None,
+    step_up: StepUpService = Depends(get_step_up_service),
 ) -> TrustRecordResponse:
+    step_up.require(principal, step_up_token, action="trust.registry.write", resource=record_id)
     record = service.get_trust_record_by_id(record_id)
     if record is None:
         raise HTTPException(
@@ -234,7 +245,10 @@ def revoke_trusted_issuer(
         require_permission(Permission.TRUST_REGISTRY_WRITE)
     ),
     service: TrustRegistryService = Depends(get_trust_registry_service),
+    step_up_token: Annotated[str | None, Header(alias="X-Step-Up-Token")] = None,
+    step_up: StepUpService = Depends(get_step_up_service),
 ) -> TrustRecordResponse:
+    step_up.require(principal, step_up_token, action="trust.registry.write", resource=record_id)
     record = service.get_trust_record_by_id(record_id)
     if record is None:
         raise HTTPException(

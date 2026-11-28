@@ -1,0 +1,23 @@
+# The hung ui run of run_regression_fixup.sh (2026-11-23), as observed during the closeout
+## process (PowerShell Get-CimInstance, 19:57 +03:00)
+node.exe PID 29288 started 2026-11-23 18:53:33, command: node --experimental-strip-types scripts/wp31_ui.mjs <screenshot folder>
+headless msedge.exe PID 13024 started 18:53:33 with --remote-debugging-port=9397 (child of 29288), plus its utility, gpu and renderer processes
+ui.log: empty after 64 minutes (no PASS/FAIL line); the stage took 72 s on 21 November
+## DevTools /json on port 9397
+page http://localhost:29300/admin/intelligence | Security intelligence · Secure SSI Platform
+## second, read-only DevTools client (probe_devtools.mjs 9397)
+url: http://localhost:29300/admin/intelligence
+readyState: complete
+tabs: ["Overview*","Risk analysis","Attack analytics","Control coverage","Anomalies","Incidents","Model and data","Rules"]
+axe injected: undefined
+visibility: visible
+body length: 1439
+screenshot from a second client: ok (484872 b64 chars)
+## web app from outside
+GET http://localhost:29300/login -> 200 in 0.22 s; GET http://localhost:29300/admin/intelligence -> 200 in 0.22 s
+## conclusion
+The page was healthy and answered at once; the stage's own DevTools session had stopped receiving answers before its first check (axe never injected).
+The harness's timeout 2400 had not stopped the native node.exe after 64 minutes.
+## action (19:58 +03:00)
+taskkill /PID 29288 /T /F stopped node and its headless Edge tree (9 processes); afterwards no headless Edge on port 9397 was left.
+The fix-up chain recorded "closeout/ui: PASS 0 FAIL 0 exit=1 secs=3900"; scenarios and ui were then re-run by run_closeout_tail.sh (41/0 and 41/0).

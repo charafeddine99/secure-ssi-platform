@@ -113,6 +113,27 @@ def list_audit_logs_alias(
     )
 
 
+class AuditIntegrityResponse(BaseModel):
+    status: str
+    checked: int
+    unchained: int
+    first_broken_sequence: int | None = None
+
+
+@router.get("/audit/integrity", response_model=AuditIntegrityResponse)
+def get_audit_integrity(
+    audit_repo: Annotated[AuditEventRepository, Depends(get_audit_event_repository)],
+    _principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN_OPERATIONS_READ))],
+) -> AuditIntegrityResponse:
+    report = audit_repo.verify_chain()
+    return AuditIntegrityResponse(
+        status=report.status,
+        checked=report.checked,
+        unchained=report.unchained,
+        first_broken_sequence=report.first_broken_sequence,
+    )
+
+
 @router.get("/audit/stats")
 def get_audit_stats(
     audit_repo: Annotated[AuditEventRepository, Depends(get_audit_event_repository)],

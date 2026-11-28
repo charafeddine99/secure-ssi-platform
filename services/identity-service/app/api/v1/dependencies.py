@@ -2,7 +2,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from secrets import token_urlsafe
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
+
+from pymongo import MongoClient
+
+if TYPE_CHECKING:
+    from app.application.services.wallet_backup_service import WalletBackupService
 
 from fastapi import Depends, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -77,6 +82,12 @@ from app.config.holder_wallet_settings import (
     load_holder_wallet_settings,
 )
 from app.config.mongo_settings import MongoSettings, load_mongo_settings
+from app.config.environment_policy import is_production_like
+from app.config.signing_trust_settings import load_signing_trust_settings
+from app.config.step_up_settings import StepUpSettings, load_step_up_settings
+from app.config.revocation_ledger_settings import (
+    load_revocation_ledger_settings,
+)
 from app.config.key_management_settings import (
     ConfiguredKeyPolicy,
     KeyManagementSettings,
@@ -100,28 +111,56 @@ from app.infrastructure.auth.local_synthetic_user_provider import (
 from app.infrastructure.auth.runtime import SecureJtiGenerator, SystemClock
 from app.infrastructure.crypto.ed25519_signer import Ed25519CredentialSigner
 from app.infrastructure.crypto.jcs_canonicalizer import JcsCanonicalizer
-from app.infrastructure.crypto.local_issuer_key_provider import (
-    LocalIssuerKeyProvider,
-    SYNTHETIC_ISSUER_DID,
-)
+from app.infrastructure.crypto.synthetic_identity import SYNTHETIC_ISSUER_DID
 from app.infrastructure.crypto.local_issuer_signing_service import (
     LocalIssuerSigningService,
 )
-from app.infrastructure.crypto.local_holder_key_provider import (
-    LocalDevelopmentHolderSigner,
-    LocalHolderKeyProvider,
+from app.application.services.webauthn_service import (
+    WEBAUTHN_CHALLENGES_COLLECTION,
+    WEBAUTHN_CREDENTIALS_COLLECTION,
+    WebAuthnService,
+    load_webauthn_settings,
 )
-from app.infrastructure.key_management.development_provider import (
-    DevelopmentExternalKeyProvider,
+from app.application.services.reissuance_service import (
+    REISSUANCE_COLLECTION,
+    ReissuanceService,
 )
-from app.infrastructure.key_management.generic_remote_kms import (
-    EnvironmentBearerAuthentication,
-    GenericRemoteKmsAdapter,
-    NoProviderAuthentication,
-    UrllibKmsHttpTransport,
+from app.application.services.dual_control_service import (
+    DUAL_CONTROL_COLLECTION,
+    DualControlService,
+)
+from app.application.services.step_up_service import (
+    MFA_FACTORS_COLLECTION,
+    STEP_UP_TOKENS_COLLECTION,
+    StepUpService,
+)
+from app.infrastructure.auth.durable_token_revocation import (
+    SESSION_REVOCATIONS_COLLECTION,
+    MongoTokenRevocationStore,
+)
+from app.application.services.revocation_ledger_service import (
+    LedgerVerificationCache,
+    RevocationLedgerService,
+)
+from app.application.services.revocation_reconciliation_service import (
+    RevocationReconciliationService,
+)
+from app.infrastructure.persistence.revocation_ledger_anchor import (
+    FileLedgerAnchor,
+)
+from app.infrastructure.persistence.revocation_ledger_repository import (
+    REVOCATION_LEDGER_COLLECTION,
+    MongoRevocationLedgerRepository,
+    ensure_revocation_ledger_indexes,
+)
+from app.infrastructure.key_management.signing_trust import (
+    build_legacy_holder_keys,
+    build_remote_adapter,
+    build_signing_trust,
 )
 from app.infrastructure.persistence.connection import MongoConnectionManager
 from app.infrastructure.persistence.memory_db import MemoryConnectionManager
+from app.infrastructure.persistence.audit_chain import AuditChain, derive_chain_key
 from app.infrastructure.persistence.indexes import (
     AUDIT_EVENTS_COLLECTION,
     AUDIT_OUTBOX_COLLECTION,
@@ -204,16 +243,29 @@ _ISSUER_DID_FIXTURE = (
 _VALIDATOR = CredentialProfileValidator()
 _CANONICALIZER = JcsCanonicalizer()
 _SIGNER = Ed25519CredentialSigner()
-_KEY_PROVIDER = LocalIssuerKeyProvider()
-_HOLDER_KEY_PROVIDER = LocalHolderKeyProvider()
-_HOLDER_SIGNER = LocalDevelopmentHolderSigner(_HOLDER_KEY_PROVIDER)
+_KEY_MANAGEMENT_SETTINGS = load_key_management_settings()
+_SIGNING_TRUST_SETTINGS = load_signing_trust_settings()
+# Raises, and so stops startup, when a production-like process has no complete
+# KMS configuration. There is no fallback to a local key.
+_SIGNING_TRUST = build_signing_trust(
+    _SIGNING_TRUST_SETTINGS,
+    _KEY_MANAGEMENT_SETTINGS,
+)
+_KEY_PROVIDER = _SIGNING_TRUST.credential_provider
+_HOLDER_KEY_PROVIDER, _HOLDER_SIGNER = build_legacy_holder_keys(
+    _KEY_MANAGEMENT_SETTINGS.environment
+)
 _DID_RESOLUTION_SETTINGS = load_did_resolution_settings()
 # The platform's own issuer DID is pinned to its local document; only other
 # did:web identifiers use the network resolver (HTTPS, SSRF-checked, pinned IP).
 _DID_RESOLVER = CompositeDidResolver(
     {
         "web": PinnedDidWebResolver(
-            {SYNTHETIC_ISSUER_DID: _ISSUER_DID_FIXTURE},
+            (
+                {SYNTHETIC_ISSUER_DID: _ISSUER_DID_FIXTURE}
+                if _SIGNING_TRUST.uses_development_keys
+                else {}
+            ),
             fallback=DidWebResolver(
                 allow_insecure_http=_DID_RESOLUTION_SETTINGS.allow_insecure_http,
                 insecure_http_hosts=_DID_RESOLUTION_SETTINGS.insecure_http_hosts,
@@ -227,7 +279,6 @@ _MONGO_SETTINGS = load_mongo_settings()
 _STATUS_LIST_SETTINGS = load_status_list_settings()
 _AUDIT_OUTBOX_SETTINGS = load_audit_outbox_settings()
 _HOLDER_WALLET_SETTINGS = load_holder_wallet_settings()
-_KEY_MANAGEMENT_SETTINGS = load_key_management_settings()
 # When MongoDB is disabled (offline / host dev mode), use the in-memory adapter
 # so all collection reads return seeded demo data instead of raising 503.
 if _MONGO_SETTINGS.enabled:
@@ -247,7 +298,7 @@ _AUTHORIZATION_SERVICE = AuthorizationService()
 _STATUS_LIST_GENERATOR = StatusListDocumentGenerator(
     canonicalizer=_CANONICALIZER,
     signer=_SIGNER,
-    key_provider=_KEY_PROVIDER,
+    key_provider=_SIGNING_TRUST.status_provider,
 )
 
 bearer_scheme = HTTPBearer(
@@ -377,9 +428,15 @@ def get_audit_event_repository(
         get_mongo_connection_manager
     ),
 ) -> AuditEventRepository:
-    return MongoAuditEventRepository(
-        manager.database[AUDIT_EVENTS_COLLECTION]
-    )
+    return _chained_audit_repository(manager)
+
+
+def _chained_audit_repository(
+    manager: MongoConnectionManager,
+) -> MongoAuditEventRepository:
+    collection = manager.database[AUDIT_EVENTS_COLLECTION]
+    key = derive_chain_key(get_revocation_ledger_settings().mac_key)
+    return MongoAuditEventRepository(collection, AuditChain(collection, key))
 
 
 def get_status_list_entry_repository(
@@ -469,6 +526,84 @@ def get_optional_holder_wallet_repository(
     )
 
 
+_LEDGER_SETTINGS = load_revocation_ledger_settings()
+_STEP_UP_SETTINGS = load_step_up_settings()
+_WEBAUTHN_SETTINGS = load_webauthn_settings()
+_LEDGER_CACHE = LedgerVerificationCache()
+_LEDGER_CLIENT: MongoClient[dict[str, Any]] | None = None
+
+
+def get_revocation_ledger_settings():
+    return _LEDGER_SETTINGS
+
+
+def revocation_ledger_collection(manager: MongoConnectionManager) -> Any:
+    """The dedicated append-only principal when configured. Otherwise, in
+    development only, a collection in the application database."""
+    global _LEDGER_CLIENT
+    if _LEDGER_SETTINGS.uri is None:
+        return manager.database[REVOCATION_LEDGER_COLLECTION]
+    if _LEDGER_CLIENT is None:
+        _LEDGER_CLIENT = MongoClient(
+            _LEDGER_SETTINGS.uri,
+            serverSelectionTimeoutMS=3_000,
+            appname="secure-ssi-revocation-ledger",
+        )
+    return _LEDGER_CLIENT[_LEDGER_SETTINGS.database][
+        REVOCATION_LEDGER_COLLECTION
+    ]
+
+
+def build_revocation_ledger(
+    manager: MongoConnectionManager,
+    *,
+    clock: Clock,
+) -> RevocationLedgerService:
+    anchor = (
+        None
+        if _LEDGER_SETTINGS.anchor_path is None
+        else FileLedgerAnchor(
+            _LEDGER_SETTINGS.anchor_path,
+            mac_key=_LEDGER_SETTINGS.mac_key,
+        )
+    )
+    return RevocationLedgerService(
+        repository=MongoRevocationLedgerRepository(
+            revocation_ledger_collection(manager)
+        ),
+        mac_key=_LEDGER_SETTINGS.mac_key,
+        clock=clock,
+        anchor=anchor,
+        anchor_required=is_production_like(_LEDGER_SETTINGS.environment),
+        anchor_bootstrap=_LEDGER_SETTINGS.anchor_bootstrap,
+        cache=_LEDGER_CACHE,
+        full_verify_seconds=_LEDGER_SETTINGS.full_verify_seconds,
+    )
+
+
+def build_revocation_reconciliation(
+    manager: MongoConnectionManager,
+    *,
+    clock: Clock,
+) -> RevocationReconciliationService:
+    return RevocationReconciliationService(
+        ledger=build_revocation_ledger(manager, clock=clock),
+        credentials=manager.database[CREDENTIALS_COLLECTION],
+        clock=clock,
+    )
+
+
+def prepare_revocation_ledger(manager: MongoConnectionManager) -> None:
+    ensure_revocation_ledger_indexes(revocation_ledger_collection(manager))
+
+
+def get_revocation_ledger(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    clock: Clock = Depends(get_clock),
+) -> RevocationLedgerService:
+    return build_revocation_ledger(manager, clock=clock)
+
+
 def get_status_list_service(
     entry_repository: CredentialStatusEntryRepository = Depends(
         get_status_list_entry_repository
@@ -478,8 +613,12 @@ def get_status_list_service(
     ),
     settings: StatusListSettings = Depends(get_status_list_settings),
     clock: Clock = Depends(get_clock),
+    revocation_ledger: RevocationLedgerService = Depends(
+        get_revocation_ledger
+    ),
 ) -> StatusListService:
     return StatusListService(
+        revocation_ledger=revocation_ledger,
         entry_repository=entry_repository,
         status_list_repository=status_list_repository,
         generator=_STATUS_LIST_GENERATOR,
@@ -501,9 +640,7 @@ def build_audit_outbox_delivery_service(
             manager.database[AUDIT_OUTBOX_COLLECTION],
             manager.database[CREDENTIALS_COLLECTION],
         ),
-        audit_repository=MongoAuditEventRepository(
-            manager.database[AUDIT_EVENTS_COLLECTION]
-        ),
+        audit_repository=_chained_audit_repository(manager),
         settings=settings,
         clock=clock,
         metrics=INTERNAL_METRICS,
@@ -755,8 +892,12 @@ def get_credential_revocation_service(
         get_audit_event_repository
     ),
     clock: Clock = Depends(get_clock),
+    revocation_ledger: RevocationLedgerService = Depends(
+        get_revocation_ledger
+    ),
 ) -> CredentialRevocationService:
     return CredentialRevocationService(
+        revocation_ledger=revocation_ledger,
         revocation_repository=revocation_repository,
         status_list_service=status_list_service,
         audit_delivery_service=audit_delivery_service,
@@ -772,6 +913,75 @@ def get_access_token_service(
     return JwtAccessTokenService(settings)
 
 
+def get_token_revocation_store_for(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+) -> Any:
+    """Durable whenever MongoDB is on. The in-memory store is host-dev only."""
+    if not _MONGO_SETTINGS.enabled:
+        return None
+    return MongoTokenRevocationStore(
+        manager.database[SESSION_REVOCATIONS_COLLECTION]
+    )
+
+
+def get_signing_trust():
+    return _SIGNING_TRUST
+
+
+def get_key_providers() -> dict[str, ExternalKeyProvider]:
+    return _KEY_PROVIDERS
+
+
+def get_step_up_settings() -> StepUpSettings:
+    return _STEP_UP_SETTINGS
+
+
+def get_step_up_service(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    settings: AuthSettings = Depends(get_auth_settings),
+    clock: Clock = Depends(get_clock),
+) -> StepUpService:
+    return StepUpService(
+        factors=manager.database[MFA_FACTORS_COLLECTION],
+        tokens=manager.database[STEP_UP_TOKENS_COLLECTION],
+        settings=_STEP_UP_SETTINGS,
+        issuer=settings.jwt_issuer,
+        clock=clock,
+    )
+
+
+def build_dual_control_service(
+    manager: MongoConnectionManager,
+    *,
+    clock: Clock,
+) -> DualControlService:
+    return DualControlService(
+        operations=manager.database[DUAL_CONTROL_COLLECTION],
+        clock=clock,
+    )
+
+
+def get_webauthn_service(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    step_up: StepUpService = Depends(get_step_up_service),
+    clock: Clock = Depends(get_clock),
+) -> WebAuthnService:
+    return WebAuthnService(
+        credentials=manager.database[WEBAUTHN_CREDENTIALS_COLLECTION],
+        challenges=manager.database[WEBAUTHN_CHALLENGES_COLLECTION],
+        settings=_WEBAUTHN_SETTINGS,
+        step_up=step_up,
+        clock=clock,
+    )
+
+
+def get_dual_control_service(
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    clock: Clock = Depends(get_clock),
+) -> DualControlService:
+    return build_dual_control_service(manager, clock=clock)
+
+
 def get_authentication_service(
     settings: AuthSettings = Depends(get_auth_settings),
     user_provider: UserProvider = Depends(get_user_provider),
@@ -779,8 +989,10 @@ def get_authentication_service(
     token_service: AccessTokenService = Depends(get_access_token_service),
     clock: Clock = Depends(get_auth_clock),
     jti_generator: JtiGenerator = Depends(get_jti_generator),
+    revocation_store: Any = Depends(get_token_revocation_store_for),
 ) -> AuthenticationService:
     return AuthenticationService(
+        revocation_store=revocation_store,
         user_provider=user_provider,
         password_hasher=password_hasher,
         access_token_service=token_service,
@@ -1062,9 +1274,8 @@ def _provider_aware_holder_signer(
         providers=_KEY_PROVIDERS,
         legacy_provider=_HOLDER_KEY_PROVIDER,
         legacy_signer=_HOLDER_SIGNER,
-        allow_legacy_fallback=(
+        allow_legacy_fallback=not is_production_like(
             _KEY_MANAGEMENT_SETTINGS.environment
-            not in {"production", "prod", "staging"}
         ),
         metrics=INTERNAL_METRICS,
         audit_delivery_service=audit_delivery,
@@ -1079,34 +1290,17 @@ def _build_key_providers(
         settings.development_provider_enabled
         and "development" in settings.enabled_providers
     ):
+        from app.infrastructure.key_management.development_provider import (
+            DevelopmentExternalKeyProvider,
+        )
+
         development = DevelopmentExternalKeyProvider()
         providers[development.name] = development
     if settings.remote_provider_name in settings.enabled_providers:
-        authentication = (
-            NoProviderAuthentication()
-            if settings.remote_auth_token_env is None
-            else EnvironmentBearerAuthentication(
-                settings.remote_auth_token_env
-            )
-        )
-        remote = GenericRemoteKmsAdapter(
-            name=settings.remote_provider_name,
-            base_url=settings.remote_base_url or "",
-            transport=UrllibKmsHttpTransport(
-                tls_verify=settings.tls_verify,
-                client_certificate_path=(
-                    settings.client_certificate_path
-                ),
-                client_key_path=settings.client_key_path,
-            ),
-            authentication=authentication,
-            request_timeout_seconds=settings.request_timeout_seconds,
-            retry_count=settings.retry_count,
-            retry_backoff_ms=settings.retry_backoff_ms,
-            circuit_failure_threshold=(
-                settings.circuit_failure_threshold
-            ),
-            circuit_reset_seconds=settings.circuit_reset_seconds,
+        remote = build_remote_adapter(
+            settings,
+            token_environment_variable=settings.remote_auth_token_env,
+            client_purpose="holder-key-signing",
         )
         providers[remote.name] = remote
     return providers
@@ -1178,6 +1372,12 @@ def get_trust_registry_service(
     return service
 
 
+def _request_object_signer():
+    from app.config.request_object_settings import request_object_signer
+
+    return request_object_signer()
+
+
 def get_oid4vp_service(
     session_repo: VerificationSessionRepository = Depends(get_verification_session_repository),
     credential_repo: CredentialRepository = Depends(get_credential_repository),
@@ -1199,6 +1399,7 @@ def get_oid4vp_service(
         trust_registry_service=trust_registry_service,
         did_resolver=combined_resolver,
         canonicalizer=_CANONICALIZER,
+        request_signer=_request_object_signer(),
     )
 
 
@@ -1249,3 +1450,47 @@ def get_blockchain_bridge(
     # connectivity only. They must remain observable when MongoDB is down;
     # anchor read/write routes inject their repository separately.
     return BlockchainBridge()
+
+
+def get_reissuance_service(
+    wallets: HolderWalletService = Depends(get_holder_wallet_service),
+    credentials: CredentialRepository = Depends(get_credential_repository),
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    clock: Clock = Depends(get_clock),
+) -> ReissuanceService:
+    return ReissuanceService(
+        requests=manager.database[REISSUANCE_COLLECTION],
+        wallets=wallets,
+        credentials=credentials,
+        ledger=build_revocation_ledger(manager, clock=clock),
+        clock=clock,
+    )
+
+
+def get_wallet_backup_service(
+    wallets: HolderWalletService = Depends(get_holder_wallet_service),
+    credentials: CredentialRepository = Depends(get_credential_repository),
+    status_lists: Any = Depends(get_status_list_repository),
+    audits: Any = Depends(get_audit_event_repository),
+    manager: MongoConnectionManager = Depends(get_mongo_connection_manager),
+    clock: Clock = Depends(get_clock),
+    status_list_service: StatusListService = Depends(get_status_list_service),
+) -> "WalletBackupService":
+    from app.application.services.wallet_backup_service import WalletBackupService
+    from app.infrastructure.persistence.indexes import (
+        WALLET_BACKUPS_COLLECTION,
+        WALLET_RESTORE_JOBS_COLLECTION,
+    )
+
+    return WalletBackupService(
+        wallets=wallets,
+        credentials=credentials,
+        status_lists=status_lists,
+        proof_service=_credential_proof_service(clock=clock),
+        audits=audits,
+        backups=manager.database[WALLET_BACKUPS_COLLECTION],
+        restore_jobs=manager.database[WALLET_RESTORE_JOBS_COLLECTION],
+        clock=clock,
+        revocation_ledger=build_revocation_ledger(manager, clock=clock),
+        status_list_service=status_list_service,
+    )

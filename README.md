@@ -261,7 +261,7 @@ services/
   api-gateway/                 # Central routing reverse proxy
   identity-service/            # W3C VC 2.0, DID, Bitstring Status List, KMS
   fraud-service/               # Synthetic-input advisory risk heuristics
-  recovery-service/            # 3-of-5 Shamir social recovery
+  recovery-service/            # M-of-N Guardian approval quorum for wallet key recovery
 ```
 
 ---

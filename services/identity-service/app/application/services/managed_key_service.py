@@ -694,6 +694,7 @@ class ManagedKeyService:
         *,
         actor_id: str = "managed-key-reconciliation",
         correlation_id: str = "managed-key-reconciliation",
+        routine: bool = False,
     ) -> ManagedKey:
         now = self._now()
         claimed = self._keys.claim_reconciliation(
@@ -705,15 +706,39 @@ class ManagedKeyService:
         )
         if claimed is None:
             return self._keys.get(key.key_id) or key
-        self._audit.record(
-            AuditEventType.KEY_RECONCILIATION_CLAIMED,
-            key=claimed,
-            actor_id=actor_id,
-            correlation_id=correlation_id,
-            occurred_at=now,
+        # A routine background re-sync that changes nothing is counted in the
+        # metrics but not audited (F-14). State changes and failures are
+        # always audited, and the claim is then recorded first as before.
+        quiet_if_unchanged = (
+            routine and claimed.state in _ROUTINE_SYNC_STATES
         )
+        claim_recorded = False
+        if not quiet_if_unchanged:
+            self._record_reconciliation_claim(
+                claimed,
+                actor_id=actor_id,
+                correlation_id=correlation_id,
+                now=now,
+            )
+            claim_recorded = True
         try:
             reconciled = self._reconcile_claimed(claimed, now=now)
+            if quiet_if_unchanged and _only_sync_bookkeeping_changed(
+                claimed,
+                reconciled,
+            ):
+                if self._metrics is not None:
+                    self._metrics.record_key_reconciliation(succeeded=True)
+                self._observe_inventory()
+                return reconciled
+            if not claim_recorded:
+                self._record_reconciliation_claim(
+                    claimed,
+                    actor_id=actor_id,
+                    correlation_id=correlation_id,
+                    now=now,
+                )
+                claim_recorded = True
             self._audit.record(
                 AuditEventType.KEY_RECONCILIATION_COMPLETED,
                 key=reconciled,
@@ -738,6 +763,13 @@ class ManagedKeyService:
             self._observe_inventory()
             return reconciled
         except Exception as error:
+            if not claim_recorded:
+                self._record_reconciliation_claim(
+                    claimed,
+                    actor_id=actor_id,
+                    correlation_id=correlation_id,
+                    now=now,
+                )
             if isinstance(error, ProviderMetadataError):
                 self._audit.record(
                     AuditEventType.KEY_PROVIDER_MISMATCH,
@@ -798,7 +830,7 @@ class ManagedKeyService:
         failed = 0
         for key in candidates:
             try:
-                self.reconcile(key)
+                self.reconcile(key, routine=True)
                 succeeded += 1
             except (RepositoryError, ManagedKeyError):
                 failed += 1
@@ -994,6 +1026,22 @@ class ManagedKeyService:
         except RepositoryError:
             return
 
+    def _record_reconciliation_claim(
+        self,
+        claimed: ManagedKey,
+        *,
+        actor_id: str,
+        correlation_id: str,
+        now: datetime,
+    ) -> None:
+        self._audit.record(
+            AuditEventType.KEY_RECONCILIATION_CLAIMED,
+            key=claimed,
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+            occurred_at=now,
+        )
+
     def _reconcile_claimed(
         self,
         key: ManagedKey,
@@ -1111,6 +1159,7 @@ class ManagedKeyService:
             if now < grace_ends_at:
                 waiting = replace(
                     key,
+                    reconciliation_attempts=0,
                     reconciliation_lease_until=None,
                     last_provider_sync_at=now,
                     updated_at=now,
@@ -1193,8 +1242,11 @@ class ManagedKeyService:
                     failed,
                     expected_version=key.version,
                 )
+        # A successful sync ends the retry streak, so the retry limit counts
+        # consecutive failures, not every routine sync (F-15).
         synced = replace(
             key,
+            reconciliation_attempts=0,
             last_provider_sync_at=now,
             reconciliation_lease_until=None,
             updated_at=now,
@@ -1547,6 +1599,35 @@ def _provider_reference(key: ManagedKey) -> str:
             "Managed key provider reference is unavailable."
         )
     return key.provider_key_reference
+
+
+# Background re-syncs of keys in these states usually change nothing. A sync
+# that changes only bookkeeping is counted in the metrics but not audited.
+_ROUTINE_SYNC_STATES = frozenset(
+    {
+        ManagedKeyState.ACTIVE,
+        ManagedKeyState.ROTATING,
+        ManagedKeyState.FAILED,
+    }
+)
+
+
+def _only_sync_bookkeeping_changed(
+    before: ManagedKey,
+    after: ManagedKey,
+) -> bool:
+    """True when a reconciliation changed only the sync bookkeeping fields."""
+    return (
+        replace(
+            after,
+            updated_at=before.updated_at,
+            version=before.version,
+            reconciliation_attempts=before.reconciliation_attempts,
+            reconciliation_lease_until=before.reconciliation_lease_until,
+            last_provider_sync_at=before.last_provider_sync_at,
+        )
+        == before
+    )
 
 
 def _audit_id(

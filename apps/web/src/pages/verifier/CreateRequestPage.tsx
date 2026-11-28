@@ -118,7 +118,7 @@ export const CreateRequestPage: React.FC = () => {
           <div className="row row-cards row-deck">
             <div className="col-md-5">
               <Card className="h-100" title="Share with the holder" actions={<Badge tone={sessionTone(session.status)}>{humanize(session.status)}</Badge>}>
-                {session.status === "PENDING" ? <QrPanel value={session.qrPayload || session.deepLinkUri} label="OID4VP presentation request" /> : <p className="text-secondary mb-0">This request is closed.</p>}
+                {session.status === "PENDING" ? <><QrPanel value={session.qrPayload || session.deepLinkUri} label="OID4VP presentation request" />{!session.handoffUri && <Alert tone="warning" className="mt-3" title="Not for a phone camera">No public address is configured, so this code holds an openid4vp:// link. A phone camera cannot open it. Paste the link into Receive or share in the wallet.</Alert>}</> : <p className="text-secondary mb-0">This request is closed.</p>}
               </Card>
             </div>
             <div className="col-md-7">
@@ -138,6 +138,13 @@ export const CreateRequestPage: React.FC = () => {
                   { label: "Expires", value: formatDateTime(session.expiresAt) },
                   { label: "Holder decision", value: humanize(session.consentStatus || "PENDING") },
                 ]} />
+                {session.status === "PENDING" && session.deepLinkUri.includes("request_uri=") && (
+                  <div className="mt-3">
+                    <div className="small fw-semibold mb-1">Link for other OpenID4VP wallets</div>
+                    <p className="small text-secondary mb-1">Holds only the verifier key (client_id) and a request_uri. The wallet fetches the signed request from that address.</p>
+                    <code className="d-block small text-break" aria-label="openid4vp request link">{session.deepLinkUri}</code>
+                  </div>
+                )}
                 {pollError && <Alert tone="warning" title="Status refresh failed" className="mt-3">{pollError}</Alert>}
               </Card>
             </div>

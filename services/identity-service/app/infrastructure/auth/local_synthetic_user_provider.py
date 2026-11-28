@@ -4,9 +4,7 @@ from dataclasses import dataclass, field
 from app.application.ports.user_provider import AuthenticationRecord
 from app.domain.auth import User
 from app.domain.permissions import Role
-from app.infrastructure.crypto.local_issuer_key_provider import (
-    SYNTHETIC_ISSUER_DID,
-)
+from app.infrastructure.crypto.synthetic_identity import SYNTHETIC_ISSUER_DID
 
 
 _ADMIN_HASH = (

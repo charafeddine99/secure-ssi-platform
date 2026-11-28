@@ -1,0 +1,5 @@
+initial_gaps: PASS 38 FAIL 0 exit=0 secs=11
+initial_post: PASS 6 FAIL 9 exit=1 secs=220
+initial_onboarding: PASS 40 FAIL 0 exit=0 secs=97
+initial_scenarios: PASS 41 FAIL 0 exit=0 secs=400
+initial_oid4vp_security: PASS 16 FAIL 0 exit=0 secs=13

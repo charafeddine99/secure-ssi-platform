@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
@@ -14,7 +14,14 @@ from app.application.services.metrics import RecoveryMetrics
 from app.application.services.recovery_service import RecoveryService
 from app.core.config import load_settings
 from app.domain.auth import RecoveryPrincipal
-from app.domain.recovery import RecoveryNotFoundError, RecoveryReason
+from app.domain.recovery import (
+    RecoveryAuthorizationError,
+    RecoveryConflictError,
+    RecoveryNotFoundError,
+    RecoveryPersistenceError,
+    RecoveryReason,
+    policy_hash,
+)
 from app.infrastructure.persistence.memory_repository import (
     MemoryRecoveryRepository,
 )
@@ -63,6 +70,19 @@ class FakeManagedKeyGateway:
         self.disabled_keys: set[str] = set()
         self.active_key = "key_0000000000000001"
         self.active_did = "did:key:zOldRecoveryPublicKeyMaterial"
+        self.managed_dids: set[str] = set()
+        self.revoked_sessions: set[str] = set()
+        self.session_check_down = False
+
+    def require_unmanaged_did(self, *, did: str, user_id: str) -> None:
+        if did in self.managed_dids:
+            raise RecoveryConflictError("A Guardian key must not be held by the platform.")
+
+    def require_active_session(self, *, user_id, session_id, issued_at) -> None:
+        if self.session_check_down:
+            raise RecoveryPersistenceError("Identity session check is unavailable.")
+        if session_id in self.revoked_sessions:
+            raise RecoveryAuthorizationError("The session has been revoked.")
 
     def verify_wallet_owner(self, *, wallet_id: str, owner_user_id: str) -> None:
         if self.owners.get(wallet_id) != owner_user_id:
@@ -109,6 +129,21 @@ class FakeManagedKeyGateway:
         return signature == sha256(key_id.encode() + payload).digest()
 
 
+class FakeRiskGateway:
+    """Contract double for the fraud service; not a risk engine."""
+
+    def __init__(self) -> None:
+        self.level = "LOW"
+        self.failure: Exception | None = None
+        self.calls: list[str] = []
+
+    def assess_recovery(self, *, wallet_id: str, reason: str) -> str:
+        self.calls.append(wallet_id)
+        if self.failure is not None:
+            raise self.failure
+        return self.level
+
+
 @dataclass
 class TestRuntime:
     service: RecoveryService
@@ -121,6 +156,7 @@ class TestRuntime:
     guardians: tuple[RecoveryPrincipal, ...]
     guardian_dids: dict[str, str]
     guardian_signing_keys: dict[str, Ed25519PrivateKey]
+    risk: "FakeRiskGateway"
 
     def sign_decision(
         self,
@@ -146,6 +182,7 @@ class TestRuntime:
                 "walletId": request.wallet_id,
                 "decision": decision,
                 "challenge": challenge,
+                "policyHash": policy_hash(request),
                 "iat": issued_at,
                 "exp": issued_at + 120,
                 "jti": token_urlsafe(18),
@@ -158,13 +195,52 @@ class TestRuntime:
             },
         )
 
+    def sign_binding(
+        self,
+        *,
+        guardian_id: str,
+        key: Ed25519PrivateKey,
+        challenge: str | None = None,
+    ) -> tuple[str, str, str]:
+        """Returns (did, verification method, proof) for a key the Guardian holds."""
+        guardian = self.repository.get_guardian(guardian_id)
+        if guardian is None:
+            raise AssertionError("Guardian must exist in test runtime")
+        did = _did_key(key)
+        method = f"{did}#{did[len('did:key:'):]}"
+        issued_at = int(self.clock().timestamp())
+        proof = jwt.encode(
+            {
+                "iss": did,
+                "sub": guardian.guardian_id,
+                "aud": "secure-ssi-platform:guardian-recovery",
+                "walletId": guardian.wallet_id,
+                "challenge": challenge or guardian.invitation_challenge,
+                "iat": issued_at,
+                "exp": issued_at + 120,
+                "jti": token_urlsafe(18),
+            },
+            key,
+            algorithm="EdDSA",
+            headers={"typ": "guardian-binding+jwt", "kid": method},
+        )
+        return did, method, proof
+
 
 def build_runtime(repository: RecoveryRepository | None = None) -> TestRuntime:
     repository = repository or MemoryRecoveryRepository()
     gateway = FakeManagedKeyGateway()
     metrics = RecoveryMetrics()
     clock = MutableClock()
-    settings = load_settings({})
+    # Scenario tests pick their own M and time-lock. The floors have their own
+    # tests in test_wp29_guardian_security.py.
+    settings = replace(
+        load_settings({}),
+        minimum_approvals_floor=1,
+        time_lock_floor_seconds=0,
+        guardian_change_delay_seconds=0,
+    )
+    risk = FakeRiskGateway()
     service = RecoveryService(
         repository=repository,
         secret_sharing=PyCryptodomeSecretSharingProvider(b"R" * 32),
@@ -174,6 +250,7 @@ def build_runtime(repository: RecoveryRepository | None = None) -> TestRuntime:
         clock=clock,
         id_generator=Sequence(),
         worker_id="worker_recovery_test",
+        risk=risk,
     )
     owner = RecoveryPrincipal.from_claims(OWNER, ("holder",))
     admin = RecoveryPrincipal.from_claims("usr_local_admin", ("admin",))
@@ -202,6 +279,7 @@ def build_runtime(repository: RecoveryRepository | None = None) -> TestRuntime:
         guardians=guardians,
         guardian_dids=guardian_dids,
         guardian_signing_keys=guardian_signing_keys,
+        risk=risk,
     )
     # State-machine tests exercise the real verifier while keeping each test
     # focused on its scenario; API tests pass explicit request proofs.
@@ -263,6 +341,7 @@ def configure_guardians(
     count: int = 5,
     threshold: int = 3,
     time_lock_seconds: int = 10,
+    expiration_seconds: int = 1200,
 ) -> tuple[str, ...]:
     runtime.service.put_policy(
         runtime.owner,
@@ -271,26 +350,36 @@ def configure_guardians(
         maximum_guardians=count,
         approval_window_seconds=300,
         time_lock_seconds=time_lock_seconds,
-        recovery_expiration_seconds=1200,
+        recovery_expiration_seconds=expiration_seconds,
         maximum_attempts=3,
         cooldown_seconds=0,
         allow_cancellation=True,
     )
     ids = []
     for index, principal in enumerate(runtime.guardians[:count], start=1):
-        guardian = runtime.service.create_guardian(
-            runtime.owner,
-            wallet_id=WALLET_ID,
-            guardian_user_id=principal.user_id,
-            guardian_did=runtime.guardian_dids[principal.user_id],
-            display_name=f"Guardian {index}",
-            verification_method=(
-                f"{runtime.guardian_dids[principal.user_id]}#"
-                f"{runtime.guardian_dids[principal.user_id][len('did:key:'):]}"
-            ),
-        )
-        ids.append(guardian.guardian_id)
+        ids.append(enroll_guardian(runtime, principal, index).guardian_id)
     return tuple(ids)
+
+
+def enroll_guardian(runtime: TestRuntime, principal, index: int = 1):
+    """Invitation by the owner, then acceptance with the Guardian's own key."""
+    invited = runtime.service.create_guardian(
+        runtime.owner,
+        wallet_id=WALLET_ID,
+        guardian_user_id=principal.user_id,
+        display_name=f"Guardian {index}",
+    )
+    did, method, proof = runtime.sign_binding(
+        guardian_id=invited.guardian_id,
+        key=runtime.guardian_signing_keys[principal.user_id],
+    )
+    return runtime.service.accept_invitation(
+        principal,
+        invited.guardian_id,
+        guardian_did=did,
+        verification_method=method,
+        proof=proof,
+    )
 
 
 def _did_key(private_key: Ed25519PrivateKey) -> str:

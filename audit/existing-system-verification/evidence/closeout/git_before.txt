@@ -1,0 +1,8 @@
+# Git state before the closeout (2026-11-23T17:46:52+03:00)
+branch: besna-dev
+HEAD: 9fa97d75b4bec58fdcf5c59d4db26068143b5037 2026-11-03 14:41:33 +0100 fix: make a fresh docker compose stack fully usable out of the box
+commits since 2026-11-20: 0
+status entries: 240
+      1  D
+    134  M
+    105 ??

@@ -1,0 +1,17 @@
+# Read-only check: the running ISOLATED audit containers carry the audit fixes (2026-11-23T19:52:04+03:00)
+## images
+identity container audit-20261121-identity-service-1 image=87834a642fde created=2026-11-23T14:49:39.131645906Z project=audit-20261121
+gateway  container audit-20261121-api-gateway-1 image=c2145200452e created=2026-11-21T13:42:15.236244563Z project=audit-20261121
+## FIX-4/FIX-6 markers in /app/app/application/services/managed_key_service.py
+marker lines: 9
+reconciliation_attempts=0 lines: 2
+## FIX-5 markers in /app/app/tools/platform_restore_drill.py
+marker lines: 6
+## FIX-1 markers
+identity oid4vp.py forwarded-header lines: 2
+gateway proxy.py forwarded-header lines: 2
+## same files in the working tree (sha256 of LF content, first 12)
+services/identity-service/app/application/services/managed_key_service.py container=9f0be46be888 tree=9f0be46be888 SAME
+services/identity-service/app/tools/platform_restore_drill.py container=59f8ce151062 tree=59f8ce151062 SAME
+services/identity-service/app/api/v1/oid4vp.py container=d7b33a4e74a8 tree=d7b33a4e74a8 SAME
+services/api-gateway/app/api/routes/proxy.py container=db3893986143 tree=db3893986143 SAME

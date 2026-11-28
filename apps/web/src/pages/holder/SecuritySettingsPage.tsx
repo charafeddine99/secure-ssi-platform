@@ -8,6 +8,7 @@ import {
   fetchGuardians,
   fetchRecoveryPolicyStrict,
   fetchRecoveryRequests,
+  fetchRecoveryTimeline,
   initiateRecoveryRequest,
   removeGuardian,
   upsertRecoveryPolicy,
@@ -19,7 +20,7 @@ import {
 import type { HolderWallet } from "../../api/wallet.ts";
 import { fetchWalletKeys, type WalletKey } from "../../api/keys.ts";
 import { Grid, Page } from "../../components/ui/PageHeader.tsx";
-import { Card, Table } from "../../components/ui/Card.tsx";
+import { Card, DataGrid, Table } from "../../components/ui/Card.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Checkbox, SelectField, TextField } from "../../components/ui/Field.tsx";
 import { Alert } from "../../components/ui/Alert.tsx";
@@ -30,6 +31,9 @@ import type { BadgeTone } from "../../components/ui/tones.ts";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States.tsx";
 import { useToast } from "../../components/ui/toastContext.ts";
 import { RecoveryProgress } from "../../components/ssi/RecoveryProgress.tsx";
+import { RecoveryTimeline } from "../../components/ssi/RecoveryTimeline.tsx";
+import { RecoveryNotificationsCard } from "../../components/ssi/RecoveryNotificationsCard.tsx";
+import { useStepUp } from "../../components/ssi/stepUpContext.ts";
 import { useAsync } from "../../lib/useAsync.ts";
 import { describeError } from "../../lib/http.ts";
 import { formatDateTime, formatDuration, humanize } from "../../lib/format.ts";
@@ -64,13 +68,18 @@ export const SecuritySettingsPage: React.FC = () => {
       description="Guardians and recovery rules for your wallet."
       breadcrumbs={[{ label: "Wallet", to: "/wallet" }, { label: "Recovery and security" }]}
     >
-      <Alert tone="info" title="How wallet recovery works">
-        Your key is held by the platform. Completed recovery rotates it; approvals alone change nothing.
+      <Alert tone="info" title="What wallet key recovery does">
+        <ul className="mb-0 ps-3">
+          <li>Your wallet key is held by the platform. A completed recovery replaces it with a new key and DID, and signs out every session.</li>
+          <li>You must be able to sign in to start. If you cannot sign in at all, this page cannot help: full account recovery is not available yet.</li>
+          <li>Credentials issued to your old DID need re-issuing by their issuers. Recovery does not move them.</li>
+        </ul>
       </Alert>
       {wallet.status === "loading" && <div className="card"><LoadingState label="Opening your wallet" /></div>}
       {wallet.status === "error" && <div className="card"><ErrorState error={wallet.error} title="Your wallet could not be opened" onRetry={wallet.reload} /></div>}
       {wallet.status === "success" && <WalletKeysCard walletId={wallet.data.walletId} />}
       {wallet.status === "success" && <RecoverySettings wallet={wallet.data} />}
+      <RecoveryNotificationsCard />
     </Page>
   );
 };
@@ -85,10 +94,12 @@ const RecoverySettings: React.FC<{ wallet: HolderWallet }> = ({ wallet }) => {
   const { policy, guardians, requests } = data.data;
   const activeGuardians = guardians.filter((guardian) => guardian.status === "ACTIVE");
   const activeRequest = requests.find((request) => ACTIVE_RECOVERY_STATES.includes(request.status)) ?? null;
+  const latestClosed = activeRequest ? null : requests.find((request) => !ACTIVE_RECOVERY_STATES.includes(request.status)) ?? null;
 
   return (
     <>
       {activeRequest && <ActiveRecovery request={activeRequest} policy={policy} onChanged={() => { data.reload(); }} />}
+      {latestClosed && <LatestRecovery request={latestClosed} />}
       <Grid cols={2}>
         <PolicyCard walletId={wallet.walletId} policy={policy} onSaved={() => { toast("success", "Recovery policy saved."); data.reload(); }} />
         <GuardiansCard walletId={wallet.walletId} guardians={guardians} policy={policy} onChanged={data.reload} />
@@ -127,6 +138,7 @@ const PolicyCard: React.FC<{ walletId: string; policy: RecoveryPolicy | null; on
   const [errors, setErrors] = React.useState<Partial<Record<keyof PolicyForm, string>>>({});
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const withStepUp = useStepUp();
   const set = (key: keyof PolicyForm) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setForm((current) => ({ ...current, [key]: key === "allowCancellation" ? event.target.checked : event.target.value }));
 
@@ -138,7 +150,8 @@ const PolicyCard: React.FC<{ walletId: string; policy: RecoveryPolicy | null; on
     if (!result.policy) return;
     setSaving(true);
     try {
-      await upsertRecoveryPolicy(result.policy);
+      const next = result.policy;
+      await withStepUp("recovery.policy.update", walletId, (token) => upsertRecoveryPolicy(next, token));
       onSaved();
     } catch (error) {
       setSaveError(describeError(error));
@@ -153,9 +166,14 @@ const PolicyCard: React.FC<{ walletId: string; policy: RecoveryPolicy | null; on
       subtitle={policy ? `Version ${policy.version ?? 1}. Changes apply to future recovery requests.` : "No policy yet. Recovery cannot start until you save one."}
       actions={policy ? <Badge tone="success">Configured</Badge> : <Badge tone="warning">Not configured</Badge>}
     >
+      {policy?.pendingEffectiveAt && (
+        <Alert tone="warning" title="A weaker policy is scheduled" className="mb-3">
+          It takes effect on {formatDateTime(policy.pendingEffectiveAt)}. The current rules stay in force until then, and your guardians were told.
+        </Alert>
+      )}
       <form onSubmit={onSubmit} noValidate>
         <div className="row">
-          <TextField groupClassName="col-sm-6 mb-3" label="Required approvals (M)" type="number" min={1} max={32} value={form.minimumApprovals} onChange={set("minimumApprovals")} error={errors.minimumApprovals} required />
+          <TextField groupClassName="col-sm-6 mb-3" label="Required approvals (M)" type="number" min={2} max={32} value={form.minimumApprovals} onChange={set("minimumApprovals")} error={errors.minimumApprovals} required />
           <TextField groupClassName="col-sm-6 mb-3" label="Maximum guardians (N)" type="number" min={1} max={32} value={form.maximumGuardians} onChange={set("maximumGuardians")} error={errors.maximumGuardians} required />
           <TextField groupClassName="col-sm-6 mb-3" label="Approval window (hours)" type="number" min={0} step="any" value={form.approvalWindowHours} onChange={set("approvalWindowHours")} error={errors.approvalWindowHours} required />
           <TextField groupClassName="col-sm-6 mb-3" label="Time-lock after quorum (hours)" type="number" min={0} step="any" value={form.timeLockHours} onChange={set("timeLockHours")} error={errors.timeLockHours} required />
@@ -177,26 +195,27 @@ const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy:
   const toast = useToast();
   const [name, setName] = React.useState("");
   const [userId, setUserId] = React.useState("");
-  const [did, setDid] = React.useState("");
+  const withStepUp = useStepUp();
   const [adding, setAdding] = React.useState(false);
   const [addError, setAddError] = React.useState<string | null>(null);
   const [toRemove, setToRemove] = React.useState<Guardian | null>(null);
   const [removing, setRemoving] = React.useState(false);
   const active = guardians.filter((guardian) => guardian.status === "ACTIVE");
-  const atLimit = policy !== null && active.length >= policy.maximumGuardians;
+  const listed = guardians.filter((guardian) => guardian.status !== "REMOVED");
+  const atLimit = policy !== null && listed.length >= policy.maximumGuardians;
 
   const onAdd = async (event: React.FormEvent) => {
     event.preventDefault();
     setAddError(null);
-    if (!name.trim() || !userId.trim() || !did.trim().startsWith("did:")) {
-      setAddError("Enter the guardian's name, account ID and wallet DID (starting with did:). The guardian can find these on their wallet page.");
+    if (!name.trim() || !userId.trim()) {
+      setAddError("Enter the guardian's name and account ID.");
       return;
     }
     setAdding(true);
     try {
-      await addGuardian({ walletId, guardianUserId: userId, guardianDid: did, displayName: name });
-      setName(""); setUserId(""); setDid("");
-      toast("success", "Guardian added.");
+      await withStepUp("recovery.guardian.manage", walletId, (token) => addGuardian({ walletId, guardianUserId: userId, displayName: name }, token));
+      setName(""); setUserId("");
+      toast("success", "Invitation sent. They must accept it with their own key.");
       onChanged();
     } catch (error) {
       setAddError(describeError(error));
@@ -209,8 +228,9 @@ const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy:
     if (!toRemove) return;
     setRemoving(true);
     try {
-      await removeGuardian(toRemove.guardianId);
-      toast("success", "Guardian removed.");
+      const guardianId = toRemove.guardianId;
+      const removed = await withStepUp("recovery.guardian.manage", guardianId, (token) => removeGuardian(guardianId, token));
+      toast("success", removed.pendingEffectiveAt ? `Removal scheduled for ${formatDateTime(removed.pendingEffectiveAt)}.` : "Guardian removed.");
       setToRemove(null);
       onChanged();
     } catch (error) {
@@ -221,16 +241,20 @@ const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy:
   };
 
   return (
-    <Card title="Guardians" subtitle={`${active.length} active${policy ? ` of at most ${policy.maximumGuardians}` : ""}. Guardians must have their own platform account and wallet.`} flush>
-      {active.length === 0 ? <EmptyState title="No guardians yet" description="Add people you trust." /> : (
-        <ul className="list-group list-group-flush" aria-label="Active guardians">
-          {active.map((guardian) => (
+    <Card title="Guardians" subtitle={`${active.length} active${policy ? ` of at most ${policy.maximumGuardians}` : ""}. Each guardian needs their own account and accepts with a key only they hold.`} flush>
+      {listed.length === 0 ? <EmptyState title="No guardians yet" description="Invite people you trust." /> : (
+        <ul className="list-group list-group-flush" aria-label="Guardians">
+          {listed.map((guardian) => (
             <li key={guardian.guardianId} className="list-group-item">
               <div className="row align-items-center g-3">
                 <div className="col-auto"><span className="avatar avatar-sm bg-secondary-lt" aria-hidden="true">{guardian.displayName.slice(0, 1).toUpperCase()}</span></div>
                 <div className="col min-w-0">
-                  <div className="fw-medium">{guardian.displayName}</div>
-                  <div className="small text-secondary"><IdentifierText value={guardian.guardianDid} label="guardian DID" copy={false} /> · added {formatDateTime(guardian.createdAt)}</div>
+                  <div className="fw-medium">{guardian.displayName} <Badge tone={guardian.status === "ACTIVE" ? "success" : "warning"}>{humanize(guardian.status)}</Badge></div>
+                  <div className="small text-secondary">
+                    {guardian.guardianDid ? <IdentifierText value={guardian.guardianDid} label="guardian DID" copy={false} /> : "Waiting for them to accept"}
+                    {" · "}invited {formatDateTime(guardian.createdAt)}
+                    {guardian.pendingEffectiveAt && ` · change takes effect ${formatDateTime(guardian.pendingEffectiveAt)}`}
+                  </div>
                 </div>
                 <div className="col-auto">
                   <Button variant="ghost" size="sm" onClick={() => setToRemove(guardian)} icon={<IconTrash aria-hidden="true" />}>
@@ -243,13 +267,12 @@ const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy:
         </ul>
       )}
       <form className="card-body border-top" onSubmit={onAdd} noValidate aria-label="Add a guardian">
-        <h3 className="card-title mb-3">Add a guardian</h3>
+        <h3 className="card-title mb-3">Invite a guardian</h3>
         <TextField label="Display name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required autoComplete="off" />
         <TextField label="Guardian account ID" value={userId} onChange={(e) => setUserId(e.target.value)} required autoComplete="off" spellCheck={false} />
-        <TextField label="Guardian wallet DID" value={did} onChange={(e) => setDid(e.target.value)} required autoComplete="off" spellCheck={false} hint="Shown on the guardian's own wallet page." />
         {addError && <Alert tone="danger" live="assertive" title="Guardian not added" className="mb-3">{addError}</Alert>}
         {atLimit && <Alert tone="warning" className="mb-3">Your policy allows no more guardians. Raise the maximum first.</Alert>}
-        <Button type="submit" variant="secondary" loading={adding} disabled={atLimit} icon={<IconUserPlus aria-hidden="true" />}>Add guardian</Button>
+        <Button type="submit" variant="secondary" loading={adding} disabled={atLimit} icon={<IconUserPlus aria-hidden="true" />}>Send invitation</Button>
       </form>
       <ConfirmDialog
         open={toRemove !== null}
@@ -260,15 +283,15 @@ const GuardiansCard: React.FC<{ walletId: string; guardians: Guardian[]; policy:
         onConfirm={onRemove}
         onCancel={() => setToRemove(null)}
       >
-        <p>{toRemove?.displayName} will no longer be able to approve recovery for this wallet. Removal may be refused while a recovery request is active.</p>
+        <p>{toRemove?.displayName} will no longer be able to approve recovery for this wallet. Once recovery is set up, removal waits out a delay and your guardians are told. It is refused while a recovery request is active.</p>
       </ConfirmDialog>
     </Card>
   );
 };
 
 const REASONS: Array<{ value: RecoveryReason; label: string }> = [
-  { value: "LOST_ACCESS", label: "I lost access to my account" },
-  { value: "DEVICE_LOSS", label: "My device was lost or stolen" },
+  { value: "LOST_ACCESS", label: "I can sign in, but I no longer trust or reach my wallet key" },
+  { value: "DEVICE_LOSS", label: "A device I use was lost or stolen" },
   { value: "KEY_LOSS", label: "My key is no longer usable" },
   { value: "ACCOUNT_COMPROMISE", label: "I believe my account was compromised" },
 ];
@@ -280,6 +303,7 @@ const StartRecovery: React.FC<{ walletId: string; policy: RecoveryPolicy | null;
   const [confirming, setConfirming] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const withStepUp = useStepUp();
   const allowed = canInitiateRecovery(walletId, policy, activeGuardianCount, false);
   const blocker = !policy
     ? "Save a recovery policy first."
@@ -293,7 +317,7 @@ const StartRecovery: React.FC<{ walletId: string; policy: RecoveryPolicy | null;
     setBusy(true);
     setError(null);
     try {
-      await initiateRecoveryRequest({ walletId, reason });
+      await withStepUp("recovery.request.create", walletId, (token) => initiateRecoveryRequest({ walletId, reason }, token));
       setConfirming(false);
       onStarted();
     } catch (err) {
@@ -305,7 +329,7 @@ const StartRecovery: React.FC<{ walletId: string; policy: RecoveryPolicy | null;
   };
 
   return (
-    <Card title="Start recovery" subtitle="Only if you lost access or suspect compromise." status="danger">
+    <Card title="Start wallet key recovery" subtitle="Replaces your wallet key. You must be signed in to start." status="danger">
       <div className="row g-3 align-items-end">
         <div className="col-md-6">
           <SelectField groupClassName="mb-0" label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RecoveryReason)}>
@@ -323,7 +347,7 @@ const StartRecovery: React.FC<{ walletId: string; policy: RecoveryPolicy | null;
         </div>
       )}
       <ConfirmDialog open={confirming} title="Request wallet recovery?" confirmLabel="Request recovery" confirmVariant="danger" busy={busy} onConfirm={onConfirm} onCancel={() => setConfirming(false)}>
-        <p>Your guardians will be asked to approve. If {policy?.minimumApprovals ?? "the required number of"} approve, a time-lock of {formatDuration(policy?.timeLockSeconds ?? 0)} starts before the managed key is rotated.</p>
+        <p>Your guardians will be asked to approve. If {policy?.minimumApprovals ?? "the required number of"} approve, a time-lock of {formatDuration(policy?.timeLockSeconds ?? 0)} starts before the managed key is rotated. A risk check can also hold the rotation for human review. Completing recovery signs out all your sessions.</p>
       </ConfirmDialog>
     </Card>
   );
@@ -355,7 +379,15 @@ const ActiveRecovery: React.FC<{ request: RecoveryRequest; policy: RecoveryPolic
       subtitle={`Requested ${formatDateTime(request.createdAt)} · approvals close ${formatDateTime(request.approvalExpiresAt)}`}
       actions={<RecoveryStateBadge state={request.status} />}
     >
-      <RecoveryProgress request={request} />
+      {request.riskStatus === "ON_HOLD" && (
+        <Alert tone="warning" title="On hold for review" className="mb-3">
+          The risk check returned {humanize(request.riskLevel)}. The key will not rotate until a reviewer releases this request, even if your guardians approve.
+        </Alert>
+      )}
+      <div className="row g-4">
+        <div className="col-lg-6"><RecoveryProgress request={request} /></div>
+        <div className="col-lg-6"><TimelinePanel requestId={request.requestId} version={`${request.status}:${request.approvalsCount}`} /></div>
+      </div>
       <div className="btn-list mt-4">
         <Button variant="secondary" size="sm" onClick={onChanged}>Refresh</Button>
         {canCancel && <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>Cancel request</Button>}
@@ -366,6 +398,55 @@ const ActiveRecovery: React.FC<{ request: RecoveryRequest; policy: RecoveryPolic
     </Card>
   );
 };
+
+const TimelinePanel: React.FC<{ requestId: string; version: string }> = ({ requestId, version }) => {
+  const events = useAsync(() => fetchRecoveryTimeline(requestId), [requestId, version]);
+  return (
+    <>
+      <h3 className="h4">Timeline</h3>
+      {events.status === "loading" && <LoadingState label="Loading timeline" rows={2} />}
+      {events.status === "error" && <ErrorState error={events.error} title="The timeline is unavailable" onRetry={events.reload} />}
+      {events.status === "success" && <RecoveryTimeline events={events.data} />}
+    </>
+  );
+};
+
+const CLOSED_TEXT: Record<string, string> = {
+  REJECTED: "Your guardians rejected this request. No key was changed.",
+  CANCELLED: "This request was cancelled. No key was changed.",
+  EXPIRED: "This request expired before it could complete. No key was changed.",
+  FAILED: "Key rotation failed and was not applied. You can start a new request.",
+};
+
+/** The most recent finished request: success shows the rotation, never a "recovered" key. */
+const LatestRecovery: React.FC<{ request: RecoveryRequest }> = ({ request }) => (
+  <Card
+    title="Latest recovery request"
+    subtitle={`Requested ${formatDateTime(request.createdAt)}`}
+    actions={<RecoveryStateBadge state={request.status} />}
+    status={request.status === "COMPLETED" ? "success" : "secondary"}
+  >
+    <div className="row g-4">
+      <div className="col-lg-6">
+        {request.status === "COMPLETED" && request.result ? (
+          <>
+            <Alert tone="success" className="mb-3" title="Your wallet now uses a new key">
+              The old key was retired, not recovered. A new managed key and DID were issued on {formatDateTime(request.result.completedAt)}.
+              Credentials issued to the old DID stay verifiable as issued, but may need to be re-issued to the new DID.
+            </Alert>
+            <DataGrid items={[
+              { label: "New DID", value: <IdentifierText value={request.result.successorDid} label="new DID" /> },
+              { label: "Previous DID", value: <IdentifierText value={request.result.predecessorDid} label="previous DID" copy={false} /> },
+            ]} />
+          </>
+        ) : (
+          <Alert tone="info">{CLOSED_TEXT[request.status] ?? "This request is closed."}</Alert>
+        )}
+      </div>
+      <div className="col-lg-6"><TimelinePanel requestId={request.requestId} version={request.status} /></div>
+    </div>
+  </Card>
+);
 
 // Mirrors ManagedKeyState in services/identity-service/app/domain/managed_key.py.
 const KEY_STATE_TONE: Record<string, BadgeTone> = {
@@ -380,7 +461,7 @@ const KEY_STATE_TONE: Record<string, BadgeTone> = {
   FAILED: "danger",
 };
 
-/** Read-only view of the wallet's signing keys. Lifecycle changes happen through recovery only. */
+/** Read-only view of the wallet's signing keys. A compromised key can only be replaced through recovery. */
 const WalletKeysCard: React.FC<{ walletId: string }> = ({ walletId }) => {
   const keys = useAsync<WalletKey[]>(() => fetchWalletKeys(walletId), [walletId]);
   return (

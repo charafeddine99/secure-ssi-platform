@@ -1,5 +1,17 @@
 # Guardian-Based Account Recovery
 
+> **Read this first (WP-29).** This is an M-of-N Guardian *approval quorum* for
+> replacing a platform-held wallet key. It is not threshold key custody: every
+> Shamir share below stays on the server, so Shamir here is an internal
+> authorization mechanism and gives Guardians no key material. Guardians accept
+> an invitation and sign decisions with a key created in their own browser, and
+> the platform cannot sign for them. Recovery starts from a signed-in account;
+> recovery for someone who cannot sign in is not implemented. Audit collections
+> are ordinary MongoDB collections: where this text says "append-only" or
+> "immutable" it describes how the application writes, not a storage guarantee.
+> The revocation ledger is the one exception with database-enforced append-only
+> permissions, and it is tamper-evident, not WORM.
+
 ## Scope and assurance statement
 
 This sprint implements the Recovery Service application boundary for

@@ -15,6 +15,8 @@ export const IDENTITY_PERMISSIONS = [
   "wallets:create",
   "wallets:read",
   "wallets:credentials:read",
+  "wallets:backup",
+  "wallets:restore",
   "presentation-challenges:create",
   "presentation-challenges:read",
   "wallet:key:create",
@@ -30,8 +32,12 @@ export const IDENTITY_PERMISSIONS = [
   "admin:operations:read",
   "admin:users:read",
   "admin:users:write",
+  "admin:backup:read",
+  "admin:backup:write",
+  "admin:incidents:write",
   "trust-registry:read",
   "trust-registry:write",
+  "trust-review:decide",
 ] as const;
 
 export type IdentityPermission = typeof IDENTITY_PERMISSIONS[number];

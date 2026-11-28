@@ -31,7 +31,7 @@ export const CredentialTemplatesPage: React.FC = () => {
                   as="article"
                   headingLevel={2}
                   title={config.display?.[0]?.name ?? humanize(id)}
-                  subtitle={<code>{id}</code>}
+                  subtitle={<code className="text-break">{id}</code>}
                   actions={<Badge tone="brand">{config.format ?? "unknown format"}</Badge>}
                   footer={<ButtonLink to={`/issuer/issue?credentialConfigurationId=${encodeURIComponent(id)}`} variant="secondary" size="sm" icon={<IconArrowRight aria-hidden="true" />}>Create offer</ButtonLink>}
                 >
@@ -47,7 +47,7 @@ export const CredentialTemplatesPage: React.FC = () => {
           );
         }}
       </AsyncView>
-      <p className="small text-secondary mb-0">Credential issuer: <code>{metadata.status === "success" ? metadata.data.credential_issuer : "…"}</code></p>
+      <p className="small text-secondary mb-0">Credential issuer: <code className="text-break">{metadata.status === "success" ? metadata.data.credential_issuer : "…"}</code></p>
     </Page>
   );
 };

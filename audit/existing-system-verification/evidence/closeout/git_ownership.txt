@@ -1,0 +1,252 @@
+# Ownership of the 240 uncommitted entries (git status --porcelain), 2026-11-23
+
+## AUDIT (new file or folder): 3
+?? audit/
+?? services/identity-service/tests/unit/test_audit_forwarded_origin.py
+?? services/identity-service/tests/unit/test_platform_restore_drill_source_check.py
+
+## AUDIT (all changes are FIX-4/6): 2
+ M services/identity-service/app/application/services/managed_key_service.py   [21-Nov snapshot: 'clean']
+ M services/identity-service/tests/unit/test_managed_key_service.py   [21-Nov snapshot: 'clean']
+
+## MIXED (pre-audit WP work + audit fix): 5
+ M .env.example   [21-Nov snapshot: ' M']
+ M docker-compose.yml   [21-Nov snapshot: ' M']
+ M services/api-gateway/app/api/routes/proxy.py   [21-Nov snapshot: ' M']
+ M services/api-gateway/tests/test_gateway.py   [21-Nov snapshot: ' M']
+ M services/identity-service/app/api/v1/oid4vp.py   [21-Nov snapshot: ' M']
+
+## WP-28..32 (pre-audit, not touched by the audit): 230
+ M README.md
+ M apps/web/nginx.conf
+ M apps/web/package-lock.json
+ M apps/web/package.json
+ M apps/web/src/App.tsx
+ M apps/web/src/api/admin.ts
+ M apps/web/src/api/presentation.ts
+ M apps/web/src/api/recovery.ts
+ M apps/web/src/api/session.ts
+ M apps/web/src/components/ssi/CredentialCard.tsx
+ M apps/web/src/components/ssi/VerificationMatrix.tsx
+ M apps/web/src/layouts/AppShell.tsx
+ M apps/web/src/layouts/PublicLayout.tsx
+ M apps/web/src/pages/admin/AdminDashboard.tsx
+ M apps/web/src/pages/admin/AdminUsersPage.tsx
+ D apps/web/src/pages/admin/AiFraudMonitorPage.tsx
+ M apps/web/src/pages/admin/AuditExplorerPage.tsx
+ M apps/web/src/pages/admin/TrustRegistryPage.tsx
+ M apps/web/src/pages/guardian/ApproveRecoveryPage.tsx
+ M apps/web/src/pages/guardian/GuardianDashboard.tsx
+ M apps/web/src/pages/holder/CredentialDetailPage.tsx
+ M apps/web/src/pages/holder/ScanQrPage.tsx
+ M apps/web/src/pages/holder/SecuritySettingsPage.tsx
+ M apps/web/src/pages/holder/WalletDashboard.tsx
+ M apps/web/src/pages/holder/recoveryPolicyForm.ts
+ M apps/web/src/pages/issuer/CredentialTemplatesPage.tsx
+ M apps/web/src/pages/issuer/RevocationRegistryPage.tsx
+ M apps/web/src/pages/public/ArchitectureDocsPage.tsx
+ M apps/web/src/pages/public/LandingPage.tsx
+ M apps/web/src/pages/public/LoginPage.tsx
+ M apps/web/src/pages/verifier/CreateRequestPage.tsx
+ M apps/web/src/routes/AppRoutes.tsx
+ M apps/web/src/routes/navigation.ts
+ M apps/web/src/styles/app.css
+ M apps/web/src/styles/tokens.css
+ M apps/web/src/utils/oid4vpRequestUri.ts
+ M apps/web/tests/oid4vpRequestUri_contract.test.ts
+ M apps/web/tests/recoveryApi_contract.test.ts
+ M docs/account-recovery.md
+ M infrastructure/mongodb/init-application-user.js
+ M services/api-gateway/app/core/middleware.py
+ M services/api-gateway/app/main.py
+ M services/api-gateway/requirements.txt
+ M services/fraud-service/Dockerfile
+ M services/fraud-service/app/api/routes/fraud.py
+ M services/fraud-service/app/application/hybrid_detector.py
+ M services/fraud-service/app/core/security.py
+ M services/fraud-service/app/main.py
+ M services/fraud-service/app/ml/feature_store.py
+ M services/fraud-service/app/schemas/fraud.py
+ M services/fraud-service/requirements.txt
+ M services/fraud-service/tests/test_fraud_service.py
+ M services/fraud-service/tests/test_security_controls.py
+ M services/identity-service/Dockerfile
+ M services/identity-service/app/api/internal/recovery.py
+ M services/identity-service/app/api/v1/audit.py
+ M services/identity-service/app/api/v1/auth.py
+ M services/identity-service/app/api/v1/dependencies.py
+ M services/identity-service/app/api/v1/error_handlers.py
+ M services/identity-service/app/api/v1/managed_keys.py
+ M services/identity-service/app/api/v1/request_safety.py
+ M services/identity-service/app/api/v1/router.py
+ M services/identity-service/app/api/v1/trust_registry.py
+ M services/identity-service/app/api/v1/wallets.py
+ M services/identity-service/app/application/ports/repositories.py
+ M services/identity-service/app/application/services/authentication_service.py
+ M services/identity-service/app/application/services/credential_revocation_service.py
+ M services/identity-service/app/application/services/oid4vp_service.py
+ M services/identity-service/app/application/services/status_list_service.py
+ M services/identity-service/app/config/auth_settings.py
+ M services/identity-service/app/config/key_management_settings.py
+ M services/identity-service/app/domain/auth.py
+ M services/identity-service/app/domain/permissions.py
+ M services/identity-service/app/domain/persistence.py
+ M services/identity-service/app/domain/presentation.py
+ M services/identity-service/app/infrastructure/auth/local_synthetic_user_provider.py
+ M services/identity-service/app/infrastructure/auth/token_revocation.py
+ M services/identity-service/app/infrastructure/clients/fraud_client.py
+ M services/identity-service/app/infrastructure/crypto/local_holder_key_provider.py
+ M services/identity-service/app/infrastructure/crypto/local_issuer_key_provider.py
+ M services/identity-service/app/infrastructure/key_management/development_provider.py
+ M services/identity-service/app/infrastructure/key_management/generic_remote_kms.py
+ M services/identity-service/app/infrastructure/persistence/indexes.py
+ M services/identity-service/app/infrastructure/persistence/repositories.py
+ M services/identity-service/app/lifecycle.py
+ M services/identity-service/app/main.py
+ M services/identity-service/app/schemas/holder_wallet_api.py
+ M services/identity-service/app/schemas/oid4_api.py
+ M services/identity-service/requirements.txt
+ M services/identity-service/tests/integration/test_auth_api.py
+ M services/identity-service/tests/integration/test_consent_and_privacy.py
+ M services/identity-service/tests/integration/test_golden_path.py
+ M services/identity-service/tests/integration/test_holder_wallet_api.py
+ M services/identity-service/tests/integration/test_oid4_protocols.py
+ M services/identity-service/tests/integration/test_oid4vp_ai_policy_matrix.py
+ M services/identity-service/tests/integration/test_wp01_fail_closed_verification.py
+ M services/identity-service/tests/integration/test_wp04_oid4vp_dcql.py
+ M services/identity-service/tests/integration/test_wp05_oid4vci_token_and_proof.py
+ M services/identity-service/tests/integration/test_wp08_policy_evaluation.py
+ M services/identity-service/tests/integration/test_wp08_remediation_status_security.py
+ M services/identity-service/tests/unit/test_auth_domain.py
+ M services/identity-service/tests/unit/test_managed_key_domain_and_adapters.py
+ M services/identity-service/tests/unit/test_mongo_repositories.py
+ M services/recovery-service/app/api/dependencies.py
+ M services/recovery-service/app/api/routes/guardians.py
+ M services/recovery-service/app/api/routes/recovery.py
+ M services/recovery-service/app/application/ports/managed_keys.py
+ M services/recovery-service/app/application/ports/repositories.py
+ M services/recovery-service/app/application/services/guardian_proof.py
+ M services/recovery-service/app/application/services/recovery_service.py
+ M services/recovery-service/app/core/config.py
+ M services/recovery-service/app/domain/auth.py
+ M services/recovery-service/app/domain/recovery.py
+ M services/recovery-service/app/infrastructure/auth/jwt_authenticator.py
+ M services/recovery-service/app/infrastructure/managed_keys/identity_gateway.py
+ M services/recovery-service/app/infrastructure/persistence/indexes.py
+ M services/recovery-service/app/infrastructure/persistence/mappers.py
+ M services/recovery-service/app/infrastructure/persistence/memory_repository.py
+ M services/recovery-service/app/infrastructure/persistence/mongo_repository.py
+ M services/recovery-service/app/runtime.py
+ M services/recovery-service/app/schemas/recovery_api.py
+ M services/recovery-service/requirements.txt
+ M services/recovery-service/tests/fake_mongo.py
+ M services/recovery-service/tests/integration/test_recovery_api.py
+ M services/recovery-service/tests/integration/test_social_recovery_golden_path.py
+ M services/recovery-service/tests/support.py
+ M services/recovery-service/tests/unit/test_recovery_config.py
+ M services/recovery-service/tests/unit/test_recovery_service.py
+?? UsersbesnaAppDataLocalTempsecure-ssi-root-audit-0f9c514d1e954437805097268207189e/
+?? apps/web/src/api/intelligence.ts
+?? apps/web/src/api/platformBackup.ts
+?? apps/web/src/api/registration.ts
+?? apps/web/src/api/reissuance.ts
+?? apps/web/src/api/stepUp.ts
+?? apps/web/src/api/walletBackup.ts
+?? apps/web/src/components/ssi/AccountSecurityCards.tsx
+?? apps/web/src/components/ssi/AuthenticatorCard.tsx
+?? apps/web/src/components/ssi/OnboardingCards.tsx
+?? apps/web/src/components/ssi/RecoveryNotificationsCard.tsx
+?? apps/web/src/components/ssi/RecoveryTimeline.tsx
+?? apps/web/src/components/ssi/ReissuanceCards.tsx
+?? apps/web/src/components/ssi/StepUpProvider.tsx
+?? apps/web/src/components/ssi/stepUpContext.ts
+?? apps/web/src/lib/guardianDeviceKey.ts
+?? apps/web/src/lib/walletBackupCrypto.ts
+?? apps/web/src/lib/webauthnClient.ts
+?? apps/web/src/pages/AccountSecurityPage.tsx
+?? apps/web/src/pages/admin/DualControlPanel.tsx
+?? apps/web/src/pages/admin/PlatformBackupPage.tsx
+?? apps/web/src/pages/admin/RecoveryOversightPage.tsx
+?? apps/web/src/pages/admin/SecurityIntelligencePage.tsx
+?? apps/web/src/pages/guardian/GuardianEnrollment.tsx
+?? apps/web/src/pages/holder/PresentRequestHandoff.tsx
+?? apps/web/src/pages/holder/WalletBackupPage.tsx
+?? apps/web/src/pages/public/RegisterPage.tsx
+?? apps/web/src/utils/cardStatus.ts
+?? apps/web/src/utils/scanInput.ts
+?? apps/web/tests/cardStatus.test.ts
+?? apps/web/tests/resolveRequestBody_contract.test.ts
+?? apps/web/tests/scanInput.test.ts
+?? apps/web/tests/walletBackupCrypto.test.ts
+?? research/
+?? services/api-gateway/app/core/telemetry.py
+?? services/api-gateway/tests/test_wp31_telemetry.py
+?? services/fraud-service/app/api/routes/intelligence.py
+?? services/fraud-service/app/core/subject.py
+?? services/fraud-service/app/intelligence/
+?? services/fraud-service/tests/intel_fake.py
+?? services/fraud-service/tests/test_wp30_quarantine_durability.py
+?? services/fraud-service/tests/test_wp31_intelligence.py
+?? services/identity-service/app/api/v1/account_lifecycle.py
+?? services/identity-service/app/api/v1/platform_backups.py
+?? services/identity-service/app/api/v1/readiness.py
+?? services/identity-service/app/api/v1/registration.py
+?? services/identity-service/app/api/v1/step_up.py
+?? services/identity-service/app/api/v1/wallet_backups.py
+?? services/identity-service/app/application/services/dual_control_service.py
+?? services/identity-service/app/application/services/platform_backup_scheduler.py
+?? services/identity-service/app/application/services/platform_backup_service.py
+?? services/identity-service/app/application/services/readiness_service.py
+?? services/identity-service/app/application/services/reissuance_service.py
+?? services/identity-service/app/application/services/request_uri_resolver.py
+?? services/identity-service/app/application/services/revocation_ledger_service.py
+?? services/identity-service/app/application/services/revocation_reconciliation_service.py
+?? services/identity-service/app/application/services/security_event_forwarder.py
+?? services/identity-service/app/application/services/step_up_service.py
+?? services/identity-service/app/application/services/wallet_backup_service.py
+?? services/identity-service/app/application/services/webauthn_service.py
+?? services/identity-service/app/config/environment_policy.py
+?? services/identity-service/app/config/public_origin_settings.py
+?? services/identity-service/app/config/request_object_settings.py
+?? services/identity-service/app/config/revocation_ledger_settings.py
+?? services/identity-service/app/config/signing_trust_settings.py
+?? services/identity-service/app/config/step_up_settings.py
+?? services/identity-service/app/domain/password_policy.py
+?? services/identity-service/app/domain/request_object.py
+?? services/identity-service/app/domain/revocation_ledger.py
+?? services/identity-service/app/infrastructure/auth/durable_token_revocation.py
+?? services/identity-service/app/infrastructure/clients/request_uri_fetcher.py
+?? services/identity-service/app/infrastructure/crypto/development_guard.py
+?? services/identity-service/app/infrastructure/crypto/synthetic_identity.py
+?? services/identity-service/app/infrastructure/key_management/backup_key_wrapper.py
+?? services/identity-service/app/infrastructure/key_management/remote_issuer_key_provider.py
+?? services/identity-service/app/infrastructure/key_management/signing_trust.py
+?? services/identity-service/app/infrastructure/persistence/audit_chain.py
+?? services/identity-service/app/infrastructure/persistence/revocation_ledger_anchor.py
+?? services/identity-service/app/infrastructure/persistence/revocation_ledger_repository.py
+?? services/identity-service/app/tools/
+?? services/identity-service/tests/integration/test_wp32_request_uri.py
+?? services/identity-service/tests/unit/test_account_onboarding_rules.py
+?? services/identity-service/tests/unit/test_wp28_platform_backup_archive.py
+?? services/identity-service/tests/unit/test_wp28_wallet_backup_service.py
+?? services/identity-service/tests/unit/test_wp29_key_trust_gates.py
+?? services/identity-service/tests/unit/test_wp29_platform_backup_scope.py
+?? services/identity-service/tests/unit/test_wp29_revocation_ledger.py
+?? services/identity-service/tests/unit/test_wp29_step_up_sessions_dual_control.py
+?? services/identity-service/tests/unit/test_wp30_anchor_is_not_authority.py
+?? services/identity-service/tests/unit/test_wp30_audit_chain.py
+?? services/identity-service/tests/unit/test_wp30_fraud_minimisation.py
+?? services/identity-service/tests/unit/test_wp30_public_origin_and_qr.py
+?? services/identity-service/tests/unit/test_wp30_reissuance_and_webauthn_settings.py
+?? services/identity-service/tests/unit/test_wp30_step_up_routes.py
+?? services/identity-service/tests/unit/test_wp31_security_event_forwarder.py
+?? services/identity-service/tests/unit/test_wp32_request_object.py
+?? services/recovery-service/app/core/environment_policy.py
+?? services/recovery-service/app/infrastructure/auth/step_up.py
+?? services/recovery-service/app/infrastructure/risk/
+?? services/recovery-service/tests/integration/test_wp28_recovery_oversight.py
+?? services/recovery-service/tests/unit/test_wp29_guardian_security.py
+?? services/recovery-service/tests/unit/test_wp31_risk_and_forwarder.py
+
+## Note
+services/identity-service/app/tools/ is one untracked entry (WP-28/29 work). The file inside it, app/tools/platform_restore_drill.py, carries FIX-5, so at file level it is MIXED as well (6 mixed files in total).

@@ -1,4 +1,6 @@
+import json
 import math
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Tuple, List, Dict
@@ -10,6 +12,7 @@ from app.core.config import (
     RULE_SCORE_WEIGHT,
     BEHAVIORAL_DEVIATION_WEIGHT
 )
+from app.core.subject import subject_key
 from app.schemas.fraud import FraudEvaluationRequest, FraudEvaluationResponse, HeuristicBreakdown
 
 class HybridFraudDetector:
@@ -29,8 +32,9 @@ class HybridFraudDetector:
         "tor_or_proxy_indicator",
     ]
 
-    def __init__(self):
-        self._quarantined_dids: Dict[str, Dict] = {}
+    def __init__(self, store_path: str | None = None):
+        self._store_path = store_path
+        self._quarantined_dids: Dict[str, Dict] = self._load()
         self.stats = {
             "model_type": "Deterministic rule-based heuristic engine",
             "model_version": self.MODEL_VERSION,
@@ -89,6 +93,11 @@ class HybridFraudDetector:
 
         feature_vector = [geo_risk, failure_risk, freq_risk, device_risk, proxy_risk]
         return feature_vector, reasons
+
+    @staticmethod
+    def _reason_codes(features: List[float]) -> List[str]:
+        names = ("GEO_JUMP", "FAILED_ATTEMPTS", "HIGH_FREQUENCY", "DEVICE_MISMATCH", "ANONYMIZING_PROXY")
+        return [name for name, value in zip(names, features) if value > 0]
 
     def _behavioral_deviation(self, features: List[float]) -> Tuple[float, float]:
         """Return a deterministic weighted deviation heuristic, not ML inference."""
@@ -160,31 +169,58 @@ class HybridFraudDetector:
                 combined_score=combined_risk,
             ),
             model_version=self.MODEL_VERSION,
+            assessment_type=request.action,
+            reason_codes=self._reason_codes(features),
             risk_signals=list(self.RISK_SIGNALS),
             advisory_only=True,
             evaluated_at=datetime.now(timezone.utc).isoformat()
         )
 
+    def _load(self) -> Dict[str, Dict]:
+        """An unreadable store stops startup: losing a quarantine must not pass silently."""
+        if not self._store_path or not os.path.exists(self._store_path):
+            return {}
+        with open(self._store_path, encoding="utf-8") as store:
+            loaded = json.load(store)
+        if not isinstance(loaded, dict):
+            raise ValueError("The quarantine store is not a JSON object.")
+        return loaded
+
+    def _save(self, entries: Dict[str, Dict]) -> None:
+        if not self._store_path:
+            return
+        temporary = f"{self._store_path}.tmp"
+        with open(temporary, "w", encoding="utf-8") as store:
+            json.dump(entries, store)
+            store.flush()
+            os.fsync(store.fileno())
+        os.replace(temporary, self._store_path)
+
     def quarantine(self, did: str, reason: str) -> Dict:
         entry = {
-            "did": did,
             "is_quarantined": True,
             "quarantined_at": datetime.now(timezone.utc).isoformat(),
             "reason": reason
         }
-        self._quarantined_dids[did] = entry
-        return entry
+        entries = {**self._quarantined_dids, subject_key(did): entry}
+        self._save(entries)
+        self._quarantined_dids = entries
+        return {"did": did, **entry}
 
     def release_quarantine(self, did: str) -> bool:
-        if did in self._quarantined_dids:
-            del self._quarantined_dids[did]
-            return True
-        return False
+        key = subject_key(did)
+        if key not in self._quarantined_dids:
+            return False
+        entries = {k: v for k, v in self._quarantined_dids.items() if k != key}
+        self._save(entries)
+        self._quarantined_dids = entries
+        return True
 
     def is_quarantined(self, did: str) -> bool:
-        return did in self._quarantined_dids
+        return subject_key(did) in self._quarantined_dids
 
     def get_quarantine_info(self, did: str) -> Dict:
-        return self._quarantined_dids.get(did, {"did": did, "is_quarantined": False})
+        entry = self._quarantined_dids.get(subject_key(did), {"is_quarantined": False})
+        return {"did": did, **entry}
 
-detector = HybridFraudDetector()
+detector = HybridFraudDetector(os.getenv("FRAUD_QUARANTINE_STORE_PATH") or None)

@@ -1,0 +1,1501 @@
+{
+ "matrix_version": "WP-30 traceability matrix",
+ "generated_on": "2026-11-05",
+ "source": "WP30_REQUIREMENTS_TRACEABILITY_MATRIX and WP30_FINAL_STATUS. Refresh by replacing this file after each assessment.",
+ "tests": {
+  "passed": 1483,
+  "failed": 0,
+  "skipped": 13,
+  "not_run": [
+   "OpenID conformance",
+   "Real phone scan",
+   "Live KMS",
+   "Off-site restore",
+   "Host-loss drill",
+   "Independent penetration test",
+   "Screen reader by a person"
+  ]
+ },
+ "open_findings": {
+  "by_priority": {
+   "P0": 1,
+   "P1": 6,
+   "P2": 8,
+   "P3": 5
+  },
+  "critical_and_high": [
+   {
+    "id": "F-03",
+    "priority": "P0",
+    "finding": "No live KMS",
+    "status": "BLOCKED"
+   },
+   {
+    "id": "F-04",
+    "priority": "P1",
+    "finding": "No off-site or WORM backup",
+    "status": "BLOCKED"
+   },
+   {
+    "id": "F-05",
+    "priority": "P1",
+    "finding": "No point-in-time recovery",
+    "status": "BLOCKED"
+   },
+   {
+    "id": "F-06",
+    "priority": "P1",
+    "finding": "No host-loss drill",
+    "status": "BLOCKED"
+   },
+   {
+    "id": "F-07",
+    "priority": "P1",
+    "finding": "Lost-account recovery missing",
+    "status": "OPEN"
+   },
+   {
+    "id": "F-11",
+    "priority": "P1",
+    "finding": "General audit log not tamper-evident",
+    "status": "PARTIAL"
+   },
+   {
+    "id": "F-15",
+    "priority": "P1",
+    "finding": "Ledger MAC; step-up; session and MFA keys are environment secrets",
+    "status": "BLOCKED"
+   }
+  ]
+ },
+ "controls": [
+  {
+   "id": "PUB-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "PUB-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "PUB-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "PUB-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "One claim was wrong and was corrected"
+  },
+  {
+   "id": "PUB-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "HOL-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "HOL-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "HOL-13",
+   "applicable": false,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "HOL-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ISS-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-02",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ISS-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ISS-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Only one synthetic issuer on the stack; cross-issuer read relies on principal-derived scope"
+  },
+  {
+   "id": "ISS-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ISS-10",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ISS-11",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "VER-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "VER-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "VER-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "VER-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "VER-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "VER-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "VER-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "VER-08",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "GUA-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "GUA-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "GUA-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "GUA-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-04",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-08",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "ADM-11",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-12",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "ADM-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "CORE-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "CORE-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "CORE-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "CORE-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-16",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-17",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-18",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-19",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-20",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-21",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-22",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-23",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "GOLD-24",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "REV-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "REV-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "RISK-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "RISK-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "REC-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "REC-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "REC-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "REC-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "REC-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "CONS-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "OPS-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AUTH-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "DATA-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AI-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AI-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AI-03",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-04",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-05",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-06",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "File store on a volume: one instance only; not in the platform backup"
+  },
+  {
+   "id": "AI-10",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AI-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Unsalted hash is pseudonymous, not anonymous; event windows kept 1 hour in memory"
+  },
+  {
+   "id": "AI-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "AI-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "AI-16",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Local Hardhat only"
+  },
+  {
+   "id": "BC-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Local Hardhat only"
+  },
+  {
+   "id": "BC-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Local Hardhat only"
+  },
+  {
+   "id": "BC-05",
+   "applicable": false,
+   "level": "NOT_RECHECKED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-13",
+   "applicable": false,
+   "level": "NOT_RECHECKED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "BC-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "BC-16",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "API-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "API-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "API-16",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-17",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Local Hardhat only"
+  },
+  {
+   "id": "API-18",
+   "applicable": false,
+   "level": "L1",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "API-19",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "API-20",
+   "applicable": false,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "SEC-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "SEC-04",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-05",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-06",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-07",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-08",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "SEC-09",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-10",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-11",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-12",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-13",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-14",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "SEC-15",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "SEC-16",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-17",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-18",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-19",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "HSTS not seen under real TLS; tracked in production readiness"
+  },
+  {
+   "id": "SEC-20",
+   "applicable": true,
+   "level": "L2",
+   "evidence_date": "2026-11-05",
+   "gap": "Python SBOM and build provenance missing"
+  },
+  {
+   "id": "SEC-21",
+   "applicable": true,
+   "level": "L2",
+   "evidence_date": "2026-11-05",
+   "gap": "No screen-reader walk-through by a person"
+  },
+  {
+   "id": "SEC-22",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "Conformance and external wallet tests need a public HTTPS endpoint"
+  },
+  {
+   "id": "SEC-23",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "SEC-24",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-10-31",
+   "gap": ""
+  },
+  {
+   "id": "WP30-QR-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-QR-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Synthetic origin; proves construction, not reachability"
+  },
+  {
+   "id": "WP30-QR-03",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "No phone and no public HTTPS origin"
+  },
+  {
+   "id": "WP30-KMS-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-KMS-02",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "No provider, account or credential"
+  },
+  {
+   "id": "WP30-REV-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Tamper-evident, not WORM"
+  },
+  {
+   "id": "WP30-GUA-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-MFA-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-MFA-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "No real hardware key"
+  },
+  {
+   "id": "WP30-MFA-03",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-SES-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-PWD-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-ACC-01",
+   "applicable": true,
+   "level": "NOT_IMPLEMENTED",
+   "evidence_date": "2026-11-05",
+   "gap": "Needs identity proofing and an owner decision"
+  },
+  {
+   "id": "WP30-BKP-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": ""
+  },
+  {
+   "id": "WP30-BKP-02",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Second physical device not tested"
+  },
+  {
+   "id": "WP30-DR-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Same physical host"
+  },
+  {
+   "id": "WP30-DR-02",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "No provider"
+  },
+  {
+   "id": "WP30-DR-03",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "No provider"
+  },
+  {
+   "id": "WP30-DR-04",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "Standalone MongoDB"
+  },
+  {
+   "id": "WP30-DR-05",
+   "applicable": true,
+   "level": "BLOCKED",
+   "evidence_date": "2026-11-05",
+   "gap": "No second physical host"
+  },
+  {
+   "id": "WP30-AUD-01",
+   "applicable": true,
+   "level": "L3",
+   "evidence_date": "2026-11-05",
+   "gap": "Tail truncation undetected; recovery audit not chained"
+  }
+ ]
+}

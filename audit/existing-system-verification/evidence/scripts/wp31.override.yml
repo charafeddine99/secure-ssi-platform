@@ -1,0 +1,30 @@
+# WP-31 isolated stack. Own project name, ports, network and volumes. Synthetic only.
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:29300:80"
+  api-gateway:
+    ports: !override
+      - "127.0.0.1:29380:8000"
+    environment:
+      CORS_ORIGINS: http://localhost:29300,http://127.0.0.1:29300
+  identity-service:
+    ports: !override
+      - "127.0.0.1:29381:8000"
+    environment:
+      IDENTITY_PLATFORM_BACKUP_ENABLED: "true"
+      IDENTITY_PLATFORM_BACKUP_DIR: /var/lib/secure-ssi/backups
+      IDENTITY_PLATFORM_BACKUP_KEY_BASE64: ${IDENTITY_PLATFORM_BACKUP_KEY_BASE64}
+  fraud-service:
+    ports: !override
+      - "127.0.0.1:29382:8000"
+  recovery-service:
+    ports: !override
+      - "127.0.0.1:29383:8000"
+    environment:
+      RECOVERY_TIME_LOCK_FLOOR_SECONDS: "10"
+      RECOVERY_GUARDIAN_CHANGE_DELAY_SECONDS: "15"
+  mongodb:
+    ports: !override []
+  redis:
+    ports: !override []

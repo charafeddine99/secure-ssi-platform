@@ -18,30 +18,20 @@ from tests.support import (
     WALLET_ID,
     build_runtime,
     configure_guardians,
+    enroll_guardian,
 )
 
 
 def test_guardian_create_duplicate_list_suspend_resume_revoke_and_remove() -> None:
     runtime = build_runtime()
-    guardian = runtime.service.create_guardian(
-        runtime.owner,
-        wallet_id=WALLET_ID,
-        guardian_user_id=runtime.guardians[0].user_id,
-        guardian_did="did:key:zGuardianLifecycle01",
-        display_name="Guardian One",
-        verification_method="did:key:zGuardianLifecycle01#zGuardianLifecycle01",
-    )
+    guardian = enroll_guardian(runtime, runtime.guardians[0])
 
     with pytest.raises(RecoveryConflictError):
         runtime.service.create_guardian(
             runtime.owner,
             wallet_id=WALLET_ID,
             guardian_user_id=runtime.guardians[0].user_id,
-            guardian_did="did:key:zGuardianLifecycleDuplicate",
             display_name="Duplicate",
-            verification_method=(
-                "did:key:zGuardianLifecycleDuplicate#zGuardianLifecycleDuplicate"
-            ),
         )
     assert runtime.service.list_guardians(runtime.owner) == (guardian,)
     assert runtime.service.list_guardians(runtime.guardians[0]) == (guardian,)
@@ -63,20 +53,12 @@ def test_guardian_create_duplicate_list_suspend_resume_revoke_and_remove() -> No
 
 def test_guardian_multi_field_update_advances_one_optimistic_version() -> None:
     runtime = build_runtime()
-    guardian = runtime.service.create_guardian(
-        runtime.owner,
-        wallet_id=WALLET_ID,
-        guardian_user_id=runtime.guardians[0].user_id,
-        guardian_did="did:key:zGuardianVersion01",
-        display_name="Guardian One",
-        verification_method="did:key:zGuardianVersion01#zGuardianVersion01",
-    )
+    guardian = enroll_guardian(runtime, runtime.guardians[0])
 
     updated = runtime.service.update_guardian(
         runtime.owner,
         guardian.guardian_id,
         display_name="Guardian One Updated",
-        verification_method="did:key:zGuardianVersion01#rotated",
         status=GuardianStatus.SUSPENDED,
     )
 
@@ -92,18 +74,14 @@ def test_guardian_self_assignment_foreign_wallet_and_foreign_mutation_denied() -
             runtime.owner,
             wallet_id=WALLET_ID,
             guardian_user_id=runtime.owner.user_id,
-            guardian_did="did:key:zSelfGuardianDenied",
             display_name="Self",
-            verification_method="did:key:zSelfGuardianDenied#zSelfGuardianDenied",
         )
     with pytest.raises(RecoveryNotFoundError):
         runtime.service.create_guardian(
             runtime.owner,
             wallet_id="wallet_foreignabcdefghij",
             guardian_user_id=runtime.guardians[0].user_id,
-            guardian_did="did:key:zForeignWalletGuardian",
             display_name="Foreign",
-            verification_method="did:key:zForeignWalletGuardian#zForeignWalletGuardian",
         )
     guardian_ids = configure_guardians(runtime)
     with pytest.raises(RecoveryNotFoundError):

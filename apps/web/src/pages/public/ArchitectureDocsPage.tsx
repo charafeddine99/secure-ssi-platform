@@ -23,7 +23,7 @@ export const ArchitectureDocsPage: React.FC = () => (
     </Card>
     <Card title="Privacy boundaries" flush>
       <div className="list-group list-group-flush">
-        <div className="list-group-item">No personal data or credentials are written to a ledger.</div>
+        <div className="list-group-item">No personal data or credentials are written to the blockchain.</div>
         <div className="list-group-item">Presentations share the full signed credential.</div>
         <div className="list-group-item">Status checks can reveal which credential is checked.</div>
       </div>

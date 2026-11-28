@@ -85,7 +85,7 @@ export const PolicyBanner: React.FC<{ result: VerificationResult | null; pending
       <div className="alert alert-secondary mb-0" role="status">
         <IconHelpCircle className="alert-icon" aria-hidden="true" />
         <div>
-          <h4 className="alert-heading">No verification result yet</h4>
+          <h3 className="alert-heading h4">No verification result yet</h3>
           <div className="alert-description">{pendingText ?? "The verifier has not received a presentation for this request."}</div>
         </div>
       </div>

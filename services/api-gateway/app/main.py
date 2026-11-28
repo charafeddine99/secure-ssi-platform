@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.health import router as health_router
 from app.api.routes.proxy import router as proxy_router
+from app.core.telemetry import SecurityTelemetryMiddleware
 from app.core.config import APP_VERSION, SERVICE_NAME, CORS_ORIGINS, HSTS_ENABLED
 from app.core.middleware import (
     CorrelationIdMiddleware,
@@ -34,9 +35,12 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-SSI-Client"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-SSI-Client", "X-Step-Up-Token", "X-Dual-Control-Operation", "X-Dual-Control-Token"],
     expose_headers=["X-Correlation-ID", "Retry-After"]
 )
+
+# Added last, so it runs first and also sees refused requests.
+app.add_middleware(SecurityTelemetryMiddleware)
 
 app.include_router(health_router)
 app.include_router(proxy_router)

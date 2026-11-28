@@ -1,0 +1,142 @@
+{
+ "passed": 15,
+ "failed": 0,
+ "results": [
+  {
+   "area": "S7",
+   "name": "real recovery requests arrived",
+   "status": null,
+   "pass": true,
+   "note": "2"
+  },
+  {
+   "area": "S7",
+   "name": "rejected Guardian proofs arrived",
+   "status": null,
+   "pass": true,
+   "note": "2"
+  },
+  {
+   "area": "S7",
+   "name": "unauthorized recovery attempts arrived and opened a case",
+   "status": null,
+   "pass": true,
+   "note": "1"
+  },
+  {
+   "area": "S7",
+   "name": "risk holds arrived",
+   "status": null,
+   "pass": true,
+   "note": "1"
+  },
+  {
+   "area": "S8",
+   "name": "a compromised key arrived and opened a case",
+   "status": null,
+   "pass": true,
+   "note": "1"
+  },
+  {
+   "area": "S8",
+   "name": "key rotations arrived",
+   "status": null,
+   "pass": true,
+   "note": "1"
+  },
+  {
+   "area": "S12",
+   "name": "wallet backup and restore arrived",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S7",
+   "name": "recovery risk used platform history",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "coverage",
+   "name": "all three sources are healthy before the stop",
+   "status": null,
+   "pass": true,
+   "note": "[[\"api-gateway\",\"HEALTHY\"],[\"identity-service\",\"HEALTHY\"],[\"recovery-service\",\"HEALTHY\"]]"
+  },
+  {
+   "area": "coverage",
+   "name": "monitoring coverage is computed from real events",
+   "status": null,
+   "pass": true,
+   "note": "11/13"
+  },
+  {
+   "area": "S13",
+   "name": "a silent source becomes STALE",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S13",
+   "name": "overall telemetry shows DEGRADED",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S13",
+   "name": "monitoring coverage falls",
+   "status": null,
+   "pass": true,
+   "note": "11 to 10"
+  },
+  {
+   "area": "S13",
+   "name": "the domain is marked by its source state, not as quiet",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S13",
+   "name": "the source recovers",
+   "status": null,
+   "pass": true,
+   "note": ""
+  }
+ ],
+ "counts": {
+  "api.request": 328,
+  "auth.login.failure": 1,
+  "auth.login.success": 12,
+  "auth.session.rejected": 6,
+  "auth.stepup.failure": 1,
+  "auth.stepup.success": 48,
+  "authz.denied": 21,
+  "consent.rejected": 1,
+  "credential.revoked": 8,
+  "gateway.login.rejected": 1,
+  "guardian.changed": 5,
+  "key.compromised": 1,
+  "key.rotation.completed": 1,
+  "oid4vci.credential.issued": 13,
+  "oid4vp.request.created": 6,
+  "oid4vp.request.failure": 2,
+  "presentation.rejected": 2,
+  "recovery.approved": 4,
+  "recovery.completed": 1,
+  "recovery.policy_changed": 3,
+  "recovery.policy_weakened": 1,
+  "recovery.proof_rejected": 2,
+  "recovery.requested": 2,
+  "recovery.risk_hold": 1,
+  "recovery.unauthorized": 1,
+  "trust.changed": 5,
+  "wallet.backup.created": 1,
+  "wallet.ownership.rejected": 1,
+  "wallet.restore.completed": 1
+ }
+}

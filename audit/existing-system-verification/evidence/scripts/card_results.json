@@ -1,0 +1,157 @@
+[
+ {
+  "name": "the green card is still a wallet pass",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the card carries no QR code",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "credential status comes from the live check and says Active",
+  "pass": true,
+  "note": "VERIFIABLE CREDENTIAL University Affiliation Credential ISSUER Demo Technical University did:web:issuer.example Trusted "
+ },
+ {
+  "name": "issuer trust is shown separately",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "Active · stored is gone",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "a valid card keeps its colour",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the page says how to share",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "card at 1440px fits and passes axe",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "card at 768px fits and passes axe",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "card at 390px fits and passes axe",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "card at 320px fits and passes axe",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "keyboard reaches Present, Attributes, Details in order with visible focus",
+  "pass": true,
+  "note": "Present|true Attributes|true Details|true"
+ },
+ {
+  "name": "card passes axe in the light theme",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "card passes axe in the dark theme",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "Attributes shows the signed claims on the back and shares nothing",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "Details opens the stored credential",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "Present opens the request page with guidance",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "pasting the old card value explains itself",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "a handoff link from another site is refused",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the verifier QR is a link with an opaque handle, not a credential id",
+  "pass": true,
+  "note": "http://wallet.wp31.test/wallet/present?request=session_<handle>"
+ },
+ {
+  "name": "the pasted verifier link opens consent",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "consent shows purpose and requested fields",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the holder can approve",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the verifier records the presentation as accepted after its checks",
+  "pass": true,
+  "note": "VERIFIED"
+ },
+ {
+  "name": "after revocation the card says Revoked",
+  "pass": true,
+  "note": "VERIFIABLE CREDENTIAL University Affiliation Credential ISSUER Demo Technical University did:web:issuer.example Trusted "
+ },
+ {
+  "name": "a revoked card is dimmed",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "Present is disabled for a revoked credential, with a reason",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "trust and status stay separate: trusted issuer, revoked credential",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "an unreachable status check shows Unknown, not Valid",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "a suspended issuer is shown as suspended",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "no uncaught page errors",
+  "pass": true,
+  "note": "0"
+ }
+]

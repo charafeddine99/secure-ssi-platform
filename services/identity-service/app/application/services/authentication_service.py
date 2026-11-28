@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from app.application.ports.access_token_service import AccessTokenService
@@ -98,7 +98,7 @@ class AuthenticationService:
             checked_at=self.clock(),
         )
         if self.revocation_store is not None and self.revocation_store.is_revoked(
-            claims.jwt_id, claims.subject
+            claims.jwt_id, claims.subject, claims.issued_at
         ):
             raise AccessTokenRevokedError("Access token has been revoked.")
 
@@ -111,9 +111,23 @@ class AuthenticationService:
             raise InvalidAccessTokenError(
                 "Token roles do not match the current local user."
             )
-        return AuthenticatedPrincipal.from_user(
-            record.user,
-            authentication_source=self.user_provider.authentication_source,
+        return replace(
+            AuthenticatedPrincipal.from_user(
+                record.user,
+                authentication_source=self.user_provider.authentication_source,
+            ),
+            session_id=claims.jwt_id,
+        )
+
+    def is_session_active(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        issued_at: datetime,
+    ) -> bool:
+        return self.revocation_store is None or not (
+            self.revocation_store.is_revoked(session_id, user_id, issued_at)
         )
 
     def revoke_token(self, token: str, reason: str = "logout") -> None:

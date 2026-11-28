@@ -1,0 +1,118 @@
+{
+ "passed": 16,
+ "failed": 0,
+ "results": [
+  {
+   "area": "positive",
+   "name": "a valid presentation is ACCEPTED",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "positive",
+   "name": "the verifier shows a check matrix for the result",
+   "status": null,
+   "pass": true,
+   "note": "VERIFIED"
+  },
+  {
+   "area": "replay",
+   "name": "the same presentation sent again is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "nonce",
+   "name": "a VP made for another request (other nonce) is refused",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "nonce",
+   "name": "a VP whose nonce was edited is refused",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "client_id",
+   "name": "a VP bound to another client_id is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "state",
+   "name": "a VP posted under another session (state mismatch) is refused",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "expiry",
+   "name": "an expired request cannot be opened by the wallet",
+   "status": 410,
+   "pass": true,
+   "note": "410"
+  },
+  {
+   "area": "expiry",
+   "name": "an expired request yields no presentation",
+   "status": null,
+   "pass": true,
+   "note": "410"
+  },
+  {
+   "area": "consent",
+   "name": "after a refusal no VP can be created",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "consent",
+   "name": "the verifier does not record a refusal as success",
+   "status": null,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "holder binding",
+   "name": "another holder cannot present A's credential",
+   "status": null,
+   "pass": true,
+   "note": "409"
+  },
+  {
+   "area": "dcql",
+   "name": "a credential that does not match the query is not offered",
+   "status": null,
+   "pass": true,
+   "note": "{\"isSatisfied\":false,\"matchedCredentials\":[],\"unsatisfiedReason\":\"UNSATISFIED_CREDENTIAL_SET: Requirement 'Verification "
+  },
+  {
+   "area": "dcql",
+   "name": "a non-matching credential is never ACCEPTED",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "outage",
+   "name": "a fraud outage never turns into ACCEPTED",
+   "status": null,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "revocation",
+   "name": "a revoked credential from a trusted issuer is not ACCEPTED",
+   "status": null,
+   "pass": true,
+   "note": "HTTP_400"
+  }
+ ]
+}

@@ -25,6 +25,10 @@ class Permission(StrEnum):
     RECOVERY_POLICY_READ = "recovery:policy:read"
     RECOVERY_POLICY_UPDATE = "recovery:policy:update"
     RECOVERY_RECONCILE = "recovery:reconcile"
+    # Read-only case oversight; deliberately no decision or bypass permission.
+    RECOVERY_OVERSIGHT_READ = "recovery:oversight:read"
+    # Lifts or upholds a risk hold only; quorum and time-lock are unaffected.
+    RECOVERY_RISK_REVIEW = "recovery:risk:review"
 
 
 _HOLDER_PERMISSIONS = frozenset(
@@ -57,6 +61,7 @@ class RecoveryPrincipal:
     user_id: str
     roles: tuple[Role, ...]
     permissions: frozenset[Permission]
+    session_id: str = ""
 
     @classmethod
     def from_claims(cls, user_id: str, roles: tuple[str, ...]) -> "RecoveryPrincipal":

@@ -1,4 +1,4 @@
-import { parseOid4vpRequestSessionId } from "../src/utils/oid4vpRequestUri.ts";
+import { hasRequestUri, parseOid4vpRequestSessionId } from "../src/utils/oid4vpRequestUri.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -31,10 +31,15 @@ assert(
   parseOid4vpRequestSessionId(encodeInlineRequest()) === "session_1234567890abcdef12345678",
   "the project's inline OID4VP request returns its server session state",
 );
-assert(
-  parseOid4vpRequestSessionId("openid4vp://?request_uri=https%3A%2F%2Fverifier.example%2Frequests%2Fsession_12345678") === "session_12345678",
-  "a request_uri continues to resolve its final session identifier",
+expectInvalid(
+  "openid4vp://?client_id=x&request_uri=https%3A%2F%2Fevil.example%2Frequests%2Fsession_12345678",
+  "a request_uri is never trusted from its URL path; the server must check it",
 );
+assert(
+  hasRequestUri("openid4vp://?client_id=x&request_uri=https%3A%2F%2Fverifier.example%2Fr"),
+  "a by-reference request is recognised",
+);
+assert(!hasRequestUri("https://verifier.example/?request_uri=x"), "only openid4vp links count as by-reference");
 expectInvalid("openid4vp://?state=session_12345678", "an incomplete inline request is rejected");
 expectInvalid(encodeInlineRequest("bad session id"), "a malformed inline state is rejected");
 expectInvalid(

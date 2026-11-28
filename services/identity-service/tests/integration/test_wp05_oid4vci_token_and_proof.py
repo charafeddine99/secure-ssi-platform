@@ -104,54 +104,16 @@ def _create_wallet_proof(
     return proof["holderDid"], proof["jwt"]
 
 
-def test_guardian_recovery_proof_uses_only_the_authenticated_did_key() -> None:
+def test_server_no_longer_signs_guardian_recovery_proofs() -> None:
+    """A proof signed with a platform-held key says nothing about the Guardian."""
     holder_headers, _wallet_id, holder_did = _create_holder_wallet()
-    payload = {
-        "requestId": "recovery_test_1234567890123456",
-        "sessionId": "session_test_1234567890123456",
-        "guardianId": "guardian_test_1234567890123456",
-        "walletId": "wallet_owner_1234567890123456",
-        "guardianDid": holder_did,
-        "challenge": "server-challenge-value-12345678901234567890",
-        "decision": "APPROVE",
-    }
-    signed = client.post(
+    response = client.post(
         "/api/v1/wallets/guardian-recovery-proof",
-        json=payload,
+        json={"guardianDid": holder_did},
         headers=holder_headers,
     )
-    assert signed.status_code == 200, signed.text
-    proof = signed.json()
-    assert proof["guardianDid"] == holder_did
-
-    did_document = DidKeyResolver().resolve(holder_did).did_document
-    verification_method = did_document["verificationMethod"][0]
-    multibase = verification_method["publicKeyMultibase"]
-    public_bytes = DidKeyResolver._decode_base58_btc(multibase[1:], holder_did)[2:]
-    claims = jwt.decode(
-        proof["proof"],
-        Ed25519PublicKey.from_public_bytes(public_bytes),
-        algorithms=["EdDSA"],
-        audience="secure-ssi-platform:guardian-recovery",
-    )
-    assert claims["requestId"] == payload["requestId"]
-    assert claims["sessionId"] == payload["sessionId"]
-    assert claims["sub"] == payload["guardianId"]
-    assert claims["walletId"] == payload["walletId"]
-    assert claims["decision"] == payload["decision"]
-    assert claims["challenge"] == payload["challenge"]
-    assert jwt.get_unverified_header(proof["proof"]) == {
-        "alg": "EdDSA",
-        "typ": "guardian-recovery+jwt",
-        "kid": verification_method["id"],
-    }
-
-    foreign = client.post(
-        "/api/v1/wallets/guardian-recovery-proof",
-        json=payload,
-        headers=_get_auth_headers("issuer"),
-    )
-    assert foreign.status_code == 404
+    assert response.status_code in {404, 405, 422}
+    assert "proof" not in response.text.casefold().replace("guardian-recovery-proof", "")
 
 
 # ============================================================================

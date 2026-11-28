@@ -1,0 +1,67 @@
+[
+ {
+  "name": "the verifier page renders a QR that decodes from its pixels",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the QR is an HTTPS-style handoff link with an opaque handle, no credential id",
+  "pass": true,
+  "note": "http://wallet.wp31.test/wallet/present?request=session_<redacted>"
+ },
+ {
+  "name": "the QR carries the configured public origin, not localhost",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the verifier QR page passes axe",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the holder lands on consent",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "consent names the verifier and the requested claim",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the holder approves",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "the verifier sees the result with its check matrix",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "scanning the same QR again does not open a new consent",
+  "pass": true,
+  "note": "not found."
+ },
+ {
+  "name": "the holder can decline",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "a declined request is not shown as verified",
+  "pass": true,
+  "note": ""
+ },
+ {
+  "name": "a revoked credential is not accepted",
+  "pass": true,
+  "note": "wallet refused before sharing"
+ },
+ {
+  "name": "no browser exception and no 5xx",
+  "pass": true,
+  "note": "0 exceptions, "
+ }
+]

@@ -17,25 +17,6 @@ class HolderWalletCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class GuardianRecoveryProofRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    request_id: Annotated[str, Field(alias="requestId", min_length=16, max_length=128)]
-    session_id: Annotated[str, Field(alias="sessionId", min_length=16, max_length=128)]
-    guardian_id: Annotated[str, Field(alias="guardianId", min_length=16, max_length=128)]
-    wallet_id: Annotated[str, Field(alias="walletId", min_length=16, max_length=128)]
-    guardian_did: Annotated[str, Field(alias="guardianDid", min_length=16, max_length=512)]
-    challenge: Annotated[str, Field(min_length=32, max_length=256)]
-    decision: Literal["APPROVE", "REJECT"]
-
-
-class GuardianRecoveryProofResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    guardian_did: str = Field(alias="guardianDid")
-    proof: str
-
-
 class HolderWalletListResponse(ApiModel):
     items: list["HolderWalletResponse"]
 

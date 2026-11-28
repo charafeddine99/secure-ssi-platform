@@ -1,0 +1,272 @@
+{
+ "passed": 38,
+ "failed": 0,
+ "results": [
+  {
+   "area": "ISS-07",
+   "name": "an issued credential appears in the issuer's list",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ISS-07",
+   "name": "the list carries no raw claims",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ISS-07",
+   "name": "a holder cannot read the issuer list",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ISS-07",
+   "name": "an anonymous caller cannot read it",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ISS-04",
+   "name": "an offer with an undeclared claim is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ISS-04",
+   "name": "an unknown credential configuration is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "OFFER",
+   "name": "an expired offer gives no token",
+   "status": 400,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "OFFER",
+   "name": "a fresh offer gives a token",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "OFFER",
+   "name": "the same code cannot be used twice",
+   "status": 400,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "VER-03",
+   "name": "the wallet reads the same request the verifier made",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "VER-03",
+   "name": "the DCQL query is identical on both sides",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "VER-03",
+   "name": "the purpose is identical on both sides",
+   "status": null,
+   "pass": true,
+   "note": "Gap preview"
+  },
+  {
+   "area": "VER-05",
+   "name": "the holder's refusal is recorded",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "VER-05",
+   "name": "the verifier sees an explicit final state, not success",
+   "status": 200,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "VER-07",
+   "name": "a real presentation is accepted first",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED"
+  },
+  {
+   "area": "VER-07",
+   "name": "the refused request is in the verifier history",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "VER-07",
+   "name": "history reports the refusal truthfully",
+   "status": null,
+   "pass": true,
+   "note": "REJECTED"
+  },
+  {
+   "area": "VER-07",
+   "name": "a holder cannot read verifier history",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "HOL-12",
+   "name": "the wallet activity lists what happened",
+   "status": 200,
+   "pass": true,
+   "note": "8 entries"
+  },
+  {
+   "area": "HOL-12",
+   "name": "another holder cannot read it",
+   "status": 404,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "HOL-12",
+   "name": "activity carries no raw credential or proof",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ADM-03",
+   "name": "spoofed role headers do not reach admin data",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ADM-03",
+   "name": "the admin list works for an administrator",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ADM-03",
+   "name": "the session identity ignores those headers",
+   "status": null,
+   "pass": true,
+   "note": "[\"holder\"]"
+  },
+  {
+   "area": "ADM-06",
+   "name": "an administrator cannot revoke an issuer's credential",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "HOL-05",
+   "name": "a tampered copy does not verify",
+   "status": 200,
+   "pass": true,
+   "note": "HTTP 200"
+  },
+  {
+   "area": "ADM-06",
+   "name": "the issuer can revoke it",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ADM-06",
+   "name": "the revocation is in the persisted history",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "ADM-06",
+   "name": "a verifier then refuses the credential",
+   "status": null,
+   "pass": true,
+   "note": "NO_PRESENTATION(200/400)"
+  },
+  {
+   "area": "AUDIT-CHAIN",
+   "name": "the chain of real events is intact",
+   "status": 200,
+   "pass": true,
+   "note": "24 checked"
+  },
+  {
+   "area": "AUDIT-CHAIN",
+   "name": "a holder cannot read integrity",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AUDIT-CHAIN",
+   "name": "an edited event breaks the chain",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AUDIT-CHAIN",
+   "name": "undoing the edit restores the chain",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AI-09",
+   "name": "an administrator quarantines a DID",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AI-09",
+   "name": "the quarantine survives a container restart",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AI-13",
+   "name": "the quarantine store holds no raw DID",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AI-09",
+   "name": "release works",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "AI-09",
+   "name": "the release survives a restart",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  }
+ ]
+}

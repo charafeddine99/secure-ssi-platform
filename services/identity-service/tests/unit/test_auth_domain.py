@@ -21,17 +21,18 @@ def test_supported_roles_are_closed_enum_values() -> None:
     }
 
 
-def test_admin_has_all_permissions_except_credential_revocation() -> None:
-    assert set(permissions_for_roles((Role.ADMIN,))) == set(Permission) - {
-        Permission.CREDENTIALS_REVOKE
-    }
+def test_admin_operates_the_platform_but_does_not_issue_or_revoke() -> None:
+    permissions = set(permissions_for_roles((Role.ADMIN,)))
+    assert Permission.ADMIN_USERS_WRITE in permissions
+    assert Permission.WALLET_KEY_COMPROMISE in permissions
+    assert Permission.CREDENTIALS_REVOKE not in permissions
+    assert Permission.CREDENTIALS_SIGN not in permissions
 
 
 def test_issuer_preserves_existing_permissions_but_cannot_manage_keys() -> None:
     permissions = set(permissions_for_roles((Role.ISSUER,)))
 
     assert Permission.CREDENTIALS_SIGN in permissions
-    assert Permission.PRESENTATIONS_RECONCILE in permissions
     assert not any(
         permission.value.startswith(("wallet:key:", "admin:key:"))
         for permission in permissions
@@ -64,6 +65,8 @@ def test_holder_can_create_and_read_but_not_verify_presentations() -> None:
         Permission.WALLETS_CREATE,
         Permission.WALLETS_READ,
         Permission.WALLETS_CREDENTIALS_READ,
+        Permission.WALLETS_BACKUP,
+        Permission.WALLETS_RESTORE,
         Permission.PRESENTATION_CHALLENGES_READ,
         Permission.WALLET_KEY_CREATE,
         Permission.WALLET_KEY_READ,
@@ -100,6 +103,7 @@ def test_principal_public_model_contains_no_secret_fields() -> None:
     serialized = asdict(principal)
     assert set(serialized) == {
         "id",
+        "session_id",
         "username",
         "display_name",
         "roles",

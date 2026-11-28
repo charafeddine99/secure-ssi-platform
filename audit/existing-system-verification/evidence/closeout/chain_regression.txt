@@ -1,0 +1,57 @@
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/e2e: PASS 132 FAIL 0 exit=0 secs=621
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/browser: PASS 0 FAIL 0 exit=1 secs=1
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/pages: PASS 0 FAIL 0 exit=1 secs=0
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/gaps: PASS 38 FAIL 0 exit=0 secs=13
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/onboarding: PASS 40 FAIL 0 exit=0 secs=100
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/oid4vp_security: PASS 16 FAIL 0 exit=0 secs=24
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/wp32_scan: PASS 0 FAIL 0 exit=1 secs=1
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/wp32_card: PASS 0 FAIL 0 exit=1 secs=1
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/wp32_cross: PASS 0 FAIL 0 exit=1 secs=1
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/wp32_ui: PASS 0 FAIL 0 exit=1 secs=1
+isolated audit databases emptied
+ledger anchor cleared
+isolated redis counters cleared
+login-route=422
+closeout/scenarios: PASS 41 FAIL 0 exit=0 secs=414
+closeout/ui: PASS 0 FAIL 0 exit=1 secs=1
+chain done 2026-11-23T18:53:26+03:00

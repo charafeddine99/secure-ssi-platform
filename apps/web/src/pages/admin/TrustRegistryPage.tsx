@@ -1,6 +1,7 @@
 import React from "react";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { changeTrustStatus, fetchPublicTrustedIssuers, registerTrustedIssuer, type TrustRecord } from "../../api/admin.ts";
+import { useStepUp } from "../../components/ssi/stepUpContext.ts";
 import { Page } from "../../components/ui/PageHeader.tsx";
 import { Card, Table } from "../../components/ui/Card.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -27,6 +28,7 @@ function trustTone(status: string): BadgeTone {
 
 export const TrustRegistryPage: React.FC = () => {
   const toast = useToast();
+  const withStepUp = useStepUp();
   const { hasPermission } = useAuth();
   const canManage = hasPermission("trust-registry:write");
   const records = useAsync((signal) => fetchPublicTrustedIssuers(signal), []);
@@ -51,7 +53,7 @@ export const TrustRegistryPage: React.FC = () => {
     if (!Number.isInteger(validDays) || validDays < 1 || validDays > 3650) { setAddError("Validity must be 1 to 3650 days."); return; }
     setAdding(true);
     try {
-      await registerTrustedIssuer({ issuerDid: did.trim(), organizationName: org.trim(), permittedCredentialTypes: typeList, validDays });
+      await withStepUp("trust.registry.write", did.trim(), (token) => registerTrustedIssuer({ issuerDid: did.trim(), organizationName: org.trim(), permittedCredentialTypes: typeList, validDays }, token));
       setDid(""); setOrg("");
       toast("success", "Issuer added to the trust registry.");
       records.reload();
@@ -66,7 +68,7 @@ export const TrustRegistryPage: React.FC = () => {
     if (!action) return;
     setActing(true);
     try {
-      await changeTrustStatus(action.record.id, action.kind, reason.trim());
+      await withStepUp("trust.registry.write", action.record.id, (token) => changeTrustStatus(action.record.id, action.kind, reason.trim(), token));
       toast("success", action.kind === "revoke" ? "Issuer revoked." : "Issuer suspended.");
       setAction(null);
       setReason("");

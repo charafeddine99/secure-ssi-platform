@@ -854,12 +854,18 @@ def test_verifier_is_forbidden_before_service_execution(
     assert "proof" not in response.text
 
 
-@pytest.mark.parametrize("role", ["issuer", "admin"])
-def test_issuer_and_admin_can_use_existing_signing_flow(
-    client: TestClient,
-    role: str,
-) -> None:
-    token, _ = login(client, role)
+def test_admin_cannot_sign_credentials(client: TestClient) -> None:
+    token, _ = login(client, "admin")
+    response = client.post(
+        "/api/v1/credentials/sign",
+        json={"credential": load_json(UNSIGNED_PATH)},
+        headers=bearer(token),
+    )
+    assert response.status_code == 403
+
+
+def test_issuer_can_use_existing_signing_flow(client: TestClient) -> None:
+    token, _ = login(client, "issuer")
 
     response = client.post(
         "/api/v1/credentials/sign",
@@ -976,7 +982,12 @@ def test_openapi_response_schemas_exclude_authentication_secrets() -> None:
         }
         assert not normalized.intersection(forbidden)
         if "password" in properties:
-            assert schema_name == "TokenRequest"
+            assert schema_name in {
+                "TokenRequest",
+                "TotpEnrollRequest",
+                "SecurityKeyOptionsRequest",
+                "RegisterRequest",
+            }
     assert "AuthenticationRecord" not in schemas
     assert "password" not in schemas["PublicUserResponse"]["properties"]
     assert "password" not in schemas["CurrentUserResponse"]["properties"]

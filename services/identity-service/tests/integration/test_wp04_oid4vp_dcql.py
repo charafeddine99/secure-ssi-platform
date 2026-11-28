@@ -142,12 +142,25 @@ def test_wp04_verifier_request_generates_canonical_dcql_query():
     parsed = urllib.parse.urlparse(deep_link)
     params = urllib.parse.parse_qs(parsed.query)
 
-    assert params.get("response_type") == ["vp_token"]
-    assert params.get("response_mode") == ["direct_post"]
-    assert "client_id" in params
-    assert "nonce" in params
-    assert params.get("state") == [data["sessionId"]]
-    assert "dcql_query" in params
+    # By reference (OpenID4VP 1.0 with JAR): the link holds only client_id and
+    # request_uri; every other parameter is inside the signed request object.
+    assert set(params) == {"client_id", "request_uri"}
+    request_uri = params["request_uri"][0]
+    fetched = client.get(urllib.parse.urlparse(request_uri).path)
+    assert fetched.status_code == 200
+    assert fetched.headers["content-type"].startswith("application/oauth-authz-req+jwt")
+    from app.domain.request_object import verify_request_object
+
+    claims = verify_request_object(
+        fetched.text,
+        expected_client_id=params["client_id"][0],
+        now=datetime.now(UTC),
+    )
+    assert claims["response_type"] == "vp_token"
+    assert claims["response_mode"] == "direct_post"
+    assert claims["nonce"] == data["nonce"]
+    assert claims["state"] == data["sessionId"]
+    assert claims["dcql_query"] == dcql
 
     # Legacy presentation_definition is retained as a compatibility artifact
     assert "presentationDefinition" in data or "presentation_definition" in data

@@ -24,6 +24,8 @@ Also validates Sprint 9 security invariants:
 
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 import json
 from datetime import datetime, timezone
 import pytest
@@ -355,7 +357,7 @@ def test_golden_path_replay_protection():
                 "credentialSubject": {"id": HOLDER_DID},
             },
             nonce=nonce,
-            domain="http://testserver/verifier",
+            domain=request_object_signer().client_id,
             holder_did=HOLDER_DID,
         )
 

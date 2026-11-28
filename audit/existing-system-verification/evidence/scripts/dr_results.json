@@ -1,0 +1,239 @@
+{
+ "passed": 32,
+ "failed": 0,
+ "measured": {
+  "backupWallClockMs": 121,
+  "backupServerMs": 56,
+  "backupBytes": 58109,
+  "restoreWallClockMs": 9758,
+  "restoreServerMs": 8754.45,
+  "applicationBootMs": 46889
+ },
+ "note": "Same physical host: not host-loss evidence. Synthetic data of a few hundred documents.",
+ "results": [
+  {
+   "area": "dr",
+   "name": "scope lists identity, ledger and recovery",
+   "status": 200,
+   "pass": true,
+   "note": "[\"identity\",\"ledger\",\"recovery\"]"
+  },
+  {
+   "area": "dr",
+   "name": "off-site, immutable and PITR are reported NOT_CONFIGURED",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "creating a backup without step-up is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "coordinated backup succeeds",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "backup is COMPLETE and carries a ledger watermark",
+   "status": null,
+   "pass": true,
+   "note": "COMPLETE seq=9"
+  },
+  {
+   "area": "dr",
+   "name": "archive contains recovery and ledger collections",
+   "status": null,
+   "pass": true,
+   "note": "collections=37"
+  },
+  {
+   "area": "dr",
+   "name": "archive verifies",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "CLI restore with no approval is refused",
+   "status": null,
+   "pass": true,
+   "note": "DUAL_CONTROL_REQUIRED"
+  },
+  {
+   "area": "dr",
+   "name": "one administrator cannot approve their own restore",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "approval for another target is refused",
+   "status": null,
+   "pass": true,
+   "note": "DUAL_CONTROL_REQUIRED"
+  },
+  {
+   "area": "dr",
+   "name": "the live database name is refused even with approval",
+   "status": null,
+   "pass": true,
+   "note": "PLATFORM_RESTORE_TARGET_REJECTED"
+  },
+  {
+   "area": "dr",
+   "name": "corrupted artifact is refused",
+   "status": null,
+   "pass": true,
+   "note": "PLATFORM_BACKUP_INTEGRITY_FAILED"
+  },
+  {
+   "area": "dr",
+   "name": "nothing reached the target after the refusal",
+   "status": null,
+   "pass": true,
+   "note": "0"
+  },
+  {
+   "area": "dr",
+   "name": "a write failure rolls back every component",
+   "status": null,
+   "pass": true,
+   "note": "FAILED_ROLLED_BACK/13"
+  },
+  {
+   "area": "dr",
+   "name": "no partial database survives the failure",
+   "status": null,
+   "pass": true,
+   "note": "0"
+  },
+  {
+   "area": "dr",
+   "name": "two-person restore into the separate mongod succeeds",
+   "status": null,
+   "pass": true,
+   "note": "RESTORED_AND_VERIFIED"
+  },
+  {
+   "area": "dr",
+   "name": "index and collection options match for every collection",
+   "status": null,
+   "pass": true,
+   "note": "n=37"
+  },
+  {
+   "area": "dr",
+   "name": "source database was not changed by the restore",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "the execution token cannot be reused",
+   "status": null,
+   "pass": true,
+   "note": "DUAL_CONTROL_REQUIRED"
+  },
+  {
+   "area": "dr",
+   "name": "restored stack is on its own project",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "the application points at the restored database",
+   "status": null,
+   "pass": true,
+   "note": "restore_drill_wp31"
+  },
+  {
+   "area": "dr",
+   "name": "identity is healthy on restored data",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "readiness answers on the restored stack",
+   "status": null,
+   "pass": true,
+   "note": "{\"status\":\"READY\"}"
+  },
+  {
+   "area": "dr",
+   "name": "a session issued before the restore is rejected",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "a fresh sign-in works",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "the restored audit chain gives the same verdict as the source",
+   "status": 200,
+   "pass": true,
+   "note": "BROKEN at 116"
+  },
+  {
+   "area": "dr",
+   "name": "trust registry is readable",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "a valid credential verifies on the restored stack",
+   "status": null,
+   "pass": true,
+   "note": "ACCEPTED "
+  },
+  {
+   "area": "dr",
+   "name": "a revoked credential stays revoked on the restored stack",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "dr",
+   "name": "guardian recovery state survived",
+   "status": 200,
+   "pass": true,
+   "note": "cases=2"
+  },
+  {
+   "area": "dr",
+   "name": "the ledger chain arrived whole",
+   "status": null,
+   "pass": true,
+   "note": "events=9"
+  },
+  {
+   "area": "dr",
+   "name": "the ledger verifies on the restored stack",
+   "status": 200,
+   "pass": true,
+   "note": "seq=9"
+  }
+ ]
+}

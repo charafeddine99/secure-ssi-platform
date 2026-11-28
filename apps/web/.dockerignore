@@ -1,0 +1,6 @@
+# The image installs its own dependencies (npm ci) and builds its own dist/.
+# Host copies must stay out of the build context: they can be OneDrive cloud-only
+# placeholders that Docker cannot read, and Windows-native packages would mix into
+# the Linux build.
+node_modules
+dist

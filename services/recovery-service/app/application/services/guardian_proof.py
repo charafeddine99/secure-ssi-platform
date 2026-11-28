@@ -35,6 +35,63 @@ class GuardianDecisionProofVerifier:
         wallet_id: str,
         decision: str,
         challenge: str,
+        policy_hash: str,
+        now: datetime,
+    ) -> None:
+        self._verify(
+            proof,
+            token_type="guardian-recovery+jwt",
+            guardian_did=guardian_did,
+            verification_method=verification_method,
+            expected_claims={
+                "iss": guardian_did,
+                "sub": guardian_id,
+                "aud": RECOVERY_PROOF_AUDIENCE,
+                "requestId": request_id,
+                "sessionId": session_id,
+                "walletId": wallet_id,
+                "decision": decision,
+                "challenge": challenge,
+                "policyHash": policy_hash,
+            },
+            now=now,
+        )
+
+    def verify_binding(
+        self,
+        proof: str,
+        *,
+        guardian_did: str,
+        verification_method: str,
+        guardian_id: str,
+        wallet_id: str,
+        challenge: str,
+        now: datetime,
+    ) -> None:
+        """Proves possession of the key behind a DID, for one invitation."""
+        self._verify(
+            proof,
+            token_type="guardian-binding+jwt",
+            guardian_did=guardian_did,
+            verification_method=verification_method,
+            expected_claims={
+                "iss": guardian_did,
+                "sub": guardian_id,
+                "aud": RECOVERY_PROOF_AUDIENCE,
+                "walletId": wallet_id,
+                "challenge": challenge,
+            },
+            now=now,
+        )
+
+    def _verify(
+        self,
+        proof: str,
+        *,
+        token_type: str,
+        guardian_did: str,
+        verification_method: str,
+        expected_claims: dict[str, str],
         now: datetime,
     ) -> None:
         if not isinstance(proof, str) or len(proof) > 4096:
@@ -50,23 +107,13 @@ class GuardianDecisionProofVerifier:
             raise GuardianProofError("Guardian proof is invalid.")
         if (
             header.get("alg") != "EdDSA"
-            or header.get("typ") != "guardian-recovery+jwt"
+            or header.get("typ") != token_type
             or header.get("kid") != verification_method
         ):
             raise GuardianProofError("Guardian proof is invalid.")
         if not isinstance(claims, dict):
             raise GuardianProofError("Guardian proof is invalid.")
 
-        expected_claims = {
-            "iss": guardian_did,
-            "sub": guardian_id,
-            "aud": RECOVERY_PROOF_AUDIENCE,
-            "requestId": request_id,
-            "sessionId": session_id,
-            "walletId": wallet_id,
-            "decision": decision,
-            "challenge": challenge,
-        }
         if any(claims.get(name) != value for name, value in expected_claims.items()):
             raise GuardianProofError("Guardian proof is invalid.")
         if set(claims) != {*expected_claims, "iat", "exp", "jti"}:

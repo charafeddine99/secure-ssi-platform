@@ -10,6 +10,8 @@ Master Implementation Plan Section 13, 14, 15:
 
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -119,7 +121,7 @@ def _create_mock_vp_token(
     return build_signed_presentation(
         signed_vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
         holder_did=effective_subject_did,
         private_key=private_key,
     )

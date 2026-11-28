@@ -1,0 +1,31 @@
+# Separate stack for the restore drill: own project, ports, network, volumes and mongod.
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:29400:80"
+  api-gateway:
+    ports: !override
+      - "127.0.0.1:29480:8000"
+    environment:
+      CORS_ORIGINS: http://localhost:29400,http://127.0.0.1:29400
+  identity-service:
+    ports: !override
+      - "127.0.0.1:29481:8000"
+    environment:
+      IDENTITY_PLATFORM_BACKUP_ENABLED: "true"
+      IDENTITY_PLATFORM_BACKUP_DIR: /var/lib/secure-ssi/backups
+      IDENTITY_PLATFORM_BACKUP_KEY_BASE64: ${IDENTITY_PLATFORM_BACKUP_KEY_BASE64}
+      IDENTITY_PLATFORM_BACKUP_RECOVERY_DATABASE: restore_drill_wp31_recovery
+  fraud-service:
+    ports: !override
+      - "127.0.0.1:29482:8000"
+  recovery-service:
+    ports: !override
+      - "127.0.0.1:29483:8000"
+    environment:
+      RECOVERY_TIME_LOCK_FLOOR_SECONDS: "10"
+      RECOVERY_GUARDIAN_CHANGE_DELAY_SECONDS: "15"
+  mongodb:
+    ports: !override []
+  redis:
+    ports: !override []

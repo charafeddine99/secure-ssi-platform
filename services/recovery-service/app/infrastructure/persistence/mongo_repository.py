@@ -6,6 +6,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from app.domain.recovery import (
+    RecoveryNotification,
     Guardian,
     GuardianStatus,
     RecoveryApproval,
@@ -20,6 +21,8 @@ from app.domain.recovery import (
 from app.infrastructure.persistence.indexes import (
     APPROVALS,
     AUDIT,
+    NOTIFICATIONS,
+    STEP_UP_TOKENS,
     GUARDIANS,
     POLICIES,
     REQUESTS,
@@ -264,6 +267,81 @@ class MongoRecoveryRepository:
             },
         )
         return None if value is None else share_from_document(value)
+
+    def add_notification(self, notification: RecoveryNotification) -> None:
+        try:
+            self._db[NOTIFICATIONS].insert_one(
+                {
+                    "_id": notification.notification_id,
+                    "recipientUserId": notification.recipient_user_id,
+                    "eventType": notification.event_type,
+                    "aggregateId": notification.aggregate_id,
+                    "walletId": notification.wallet_id,
+                    "createdAt": notification.created_at,
+                    "readAt": notification.read_at,
+                }
+            )
+        except DuplicateKeyError:
+            return
+        except PyMongoError as error:
+            raise RecoveryPersistenceError(
+                "Recovery notification could not be stored."
+            ) from error
+
+    def list_notifications(
+        self,
+        recipient_user_id: str,
+        *,
+        limit: int,
+    ) -> tuple[RecoveryNotification, ...]:
+        documents = self._find(
+            NOTIFICATIONS,
+            {"recipientUserId": recipient_user_id},
+            sort=("createdAt", DESCENDING),
+            limit=limit,
+        )
+        return tuple(
+            RecoveryNotification(
+                notification_id=value["_id"],
+                recipient_user_id=value["recipientUserId"],
+                event_type=value["eventType"],
+                aggregate_id=value["aggregateId"],
+                wallet_id=value["walletId"],
+                created_at=value["createdAt"],
+                read_at=value.get("readAt"),
+            )
+            for value in documents
+        )
+
+    def mark_notification_read(
+        self,
+        notification_id: str,
+        *,
+        recipient_user_id: str,
+        read_at: datetime,
+    ) -> None:
+        try:
+            self._db[NOTIFICATIONS].update_one(
+                {"_id": notification_id, "recipientUserId": recipient_user_id},
+                {"$set": {"readAt": read_at}},
+            )
+        except PyMongoError as error:
+            raise RecoveryPersistenceError(
+                "Recovery notification could not be updated."
+            ) from error
+
+    def consume_step_up(self, token_id: str, *, expires_at: datetime) -> bool:
+        try:
+            self._db[STEP_UP_TOKENS].insert_one(
+                {"_id": token_id, "expiresAt": expires_at}
+            )
+        except DuplicateKeyError:
+            return False
+        except PyMongoError as error:
+            raise RecoveryPersistenceError(
+                "Step-up replay protection is unavailable."
+            ) from error
+        return True
 
     def append_audit_idempotently(self, event: RecoveryAuditEvent) -> None:
         try:

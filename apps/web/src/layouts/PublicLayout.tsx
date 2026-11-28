@@ -42,7 +42,12 @@ export const PublicLayout: React.FC = () => {
             </button>
             {user
               ? <NavLink to={roleHomePath(user.role)} className="btn btn-primary">Open workspace</NavLink>
-              : <NavLink to="/login" className="btn btn-primary">Sign in</NavLink>}
+              : (
+                <>
+                  <NavLink to="/login" className="btn">Sign in</NavLink>
+                  <NavLink to="/register" className="btn btn-primary">Sign up</NavLink>
+                </>
+              )}
           </div>
           <div className={["collapse navbar-collapse", open ? "show" : ""].filter(Boolean).join(" ")} id="public-menu">
             <nav aria-label="Public">

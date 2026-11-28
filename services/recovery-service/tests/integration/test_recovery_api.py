@@ -6,7 +6,7 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_recovery_service
+from app.api.dependencies import get_recovery_service, get_session_gateway
 from app.main import app
 from tests.support import WALLET_ID, build_runtime
 
@@ -39,6 +39,7 @@ def _headers(user_id: str, role: str = "holder") -> dict[str, str]:
 def api() -> Iterator[tuple[TestClient, object]]:
     runtime = build_runtime()
     app.dependency_overrides[get_recovery_service] = lambda: runtime.service
+    app.dependency_overrides[get_session_gateway] = lambda: runtime.gateway
     client = TestClient(app, raise_server_exceptions=False)
     yield client, runtime
     client.close()
@@ -71,16 +72,22 @@ def _configure(client: TestClient, runtime, *, time_lock: int = 10) -> list[str]
             json={
                 "walletId": WALLET_ID,
                 "guardianUserId": guardian.user_id,
-                "guardianDid": runtime.guardian_dids[guardian.user_id],
                 "displayName": f"API Guardian {index}",
-                "verificationMethod": (
-                    f"{runtime.guardian_dids[guardian.user_id]}#"
-                    f"{runtime.guardian_dids[guardian.user_id][len('did:key:'):]}"
-                ),
             },
         )
         assert response.status_code == 201, response.text
-        guardian_ids.append(response.json()["guardianId"])
+        guardian_id = response.json()["guardianId"]
+        did, method, proof = runtime.sign_binding(
+            guardian_id=guardian_id,
+            key=runtime.guardian_signing_keys[guardian.user_id],
+        )
+        accepted = client.post(
+            f"/api/v1/guardians/{guardian_id}/accept",
+            headers=_headers(guardian.user_id),
+            json={"guardianDid": did, "verificationMethod": method, "proof": proof},
+        )
+        assert accepted.status_code == 200, accepted.text
+        guardian_ids.append(guardian_id)
     return guardian_ids
 
 
@@ -115,9 +122,7 @@ def test_guardian_crud_policy_and_strict_openapi(api) -> None:
         json={
             "walletId": WALLET_ID,
             "guardianUserId": "usr_extra_guardian",
-            "guardianDid": "did:key:zExtraApiGuardian",
             "displayName": "Extra",
-            "verificationMethod": "did:key:zExtraApiGuardian#zExtraApiGuardian",
             "rawShare": "forbidden",
         },
     )

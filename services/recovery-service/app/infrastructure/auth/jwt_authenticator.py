@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,7 +49,11 @@ class RecoveryJwtAuthenticator:
             raise RecoveryAuthorizationError("Bearer claims are invalid.")
         if checked_at.tzinfo is None or checked_at.utcoffset() is None:
             raise RecoveryAuthorizationError("Authentication clock is invalid.")
-        return RecoveryPrincipal.from_claims(subject, tuple(roles))
+        self.last_claims = payload
+        return replace(
+            RecoveryPrincipal.from_claims(subject, tuple(roles)),
+            session_id=str(payload["jti"]),
+        )
 
     def __repr__(self) -> str:
         return (

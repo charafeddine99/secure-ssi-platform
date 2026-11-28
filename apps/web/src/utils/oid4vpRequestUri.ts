@@ -1,5 +1,16 @@
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
+/** True for a by-reference request (OpenID4VP request_uri, signed request object). */
+export function hasRequestUri(rawUri: string): boolean {
+  const trimmed = rawUri.trim();
+  if (!trimmed.startsWith("openid4vp://")) return false;
+  try {
+    return new URL(trimmed.replace(/^openid4vp:\/\//, "https://placeholder/")).searchParams.has("request_uri");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolve the local session handle from the project's supported OID4VP QR forms.
  * The returned identifier is only a lookup key; the consent page loads the
@@ -16,8 +27,10 @@ export function parseOid4vpRequestSessionId(rawUri: string): string {
   let sessionId: string | null;
 
   if (requestUri) {
-    const parsedRequestUri = new URL(requestUri, "https://placeholder/");
-    sessionId = parsedRequestUri.pathname.split("/").filter(Boolean).at(-1) ?? null;
+    // A request_uri points at a signed request object. Its host and signature
+    // are checked by the server (resolveOid4vpRequestLink); guessing the
+    // session from the URL path would trust any site.
+    throw new Error("This link must be checked by the wallet service first.");
   } else {
     const requiredParameters = [
       "client_id",

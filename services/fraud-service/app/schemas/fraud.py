@@ -31,6 +31,11 @@ class FraudEvaluationResponse(BaseModel):
     reasons: List[str]
     heuristic_breakdown: HeuristicBreakdown
     model_version: str
+    assessment_type: str = "presentation_verification"
+    assessment_mode: str = "RULE_BASED"
+    reason_codes: List[str] = Field(default_factory=list)
+    data_quality: str = "CALLER_SIGNALS_ONLY"
+    score_semantics: str = "Uncalibrated rule score from 0 to 1. Not a probability."
     risk_signals: List[str] = Field(default_factory=list)
     advisory_only: bool = True
     evaluated_at: str
@@ -45,7 +50,7 @@ class QuarantineResponse(BaseModel):
     status: str
     quarantined_at: Optional[str] = None
     reason: Optional[str] = None
-    effect_scope: str = "fraud-service-process-local"
+    effect_scope: str = "fraud-service-only"
 
 class ModelStatsResponse(BaseModel):
     model_type: str

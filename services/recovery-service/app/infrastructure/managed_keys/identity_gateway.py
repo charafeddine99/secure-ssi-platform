@@ -11,6 +11,7 @@ from app.application.ports.managed_keys import (
 )
 from app.core.config import RecoverySettings
 from app.domain.recovery import (
+    RecoveryAuthorizationError,
     RecoveryConflictError,
     RecoveryNotFoundError,
     RecoveryPersistenceError,
@@ -56,6 +57,58 @@ class IdentityManagedKeyRecoveryGateway(ManagedKeyRecoveryGateway):
         except httpx.HTTPError as error:
             raise RecoveryPersistenceError("Identity ownership check is unavailable.") from error
         self._require_success(response, ownership=True)
+
+    def require_unmanaged_did(self, *, did: str, user_id: str) -> None:
+        token = self._assertion(
+            scope="did:custody:read",
+            wallet_id="",
+            owner_user_id=user_id,
+            request_id=token_urlsafe(12),
+        )
+        try:
+            response = self._client.post(
+                "/internal/v1/recovery/dids/custody",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"did": did},
+            )
+            response.raise_for_status()
+            managed = response.json()["managed"]
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
+            raise RecoveryPersistenceError(
+                "Identity DID custody check is unavailable."
+            ) from error
+        if managed is not False:
+            raise RecoveryConflictError(
+                "A Guardian key must not be held by the platform."
+            )
+
+    def require_active_session(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        issued_at: int,
+    ) -> None:
+        token = self._assertion(
+            scope="session:read",
+            wallet_id="",
+            owner_user_id=user_id,
+            request_id=token_urlsafe(12),
+        )
+        try:
+            response = self._client.post(
+                "/internal/v1/recovery/sessions/check",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"sessionId": session_id, "issuedAt": issued_at},
+            )
+            response.raise_for_status()
+            active = response.json()["active"]
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
+            raise RecoveryPersistenceError(
+                "Identity session check is unavailable."
+            ) from error
+        if active is not True:
+            raise RecoveryAuthorizationError("The session has been revoked.")
 
     def rotate_for_recovery(
         self,

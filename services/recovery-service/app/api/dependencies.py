@@ -4,11 +4,16 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.application.ports.managed_keys import ManagedKeyRecoveryGateway
 from app.application.services.metrics import RecoveryMetrics
 from app.application.services.recovery_service import RecoveryService
 from app.domain.auth import RecoveryPrincipal
-from app.domain.recovery import RecoveryAuthorizationError
+from app.domain.recovery import (
+    RecoveryAuthorizationError,
+    RecoveryPersistenceError,
+)
 from app.infrastructure.auth.jwt_authenticator import RecoveryJwtAuthenticator
+from app.infrastructure.auth.step_up import StepUpGuard
 from app.runtime import RecoveryRuntime
 
 
@@ -30,10 +35,22 @@ def get_recovery_service(
     return runtime.service
 
 
+def get_step_up_guard(
+    runtime: RecoveryRuntime = Depends(get_runtime),
+) -> StepUpGuard:
+    return StepUpGuard(runtime.settings, runtime.repository)
+
+
 def get_recovery_metrics(
     runtime: RecoveryRuntime = Depends(get_runtime),
 ) -> RecoveryMetrics:
     return runtime.metrics
+
+
+def get_session_gateway(
+    runtime: RecoveryRuntime = Depends(get_runtime),
+) -> ManagedKeyRecoveryGateway:
+    return runtime.gateway
 
 
 def get_current_principal(
@@ -41,6 +58,7 @@ def get_current_principal(
         HTTPAuthorizationCredentials | None, Security(bearer)
     ],
     runtime: RecoveryRuntime = Depends(get_runtime),
+    sessions: ManagedKeyRecoveryGateway = Depends(get_session_gateway),
 ) -> RecoveryPrincipal:
     if credentials is None or credentials.scheme.casefold() != "bearer":
         raise HTTPException(
@@ -49,10 +67,19 @@ def get_current_principal(
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        return RecoveryJwtAuthenticator(runtime.settings).authenticate(
+        authenticator = RecoveryJwtAuthenticator(runtime.settings)
+        principal = authenticator.authenticate(
             credentials.credentials, checked_at=datetime.now(UTC)
         )
-    except RecoveryAuthorizationError as error:
+        # Revocation lives in Identity: a signature alone is not enough, and a
+        # failed check is treated as a revoked session.
+        sessions.require_active_session(
+            user_id=principal.user_id,
+            session_id=principal.session_id,
+            issued_at=int(authenticator.last_claims["iat"]),
+        )
+        return principal
+    except (RecoveryAuthorizationError, RecoveryPersistenceError) as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Bearer authentication is invalid.",

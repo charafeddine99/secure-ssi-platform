@@ -16,6 +16,20 @@ class ManagedKeyRecoveryGateway:
     def verify_wallet_owner(self, *, wallet_id: str, owner_user_id: str) -> None:
         raise NotImplementedError
 
+    def require_unmanaged_did(self, *, did: str, user_id: str) -> None:
+        """Refuses a DID whose key the platform itself holds."""
+        raise NotImplementedError
+
+    def require_active_session(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        issued_at: int,
+    ) -> None:
+        """Raises unless the access token survives durable revocation."""
+        raise NotImplementedError
+
     def rotate_for_recovery(
         self,
         *,

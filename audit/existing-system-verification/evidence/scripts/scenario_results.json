@@ -1,0 +1,293 @@
+{
+ "passed": 41,
+ "failed": 0,
+ "results": [
+  {
+   "area": "S14",
+   "name": "cold start reports insufficient baseline for every series",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "metrics",
+   "name": "no recovery requests gives N/A, not 0%",
+   "status": null,
+   "pass": true,
+   "note": "{\"name\":\"Recovery signals\",\"unit\":\"percent\",\"numerator\":0,\"denominator\":0,\"numerator_types\":[\"recovery.proof_rejected\",\"recovery.unauthorized\"],\"denominator_types\":[\"recovery.requested\"],\"value\":null}"
+  },
+  {
+   "area": "access",
+   "name": "a holder cannot read metrics",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "access",
+   "name": "a verifier cannot read incidents",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "access",
+   "name": "an anonymous caller cannot read health",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "access",
+   "name": "the gateway does not pass a forged ingest",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S1",
+   "name": "failed sign-ins open a suspicious activity case",
+   "status": null,
+   "pass": true,
+   "note": "Repeated failed sign-in for one account"
+  },
+  {
+   "area": "S1",
+   "name": "the case is not a confirmed incident",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S1",
+   "name": "several signals share one case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S2",
+   "name": "success after a burst is a suspected attack",
+   "status": null,
+   "pass": true,
+   "note": "AUTH-03"
+  },
+  {
+   "area": "S1b",
+   "name": "failed step-ups open a case",
+   "status": null,
+   "pass": true,
+   "note": "MFA-01"
+  },
+  {
+   "area": "S3",
+   "name": "a revoked session is refused",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S3",
+   "name": "the rejection is recorded as a raw signal",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S3",
+   "name": "one rejection opens no case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S4",
+   "name": "bad token calls open a case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S6",
+   "name": "a valid presentation is accepted first",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S5",
+   "name": "repeated refused presentation calls open a case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S6",
+   "name": "the revocation and refusals are visible as events",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S9",
+   "name": "repeated refused admin calls open a case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S10",
+   "name": "sustained rate limiting opens a case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S10",
+   "name": "the rate has a real denominator",
+   "status": null,
+   "pass": true,
+   "note": "{\"n\":25,\"d\":153}"
+  },
+  {
+   "area": "S11",
+   "name": "a burst of trust changes opens a case",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "skipping triage straight to closed is refused",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "a holder cannot change an incident",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "an administrator triages",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "a false positive keeps its reason and history",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "a human confirms a suspected attack",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "reviewed labels are counted, the model stays untrained",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S13",
+   "name": "events raised during the outage arrive exactly once",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "S13",
+   "name": "the delivery failures are visible",
+   "status": null,
+   "pass": true,
+   "note": "[[\"api-gateway\",\"HEALTHY\",28],[\"identity-service\",\"HEALTHY\",2],[\"recovery-service\",\"HEALTHY\",2]]"
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no usernames",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no e-mail domain",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no example accounts",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no DIDs",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no DID web",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no JWTs",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no wallet ids",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no passwords",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored intelligence holds no IP addresses",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "privacy",
+   "name": "stored data is real, so that check meant something",
+   "status": null,
+   "pass": true,
+   "note": "105720 characters"
+  },
+  {
+   "area": "risk",
+   "name": "real presentations were assessed with mode and reason fields",
+   "status": null,
+   "pass": true,
+   "note": "1 assessed"
+  }
+ ]
+}

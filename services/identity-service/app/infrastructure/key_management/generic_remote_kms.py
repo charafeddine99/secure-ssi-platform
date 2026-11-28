@@ -4,8 +4,9 @@ import os
 import socket
 import ssl
 import time
+import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -21,6 +22,11 @@ from app.domain.managed_key import (
     ProviderPermissionDeniedError,
     ProviderTimeoutError,
     ProviderUnavailableError,
+)
+
+
+_EXPORT_FIELDS = frozenset(
+    {"privatekey", "private_key", "seed", "secretkey", "keymaterial", "d"}
 )
 
 
@@ -138,6 +144,8 @@ class GenericRemoteKmsAdapter:
         retry_backoff_ms: int = 100,
         circuit_failure_threshold: int = 5,
         circuit_reset_seconds: int = 30,
+        client_purpose: str | None = None,
+        mutual_tls: bool = False,
     ) -> None:
         normalized_url = base_url.strip().rstrip("/")
         if not normalized_url.startswith("https://"):
@@ -146,6 +154,8 @@ class GenericRemoteKmsAdapter:
         self._base_url = normalized_url
         self._transport = transport
         self._authentication = authentication or NoProviderAuthentication()
+        self._client_purpose = client_purpose
+        self._mutual_tls = mutual_tls
         self._timeout = request_timeout_seconds
         self._retry_count = retry_count
         self._retry_backoff = retry_backoff_ms / 1_000
@@ -161,7 +171,11 @@ class GenericRemoteKmsAdapter:
 
     @property
     def production_ready(self) -> bool:
-        return True
+        """HTTPS is enforced above; a client identity is required as well."""
+        return self._mutual_tls or not isinstance(
+            self._authentication,
+            NoProviderAuthentication,
+        )
 
     def create_key(
         self,
@@ -209,6 +223,10 @@ class GenericRemoteKmsAdapter:
                 "payloadEncoding": "base64url",
             },
         )
+        if _EXPORT_FIELDS.intersection(key.casefold() for key in data):
+            raise ProviderMetadataError(
+                "KMS response contains private key material."
+            )
         encoded = data.get("signature")
         if not isinstance(encoded, str):
             raise ProviderMetadataError(
@@ -219,6 +237,43 @@ class GenericRemoteKmsAdapter:
         except (ValueError, UnicodeEncodeError) as error:
             raise ProviderMetadataError(
                 "KMS signature encoding is invalid."
+            ) from error
+
+    def wrap_data_key(
+        self,
+        data_key: bytes,
+        *,
+        provider_key_reference: str,
+    ) -> str:
+        data = self._json_request(
+            "POST",
+            f"/v1/keys/{quote(provider_key_reference, safe='')}:wrap",
+            {"plaintext": _base64url(data_key)},
+        )
+        wrapped = data.get("ciphertext")
+        if not isinstance(wrapped, str) or not wrapped:
+            raise ProviderMetadataError("KMS wrap response is invalid.")
+        return wrapped
+
+    def unwrap_data_key(
+        self,
+        wrapped: str,
+        *,
+        provider_key_reference: str,
+    ) -> bytes:
+        data = self._json_request(
+            "POST",
+            f"/v1/keys/{quote(provider_key_reference, safe='')}:unwrap",
+            {"ciphertext": wrapped},
+        )
+        encoded = data.get("plaintext")
+        if not isinstance(encoded, str):
+            raise ProviderMetadataError("KMS unwrap response is invalid.")
+        try:
+            return _base64url_decode(encoded)
+        except (ValueError, UnicodeEncodeError) as error:
+            raise ProviderMetadataError(
+                "KMS unwrap encoding is invalid."
             ) from error
 
     def enable_key(self, provider_key_reference: str) -> None:
@@ -283,7 +338,11 @@ class GenericRemoteKmsAdapter:
             "Accept": "application/json",
             "Content-Type": "application/json",
             **self._authentication.headers(),
+            "X-Request-Id": str(uuid.uuid4()),
+            "X-Request-Timestamp": datetime.now(UTC).isoformat(),
         }
+        if self._client_purpose is not None:
+            headers["X-Kms-Client-Purpose"] = self._client_purpose
         if idempotency_key is not None:
             headers["Idempotency-Key"] = idempotency_key
         body = (

@@ -1,0 +1,146 @@
+[
+ {
+  "tab": "Overview",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "01-overview-1440.png"
+ },
+ {
+  "tab": "Risk analysis",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "02-risk-analysis-1440.png"
+ },
+ {
+  "tab": "Attack analytics",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "03-attack-analytics-1440.png"
+ },
+ {
+  "tab": "Control coverage",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "04-control-coverage-1440.png"
+ },
+ {
+  "tab": "Anomalies",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "05-anomalies-1440.png"
+ },
+ {
+  "tab": "Incidents",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "06-incidents-1440.png"
+ },
+ {
+  "tab": "Model and data",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "07-model-and-data-1440.png"
+ },
+ {
+  "tab": "Rules",
+  "width": 1440,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "08-rules-1440.png"
+ },
+ {
+  "tab": "Overview",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "09-overview-390.png"
+ },
+ {
+  "tab": "Risk analysis",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "10-risk-analysis-390.png"
+ },
+ {
+  "tab": "Attack analytics",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "11-attack-analytics-390.png"
+ },
+ {
+  "tab": "Control coverage",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "12-control-coverage-390.png"
+ },
+ {
+  "tab": "Anomalies",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "13-anomalies-390.png"
+ },
+ {
+  "tab": "Incidents",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "14-incidents-390.png"
+ },
+ {
+  "tab": "Model and data",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "15-model-and-data-390.png"
+ },
+ {
+  "tab": "Rules",
+  "width": 390,
+  "axe": 0,
+  "sample": "",
+  "overflow": false,
+  "console": 0,
+  "file": "16-rules-390.png"
+ }
+]

@@ -9,6 +9,8 @@ Explicitly validates:
 """
 from __future__ import annotations
 
+from app.config.request_object_settings import request_object_signer
+
 import copy
 import hashlib
 from dataclasses import replace
@@ -187,7 +189,7 @@ def _make_vc_with_status(
     return build_signed_presentation(
         signed_vc,
         nonce=nonce,
-        domain="http://testserver/verifier",
+        domain=request_object_signer().client_id,
         holder_did=SYNTHETIC_HOLDER_DID,
     )
 
@@ -777,7 +779,7 @@ class TestWp08R2SuspensionStatusEnforcement:
         vp_token = build_signed_presentation(
             raw_vc,
             nonce=session["nonce"],
-            domain="http://testserver/verifier",
+            domain=request_object_signer().client_id,
             holder_did=SYNTHETIC_HOLDER_DID,
         )
 

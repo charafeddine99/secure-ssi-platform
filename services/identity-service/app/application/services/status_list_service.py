@@ -8,6 +8,9 @@ from app.application.ports.status_list_repositories import (
 )
 from app.application.ports.issuance import IssuerStatusListPublisher
 from app.application.services.internal_metrics import InternalMetrics
+from app.application.services.revocation_ledger_service import (
+    RevocationLedgerService,
+)
 from app.config.status_list_settings import StatusListSettings
 from app.domain.bitstring_status_list import (
     CredentialStatusEntry,
@@ -22,7 +25,11 @@ from app.domain.bitstring_status_list import (
     status_list_sequence,
 )
 from app.domain.persistence import PersistedCredential
-from app.infrastructure.status_list_document_generator import encode_status_list
+from app.domain.revocation_ledger import RevocationLedgerIntegrityError
+from app.infrastructure.status_list_document_generator import (
+    decompress_status_list,
+    encode_status_list,
+)
 
 
 Clock = Callable[[], datetime]
@@ -40,7 +47,9 @@ class StatusListService:
         clock: Clock,
         id_generator: IdGenerator,
         metrics: InternalMetrics | None = None,
+        revocation_ledger: RevocationLedgerService | None = None,
     ) -> None:
+        self._ledger = revocation_ledger
         self._entries = entry_repository
         self._status_lists = status_list_repository
         self._generator = generator
@@ -100,12 +109,27 @@ class StatusListService:
             normalized,
             limit=self._settings.list_length,
         )
-        if not entries:
+        ledger_events = (
+            ()
+            if self._ledger is None
+            else self._ledger.events_for_list(normalized)
+        )
+        existing = self._status_lists.get(normalized)
+        # Lost records must not make a list disappear or look clean, so the
+        # owner can also come from the ledger or the last publication.
+        if entries:
+            issuer_did = entries[0].issuer_did
+            status_purpose = entries[0].status_purpose
+        elif ledger_events:
+            issuer_did = ledger_events[0].issuer_did
+            status_purpose = StatusPurpose(ledger_events[0].status_purpose)
+        elif existing is not None:
+            issuer_did = existing.issuer_did
+            status_purpose = existing.status_purpose
+        else:
             raise StatusListNotFoundError(
                 "The requested status list does not exist."
             )
-        issuer_did = entries[0].issuer_did
-        status_purpose = entries[0].status_purpose
         if any(
             entry.issuer_did != issuer_did
             or entry.status_purpose is not status_purpose
@@ -114,29 +138,40 @@ class StatusListService:
             raise StatusListConflictError(
                 "Status list entries have inconsistent ownership."
             )
-        revoked_indices = self._entries.revoked_indices(
-            normalized,
-            limit=self._settings.list_length,
+        revoked_indices = tuple(
+            sorted(
+                {
+                    *self._entries.revoked_indices(
+                        normalized,
+                        limit=self._settings.list_length,
+                    ),
+                    *(event.status_list_index for event in ledger_events),
+                }
+            )
         )
         encoded_list = encode_status_list(
             revoked_indices,
             list_length=self._settings.list_length,
         )
+        # After record loss the ledger can hold more revoked bits than there
+        # are surviving entries; each of those bits was still assigned once.
+        assigned_entries = max(len(entries), len(revoked_indices))
         fingerprint = _publication_fingerprint(
             encoded_list=encoded_list,
-            assigned_entries=len(entries),
+            assigned_entries=assigned_entries,
         )
-        existing = self._status_lists.get(normalized)
         if existing is not None and existing.content_hash == fingerprint:
             self._observe_utilization(existing)
             return existing
+        if existing is not None:
+            _require_monotonic(existing.encoded_list, encoded_list)
         return self._publish(
             status_list_id=normalized,
             issuer_did=issuer_did,
             status_purpose=status_purpose,
             encoded_list=encoded_list,
             content_hash=fingerprint,
-            assigned_entries=len(entries),
+            assigned_entries=assigned_entries,
             revoked_entries=len(revoked_indices),
             existing=existing,
         )
@@ -270,3 +305,14 @@ def _publication_fingerprint(
 ) -> str:
     payload = f"{encoded_list}\0{assigned_entries}".encode("ascii")
     return sha256(payload).hexdigest()
+
+
+def _require_monotonic(previous_list: str, next_list: str) -> None:
+    """A revoked bit never clears. Refuse to sign a list that would clear one;
+    verifiers then see an unavailable status, not a clean one."""
+    previous = decompress_status_list(previous_list)
+    current = decompress_status_list(next_list)
+    if len(previous) != len(current) or any(
+        old & ~new for old, new in zip(previous, current, strict=True)
+    ):
+        raise RevocationLedgerIntegrityError("STATUS_BIT_WOULD_CLEAR")

@@ -628,3 +628,102 @@ def test_reconciliation_worker_survives_repository_outage() -> None:
     asyncio.run(exercise())
 
     assert calls == 2
+
+
+_RECONCILIATION_EVENTS = (
+    AuditEventType.KEY_RECONCILIATION_CLAIMED,
+    AuditEventType.KEY_RECONCILIATION_COMPLETED,
+    AuditEventType.KEY_RECONCILIATION_FAILED,
+)
+
+
+def _reconciliation_events(runtime: Runtime) -> list[AuditEventType]:
+    return sorted(
+        (
+            event.event_type
+            for event in runtime.audit.list_recent(limit=500)
+            if event.event_type in _RECONCILIATION_EVENTS
+        ),
+        key=lambda event_type: event_type.value,
+    )
+
+
+def _routine_sync(runtime: Runtime) -> tuple[int, int]:
+    runtime.clock.value += timedelta(seconds=61)
+    return runtime.service.reconcile_batch(stale_seconds=60, batch_size=10)
+
+
+def test_routine_resync_without_changes_is_counted_but_not_audited() -> None:
+    runtime = Runtime()
+    key = runtime.create()
+    before = _reconciliation_events(runtime)
+
+    assert _routine_sync(runtime) == (1, 0)
+    assert _routine_sync(runtime) == (1, 0)
+
+    synced = runtime.keys.get(key.key_id)
+    assert synced is not None
+    assert synced.state is ManagedKeyState.ACTIVE
+    assert synced.last_provider_sync_at == runtime.clock.value
+    assert _reconciliation_events(runtime) == before
+    snapshot = runtime.metrics.snapshot()
+    assert snapshot.key_reconciliation_attempts == 2
+    assert snapshot.key_reconciliation_succeeded == 2
+
+
+def test_routine_resync_audits_state_changes_and_failures() -> None:
+    runtime = Runtime()
+    key = runtime.create()
+    runtime.provider.suspend_key(key.provider_key_reference or "")
+
+    assert _routine_sync(runtime) == (1, 0)
+    suspended = runtime.keys.get(key.key_id)
+    assert suspended is not None
+    assert suspended.state is ManagedKeyState.SUSPENDED
+    assert _reconciliation_events(runtime) == [
+        AuditEventType.KEY_RECONCILIATION_CLAIMED,
+        AuditEventType.KEY_RECONCILIATION_COMPLETED,
+    ]
+
+    other = Runtime()
+    other_key = other.create()
+    other.provider.inject_failure(DevelopmentProviderFailure.TIMEOUT)
+    assert _routine_sync(other) == (0, 1)
+    assert _reconciliation_events(other) == [
+        AuditEventType.KEY_RECONCILIATION_CLAIMED,
+        AuditEventType.KEY_RECONCILIATION_FAILED,
+    ]
+    still_active = other.keys.get(other_key.key_id)
+    assert still_active is not None
+    assert still_active.state is ManagedKeyState.ACTIVE
+
+
+def test_administrative_reconciliation_is_always_audited() -> None:
+    runtime = Runtime()
+    key = runtime.create()
+    runtime.clock.value += timedelta(seconds=61)
+
+    runtime.service.reconcile(key)
+
+    assert _reconciliation_events(runtime) == [
+        AuditEventType.KEY_RECONCILIATION_CLAIMED,
+        AuditEventType.KEY_RECONCILIATION_COMPLETED,
+    ]
+
+
+def test_successful_resync_resets_the_retry_streak() -> None:
+    runtime = Runtime(retry_limit=3)
+    key = runtime.create()
+    for _ in range(5):
+        assert _routine_sync(runtime) == (1, 0)
+        current = runtime.keys.get(key.key_id)
+        assert current is not None
+        assert current.reconciliation_attempts == 0
+
+    runtime.provider.inject_failure(DevelopmentProviderFailure.TIMEOUT)
+    assert _routine_sync(runtime) == (0, 1)
+
+    after_one_failure = runtime.keys.get(key.key_id)
+    assert after_one_failure is not None
+    assert after_one_failure.state is ManagedKeyState.ACTIVE
+    assert after_one_failure.reconciliation_attempts == 1

@@ -1,0 +1,286 @@
+{
+ "passed": 40,
+ "failed": 0,
+ "results": [
+  {
+   "area": "holder",
+   "name": "a short password is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "holder",
+   "name": "a common password is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "holder",
+   "name": "a person can register",
+   "status": 202,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "holder",
+   "name": "a used address gets the same answer",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "holder",
+   "name": "extra fields cannot add a role",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "holder",
+   "name": "the new account is only a holder",
+   "status": null,
+   "pass": true,
+   "note": "[\"holder\"]"
+  },
+  {
+   "area": "holder",
+   "name": "the new holder gets a working wallet",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "an application without an organisation is refused",
+   "status": 422,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "an issuer can apply",
+   "status": 202,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "an applicant cannot sign in yet",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "the administrator sees the application",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "a holder cannot read applications",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "a holder cannot approve",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "approval needs step-up",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "the administrator approves with step-up",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "a decided request cannot be decided again",
+   "status": 409,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "issuer",
+   "name": "an unbound issuer cannot create offers",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "verifier",
+   "name": "a verifier can apply",
+   "status": 202,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "verifier",
+   "name": "the administrator can reject",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "verifier",
+   "name": "a rejected applicant still cannot sign in",
+   "status": 401,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "nobody registers as administrator alone",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "a made-up invitation is refused",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "a holder cannot invite",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "inviting needs step-up",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "an administrator can invite",
+   "status": 201,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "the invitation works only for its address",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "the invited person can join",
+   "status": 202,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "the invitation works once",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "admin",
+   "name": "the new administrator has access",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "an administrator cannot read a holder wallet",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "an administrator cannot create offers",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "an issuer cannot read a holder wallet",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "an issuer cannot read users",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "a verifier cannot create offers",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "a holder cannot change the trust registry",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "roles",
+   "name": "every role can open its own MFA status",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "a case exists to review",
+   "status": null,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "triage needs no step-up",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "dismissing a case needs step-up",
+   "status": 403,
+   "pass": true,
+   "note": ""
+  },
+  {
+   "area": "incident",
+   "name": "dismissing works with step-up",
+   "status": 200,
+   "pass": true,
+   "note": ""
+  }
+ ]
+}

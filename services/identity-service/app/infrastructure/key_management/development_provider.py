@@ -20,6 +20,9 @@ from app.domain.managed_key import (
     ProviderUnavailableError,
     public_key_fingerprint,
 )
+from app.infrastructure.crypto.development_guard import (
+    require_development_environment,
+)
 from app.infrastructure.crypto.local_holder_key_provider import (
     ED25519_MULTICODEC_PREFIX,
 )
@@ -43,6 +46,7 @@ class DevelopmentExternalKeyProvider:
     """Non-production provider with a private, process-local key boundary."""
 
     def __init__(self, *, name: str = "development") -> None:
+        require_development_environment("development key provider")
         self._name = name
         self._lock = Lock()
         self._metadata: dict[str, ProviderKeyMetadata] = {}

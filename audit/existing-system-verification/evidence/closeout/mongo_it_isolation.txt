@@ -1,0 +1,17 @@
+# Isolation check for the Mongo integration run (2026-11-23T17:57:24+03:00)
+## containers on audit-20261121_default
+
+audit-20261121-api-gateway-1 192.168.0.7/20
+audit-20261121-fraud-service-1 192.168.0.6/20
+audit-20261121-identity-service-1 192.168.0.4/20
+audit-20261121-mongodb-1 192.168.0.3/20
+audit-20261121-recovery-service-1 192.168.0.5/20
+audit-20261121-redis-1 192.168.0.2/20
+audit-20261121-web-1 192.168.0.8/20
+## owner mongodb networks
+secure-ssi-platform_default 172.22.0.8
+
+## audit mongodb IP on the audit network
+192.168.0.3
+## 'mongodb' as resolved from a container on the audit network
+192.168.0.3
