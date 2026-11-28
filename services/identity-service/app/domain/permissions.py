@@ -47,6 +47,8 @@ class Permission(StrEnum):
     ADMIN_INCIDENTS_WRITE = "admin:incidents:write"
     TRUST_REGISTRY_READ = "trust-registry:read"
     TRUST_REGISTRY_WRITE = "trust-registry:write"
+    # Platform trust review of organizations and their issuer/verifier capabilities.
+    TRUST_REVIEW_DECIDE = "trust-review:decide"
 
 
 _ROLE_PERMISSIONS = MappingProxyType(
@@ -66,6 +68,7 @@ _ROLE_PERMISSIONS = MappingProxyType(
                 Permission.ADMIN_INCIDENTS_WRITE,
                 Permission.TRUST_REGISTRY_READ,
                 Permission.TRUST_REGISTRY_WRITE,
+                Permission.TRUST_REVIEW_DECIDE,
                 Permission.CREDENTIALS_VALIDATE,
                 Permission.CREDENTIALS_VERIFY,
                 Permission.PRESENTATIONS_READ,

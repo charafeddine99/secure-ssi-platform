@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.api.v1.organizations import router as organizations_router
+
 from app.api.v1.auth import router as auth_router
 from app.api.v1.credentials import router as credentials_router
 from app.api.v1.status_lists import router as status_lists_router
@@ -45,3 +47,4 @@ router.include_router(trust_registry_router)
 router.include_router(database_router)
 router.include_router(admin_users_router)
 router.include_router(platform_backups_router)
+router.include_router(organizations_router)

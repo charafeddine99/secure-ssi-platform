@@ -652,4 +652,8 @@ def install_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RepositoryError, cast(Any, repository_error_handler))
     app.add_exception_handler(HTTPException, cast(Any, http_error_handler))
     app.add_exception_handler(DidResolutionError, cast(Any, did_resolution_error_handler))
+    from app.api.v1.organizations import organization_error_handler
+    from app.domain.organization import OrganizationError
+
+    app.add_exception_handler(OrganizationError, cast(Any, organization_error_handler))
     app.add_exception_handler(Exception, cast(Any, unexpected_error_handler))
